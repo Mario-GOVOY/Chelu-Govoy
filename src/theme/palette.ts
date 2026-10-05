@@ -26,6 +26,8 @@ const claro = {
     'exito-suave': '#d1fae5',
     aviso: '#d97706',
     'aviso-suave': '#fffbeb',
+    'cabecera-tabla': '#0e1b2a',
+    'sobre-cabecera-tabla': '#ffffff',
 };
 
 export type NombreColor = keyof typeof claro;
@@ -50,6 +52,8 @@ const oscuro: Paleta = {
     'exito-suave': '#0f2e25',
     aviso: '#fbbf24',
     'aviso-suave': '#33270d',
+    'cabecera-tabla': '#1d3044',
+    'sobre-cabecera-tabla': '#ffffff',
 };
 
 export const paletas: Record<Esquema, Paleta> = { light: claro, dark: oscuro };

@@ -7,14 +7,13 @@ import { fechaRelativa } from '@/utils/fechas';
 
 type Props = {
     chats: ResumenChat[] | null;
-    cargando: boolean;
     error: boolean;
     activoId?: string;
     onReintentar: () => void;
     onAbrir: (chat: ResumenChat) => void;
 };
 
-export function ListaConversaciones({ chats, cargando, error, activoId, onReintentar, onAbrir }: Props) {
+export function ListaConversaciones({ chats, error, activoId, onReintentar, onAbrir }: Props) {
     const colores = useColores();
 
     if (chats === null) {
@@ -33,8 +32,6 @@ export function ListaConversaciones({ chats, cargando, error, activoId, onReinte
             data={chats}
             keyExtractor={(c) => c.id}
             contentContainerClassName="px-3 pb-2"
-            refreshing={cargando}
-            onRefresh={onReintentar}
             ListEmptyComponent={<Text className="px-2 text-sm text-texto-tenue">Aún no hay conversaciones.</Text>}
             renderItem={({ item }) => {
                 const activo = item.id === activoId;

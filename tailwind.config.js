@@ -19,6 +19,8 @@ const nombres = [
   'exito-suave',
   'aviso',
   'aviso-suave',
+  'cabecera-tabla',
+  'sobre-cabecera-tabla',
 ];
 
 /** @type {import('tailwindcss').Config} */

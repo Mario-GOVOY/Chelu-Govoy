@@ -196,14 +196,15 @@ Consecuencias:
 | `@react-navigation/*` v7 | native 7.5 / native-stack 7.20 / drawer 7.14 | OK | Requieren screens ≥4 y safe-area ≥4 |
 | **NativeWind** | 4.2.7 + `react-native-css-interop` 0.2.7 + `tailwindcss` 3.4.x | **OK con un problema menor** | El PR #1864 (adaptación al SDK 57, RN 0.86 y React 19.2) se fusionó el 14/09 y 4.2.7 salió el 15/09. **Problema abierto #1834:** en RN 0.86 la ventana de errores de desarrollo (LogBox) se ve rota con NativeWind; la app funciona y producción no se ve afectada. Arreglo: un parche con `patch-package`, como en AppGovoy. También hay un problema conocido con `useAnimatedRef` de Reanimated 4 (#1560), que no usaremos al principio. |
 | `@maplibre/maplibre-react-native` (fase 3, si se elige) | 11.4.1 | OK | Pide expo ≥54, RN ≥0.80 y React ≥19.1. Necesita build de desarrollo |
-| **`react-native-markdown-display`** | 7.0.2 (dic. 2023) | **DESCARTADA** | Sin mantenimiento desde 2023. Alternativas para la fase 2: `react-native-marked` (8.3.2, JS, tablas, mantenida), `react-native-enriched-markdown` (1.1.0, de Software Mansion, nativa, necesita build de desarrollo) o el fork `@ronradtke/react-native-markdown-display` (9.0.3) |
+| **`react-native-markdown-display`** | 7.0.2 (dic. 2023) | **DESCARTADA** | Sin mantenimiento desde 2023. Alternativas que se valoraron: `react-native-marked`, `react-native-enriched-markdown` (1.1.0, de Software Mansion, nativa) y el fork `@ronradtke/react-native-markdown-display` (9.0.3) |
+| **`react-native-marked`** | 8.3.2 | **OK, elegida (fase 2)** | JS puro, con tablas. Depende de `marked` 18 y `react-native-reanimated-table`; pide `react-native-svg` y RN ≥0.76 |
 | `jwt-decode` | 4.0.0 | No hace falta por ahora | La respuesta del login ya trae todos los datos de la sesión |
 | `lucide-react-native` | 1.52 | OK | Admite React 19 y `react-native-svg` 12–15 (el SDK fija la 15.15) |
 
 ### D6. Mismo backend que el resto de repositorios
 
 - La app usa el mismo backend (`Back-Govoy`) y los mismos entornos que la web y AppGovoy. Se crean o adaptan endpoints según haga falta.
-- **Las URL van en `src/auth/Constants.ts`, como en AppGovoy** (decidido el 2026-10-05, en lugar de `EXPO_PUBLIC_API_URL`): `API_URL` (la que usa la app, por defecto `https://api.govoy.es/`), `API_URL_DEV` (`https://developer.govoy.es/`) y `API_URL_LOCAL` (`http://127.0.0.1:8000/`, con `connectback`). Para cambiar de back se edita la línea de `API_URL`.
+- **Las URL van en `src/auth/Constants.ts`, como en AppGovoy** (decidido el 2026-10-05, en lugar de `EXPO_PUBLIC_API_URL`): `API_URL` (la que usa la app, por defecto `https://api.govoy.es/`), `API_URL_DEV` (`https://developer.govoy.es/`) y `API_URL_LOCAL` (`http://127.0.0.1:8000/`, con `connectback`). Para cambiar de back se edita la línea de `API_URL`. **Ahora apunta al back local** mientras los endpoints de login móvil no estén subidos.
 
 ### D7. Diseño parecido al Chat Chelu web, con modo oscuro desde el inicio
 
@@ -296,7 +297,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 ## 3. Notas técnicas para el diseño
 
 - **Streaming:** el `fetch` estándar de React Native no permite leer la respuesta poco a poco; se usa `expo/fetch`, que sí lo permite. La lectura de eventos puede seguir la de la web (`Front-Govoy/src/routes/components/ChatChelu/useChatChelu.ts:880`), con el mismo procesado agrupado por fotograma y la cancelación con `AbortController`.
-- **Markdown:** `react-native-marked` o `react-native-enriched-markdown` (se decide en la fase 2; `react-native-markdown-display` está sin mantenimiento, ver D5), con las tablas dentro de un scroll horizontal.
+- **Markdown:** `react-native-marked` con el hook `useMarkdown` (decidido en la fase 2, ver su progreso), con las tablas dentro de un scroll horizontal.
 - **Gráficas:** el back envía configuraciones de ApexCharts. Se muestran con ApexCharts dentro de un WebView, sin cambios en el back.
 - **Mapas:** pintando la geometría GeoJSON; la librería está pendiente (ver D8).
 - **Voz:** grabación en m4a con `expo-audio` y envío a `/transcribir`, que ya acepta m4a y mp4.
@@ -368,7 +369,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 La fase 0 (back) está **parada** hasta hablarla con el equipo. La fase 1 avanza en paralelo.
 
 **Estado (2026-10-05): fase 1 cerrada en la app**, probada contra el back local. Queda fuera, a propósito:
-- **Depende del back:** subir los endpoints de login móvil y, hasta entonces, la app solo funciona con `API_URL_LOCAL` (ahora fijado en `authApi.ts`; al subirlos, volver a usar `API_URL` de `Constants.ts`).
+- **Depende del back:** subir los endpoints de login móvil. Hasta entonces la app solo funciona contra el back local: `API_URL` apunta de momento a `http://127.0.0.1:8000/` (al subirlos, volver a `https://api.govoy.es/`).
 - **Antes de la primera versión para clientes:** perfiles EAS y EAS Update, icono y pantalla de arranque, firma del APK, Sentry (pregunta 14).
 - **Solo si aparece:** el parche de LogBox (#1834).
 
@@ -409,7 +410,33 @@ La fase 0 (back) está **parada** hasta hablarla con el equipo. La fase 1 avanza
 - El body incluye `zoom` (y `CorreoElectronico`) por ser igual que el de la web, pero **no hay planes de usar `zoom` en la app**: `sesionDesdeBody` no lo lee.
 - Ojo: un token de renovación sigue valiendo como token de acceso en el resto de endpoints (`validar_token` ignora `typ`). Cerrarlo exigiría tocar `auth.py`, que usan todos; queda para hablarlo con el equipo.
 
-Estructura de carpetas: como AppGovoy, código en `src/` (`auth/`, `components/`, `constants/`, `context/`, `hooks/`, `navigation/`, `screens/`, `theme/`, `types/`, `utils/`). En la raíz solo `App.tsx`, `index.ts` y los archivos de configuración.
+Estructura de carpetas: como AppGovoy, código en `src/` (`auth/`, `chat/`, `components/`, `constants/`, `context/`, `hooks/`, `navigation/`, `screens/`, `theme/`, `types/`, `utils/`). En la raíz solo `App.tsx`, `index.ts` y los archivos de configuración.
+
+### Progreso de la fase 2
+
+Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
+
+| # | Bloque | Estado |
+|---|---|---|
+| 1 | Navegación de la app: menú lateral (Drawer de React Navigation) con una sola pantalla `Chat` (parámetro `chatId`), sustituyendo a la pantalla de inicio provisional. En el menú: Chelu y empresa, "Nueva conversación", lista, datos del usuario, tema, salir de suplantación y cerrar sesión | Hecho |
+| 2 | Lista de conversaciones (`get_chats`, `useConversaciones`, `ListaConversaciones`) con fecha relativa. Se recarga al abrir el menú y con un botón junto a "Conversaciones" (se quitó deslizar para recargar porque a veces impedía cerrar el menú) | Hecho |
+| 3 | Abrir una conversación (`get_chat`, `useChat`): mensajes en una `FlatList` invertida para empezar abajo, markdown, cabeceras de emisor y conversación activa resaltada en el menú | Hecho, falta probar en el móvil |
+| 4 | Enviar mensajes: (1) caja de texto ✔, (2) streaming con `expo/fetch`, (3) conectar el envío (mensaje optimista, texto en directo, botón de parar, `session_id` nuevo y refrescar la lista), (4) preguntas sugeridas | En curso (paso 2) |
+| 5 | Borrar conversación y descarga de documentos | Pendiente |
+
+**Detalles:**
+- **Navegación:** `navigate('Chat', { chatId })` cambia los parámetros de la misma pantalla, no apila otra. Sin `chatId` es una conversación nueva (pantalla de bienvenida). El menú saca la conversación activa de `state.routes[state.index].params`.
+- **`useSesionActiva`** guarda la última sesión en un `ref`, para que las pantallas que aún se están animando al cerrar sesión no fallen.
+- **`get_chat`:** se mapea como `mapApiMessages` de la web: se descartan los mensajes vacíos y los de usuario que empiezan por "Optimizar sectores —" (resumen del formulario de sectores). Si se cambia de conversación antes de que llegue la respuesta, se descarta (`useChat`).
+- **Markdown (decidido): `react-native-marked` 8.3.2**, con el hook `useMarkdown` (no el componente `<Markdown>`, que monta su propia `FlatList` y daría listas virtualizadas anidadas). Estilos con la paleta en `TextoMarkdown`; tablas y bloques de código con scroll horizontal; enlaces con `Linking`.
+- **Mensajes (`BurbujaMensaje`), como en la web:**
+  - Usuario: cabecera "Tú" + cuadrado gris con la inicial, a la derecha; burbuja azul `rounded-xl` con la esquina superior derecha recta.
+  - Chelu: cabecera con el avatar y "CHELU"; el texto sin burbuja, a todo el ancho.
+  - Los dos con sangría bajo la cabecera.
+- **Caja de texto (`CajaMensaje`):** campo multilínea (hasta ~5 líneas) y botón con el icono `Send` de lucide, como la web; gris y desactivado si está vacío.
+- **Teclado:** `KeyboardAvoidingView` con `behavior="padding"`, como en el login. `Pantalla` tiene `margenInferior={false}` para que el margen inferior lo ponga la caja de texto, que lo quita con el teclado abierto (`useTecladoVisible`). `react-native-keyboard-controller` no se ha instalado; se valorará si en iOS hace falta.
+- **Robot de Chelu (`CheluAvatar`):** rehecho a partir de la imagen de referencia (robot azul en 3/4 saludando). **Pendiente de retocar**, todavía no queda bien.
+- **Gráficas y mapas:** no se pintan todavía (fase 3). Opcional: un aviso "📊 Gráfica disponible en la web" mientras tanto.
 
 ### Fase 0 en detalle (Back-Govoy)
 
@@ -541,3 +568,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-05 | `expo-dev-client` se mantiene; en móvil físico, Metro va por Wi-Fi (o `adb reverse tcp:8081`) |
 | 2026-10-05 | D2 2.1: el equipo ha hecho que `get_chats` devuelva solo los chats propios (`c67f863`); `get_chat` (2.2) sigue pendiente |
 | 2026-10-05 | Fase 1 cerrada en la app; EAS, icono, firma y Sentry se dejan para antes de la primera versión para clientes |
+| 2026-10-05 | Fase 2: menú lateral con una sola pantalla `Chat` (parámetro `chatId`); lista de conversaciones con botón de recargar (sin deslizar) |
+| 2026-10-05 | Fase 2: markdown con `react-native-marked` (hook `useMarkdown`); mensajes con cabecera de emisor como la web |
+| 2026-10-05 | Fase 2: teclado con `KeyboardAvoidingView` (`padding`); `react-native-keyboard-controller` solo si hace falta en iOS |
+| 2026-10-05 | Todas las llamadas usan `API_URL`, que apunta de momento al back local |

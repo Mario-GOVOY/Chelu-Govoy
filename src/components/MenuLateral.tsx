@@ -1,6 +1,6 @@
-import { Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { DrawerContentComponentProps, useDrawerStatus } from '@react-navigation/drawer';
-import { LogOut, Moon, Plus, Sun, UserRoundX } from 'lucide-react-native';
+import { LogOut, Moon, Plus, RefreshCw, Sun, UserRoundX } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useConversaciones } from '@/chat/useConversaciones';
@@ -68,8 +68,24 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                 <Text className="text-base font-semibold text-sobre-primario">Nueva conversación</Text>
             </Pressable>
 
-            <Text className="mx-5 mt-6 text-xs font-bold uppercase tracking-wider text-texto-tenue">Conversaciones</Text>
-            <View className="mt-2 flex-1">
+            <View className="ml-5 mr-3 mt-4 flex-row items-center justify-between">
+                <Text className="text-xs font-bold uppercase tracking-wider text-texto-tenue">Conversaciones</Text>
+                <Pressable
+                    onPress={conversaciones.recargar}
+                    disabled={conversaciones.cargando}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Recargar conversaciones"
+                    className="h-9 w-9 items-center justify-center rounded-full active:bg-fondo"
+                >
+                    {conversaciones.cargando ? (
+                        <ActivityIndicator size="small" color={colores['texto-tenue']} />
+                    ) : (
+                        <RefreshCw size={16} color={colores['texto-tenue']} />
+                    )}
+                </Pressable>
+            </View>
+            <View className="mt-1 flex-1">
                 <ListaConversaciones
                     {...conversaciones}
                     activoId={chatActivo}
