@@ -38,10 +38,14 @@ export function useSesion() {
 }
 
 // Para pantallas que solo existen con la sesión dentro (chat, menú lateral...).
+// Al cerrar sesión, la navegación aún pinta estas pantallas durante la animación de salida:
+// por eso se devuelve la última sesión activa en vez de fallar.
 export function useSesionActiva() {
     const { estado } = useSesion();
-    if (estado.tipo !== 'dentro') throw new Error('useSesionActiva se usa sin sesión activa');
-    return { sesion: estado.sesion, staff: estado.staff };
+    const ultima = useRef<{ sesion: Sesion; staff: Sesion | null } | null>(null);
+    if (estado.tipo === 'dentro') ultima.current = { sesion: estado.sesion, staff: estado.staff };
+    if (!ultima.current) throw new Error('useSesionActiva se usa sin sesión activa');
+    return ultima.current;
 }
 
 const caducada = (e: unknown) => e instanceof ErrorAuth && (e.tipo === 'credenciales' || e.tipo === 'sin-acceso');

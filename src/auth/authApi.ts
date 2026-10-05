@@ -29,7 +29,7 @@ function sesionDesdeBody(body: any): Sesion {
 async function pedirSesion(ruta: string, init: RequestInit): Promise<Sesion> {
     let respuesta: Response;
     try {
-        respuesta = await fetch(`${API_URL_LOCAL}${ruta}`, {
+        respuesta = await fetch(`${API_URL}${ruta}`, {
             method: 'POST',
             ...init,
             headers: { 'Content-Type': 'application/json', ...init.headers },

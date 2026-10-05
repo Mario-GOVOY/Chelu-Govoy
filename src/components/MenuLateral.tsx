@@ -1,12 +1,18 @@
-import { Pressable, ScrollView, Text, View } from 'react-native';
-import { DrawerContentComponentProps } from '@react-navigation/drawer';
-import { useColorScheme } from 'nativewind';
+import { Pressable, Text, View } from 'react-native';
+import { DrawerContentComponentProps, useDrawerStatus } from '@react-navigation/drawer';
 import { LogOut, Moon, Plus, Sun, UserRoundX } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useConversaciones } from '@/chat/useConversaciones';
 import { CheluAvatar } from '@/components/CheluAvatar';
+import { ListaConversaciones } from '@/components/ListaConversaciones';
 import { useSesion, useSesionActiva } from '@/context/SesionContext';
-import { useColores } from '@/theme/ThemeProvider';
+import { useColores, useTema } from '@/theme/ThemeProvider';
+
+const ROLES: Record<string, string> = {
+    administrador: 'Administrador',
+    jefeDeOperaciones: 'Jefe de operaciones',
+};
 
 function OpcionMenu({ texto, icono: Icono, onPress, peligro = false }: {
     texto: string;
@@ -26,9 +32,10 @@ function OpcionMenu({ texto, icono: Icono, onPress, peligro = false }: {
 export function MenuLateral({ navigation }: DrawerContentComponentProps) {
     const insets = useSafeAreaInsets();
     const colores = useColores();
-    const { colorScheme, toggleColorScheme } = useColorScheme();
+    const { esquema, setEsquema } = useTema();
     const { salirDeSuplantacion, cerrarSesion } = useSesion();
     const { sesion, staff } = useSesionActiva();
+    const conversaciones = useConversaciones(useDrawerStatus() === 'open');
 
     return (
         <View className="flex-1 bg-superficie" style={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 8 }}>
@@ -55,9 +62,13 @@ export function MenuLateral({ navigation }: DrawerContentComponentProps) {
             </Pressable>
 
             <Text className="mx-5 mt-6 text-xs font-bold uppercase tracking-wider text-texto-tenue">Conversaciones</Text>
-            <ScrollView className="mt-2 flex-1" contentContainerClassName="px-3">
-                <Text className="px-2 text-sm text-texto-tenue">Aún no hay conversaciones.</Text>
-            </ScrollView>
+            <View className="mt-2 flex-1">
+                <ListaConversaciones
+                    {...conversaciones}
+                    onReintentar={conversaciones.recargar}
+                    onAbrir={() => navigation.closeDrawer()}
+                />
+            </View>
 
             <View className="mx-3 border-t border-borde pt-2">
                 {sesion.isImpersonation && (
@@ -68,13 +79,27 @@ export function MenuLateral({ navigation }: DrawerContentComponentProps) {
                         </Text>
                     </View>
                 )}
-                <Text className="px-3 py-2 text-sm text-texto-secundario" numberOfLines={1}>
-                    {sesion.username}
-                </Text>
+                <View className="mx-1 mb-1 flex-row items-center gap-3 rounded-2xl bg-fondo px-3 py-3">
+                    <View className="h-10 w-10 items-center justify-center rounded-full bg-primario">
+                        <Text className="text-base font-bold text-sobre-primario">
+                            {sesion.username.charAt(0).toUpperCase()}
+                        </Text>
+                    </View>
+                    <View className="flex-1">
+                        <Text className="text-base font-semibold text-texto" numberOfLines={1}>
+                            {sesion.username}
+                        </Text>
+                        {sesion.rol && (
+                            <Text className="text-xs text-texto-secundario" numberOfLines={1}>
+                                {ROLES[sesion.rol] ?? sesion.rol}
+                            </Text>
+                        )}
+                    </View>
+                </View>
                 <OpcionMenu
-                    texto={colorScheme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
-                    icono={colorScheme === 'dark' ? Sun : Moon}
-                    onPress={toggleColorScheme}
+                    texto={esquema === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+                    icono={esquema === 'dark' ? Sun : Moon}
+                    onPress={() => setEsquema(esquema === 'dark' ? 'light' : 'dark')}
                 />
                 {staff && <OpcionMenu texto="Salir de suplantación" icono={UserRoundX} onPress={salirDeSuplantacion} />}
                 <OpcionMenu texto="Cerrar sesión" icono={LogOut} onPress={cerrarSesion} peligro />

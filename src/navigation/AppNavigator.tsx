@@ -13,7 +13,11 @@ export function AppNavigator() {
     return (
         <Drawer.Navigator
             drawerContent={(props) => <MenuLateral {...props} />}
-            screenOptions={{ headerShown: false, drawerStyle: { width: '85%' } }}
+            screenOptions={{
+                headerShown: false,
+                drawerStyle: { width: '85%' },
+                swipeEdgeWidth: 80,
+            }}
         >
             <Drawer.Screen name="Chat" component={ChatScreen} />
         </Drawer.Navigator>
