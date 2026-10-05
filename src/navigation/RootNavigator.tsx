@@ -7,7 +7,7 @@ import { LogoChelu } from '@/components/LogoChelu';
 import { Boton } from '@/components/ui/Boton';
 import { Pantalla } from '@/components/ui/Pantalla';
 import { useSesion } from '@/context/SesionContext';
-import InicioScreen from '@/screens/InicioScreen';
+import { AppNavigator } from '@/navigation/AppNavigator';
 import LoginScreen from '@/screens/LoginScreen';
 import SuplantarScreen from '@/screens/SuplantarScreen';
 import { useColores, useEsquema } from '@/theme/ThemeProvider';
@@ -15,7 +15,7 @@ import { useColores, useEsquema } from '@/theme/ThemeProvider';
 export type RootStackParamList = {
     Login: undefined;
     Suplantar: undefined;
-    Inicio: undefined;
+    App: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -74,7 +74,7 @@ export function RootNavigator() {
             <Stack.Navigator screenOptions={{ headerShown: false }}>
                 {estado.tipo === 'fuera' && <Stack.Screen name="Login" component={LoginScreen} />}
                 {estado.tipo === 'staff' && <Stack.Screen name="Suplantar" component={SuplantarScreen} />}
-                {estado.tipo === 'dentro' && <Stack.Screen name="Inicio" component={InicioScreen} />}
+                {estado.tipo === 'dentro' && <Stack.Screen name="App" component={AppNavigator} />}
             </Stack.Navigator>
         </NavigationContainer>
     );

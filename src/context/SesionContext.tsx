@@ -37,6 +37,13 @@ export function useSesion() {
     return contexto;
 }
 
+// Para pantallas que solo existen con la sesión dentro (chat, menú lateral...).
+export function useSesionActiva() {
+    const { estado } = useSesion();
+    if (estado.tipo !== 'dentro') throw new Error('useSesionActiva se usa sin sesión activa');
+    return { sesion: estado.sesion, staff: estado.staff };
+}
+
 const caducada = (e: unknown) => e instanceof ErrorAuth && (e.tipo === 'credenciales' || e.tipo === 'sin-acceso');
 
 // Renueva un token guardado. null si ya no vale (y lo borra); lanza si falla la red o el servidor.
