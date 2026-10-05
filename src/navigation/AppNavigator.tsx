@@ -4,7 +4,7 @@ import { MenuLateral } from '@/components/MenuLateral';
 import ChatScreen from '@/screens/ChatScreen';
 
 export type AppDrawerParamList = {
-    Chat: undefined;
+    Chat: { chatId?: string } | undefined;
 };
 
 const Drawer = createDrawerNavigator<AppDrawerParamList>();

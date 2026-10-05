@@ -7,6 +7,7 @@ import { useConversaciones } from '@/chat/useConversaciones';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { ListaConversaciones } from '@/components/ListaConversaciones';
 import { useSesion, useSesionActiva } from '@/context/SesionContext';
+import type { AppDrawerParamList } from '@/navigation/AppNavigator';
 import { useColores, useTema } from '@/theme/ThemeProvider';
 
 const ROLES: Record<string, string> = {
@@ -29,13 +30,19 @@ function OpcionMenu({ texto, icono: Icono, onPress, peligro = false }: {
     );
 }
 
-export function MenuLateral({ navigation }: DrawerContentComponentProps) {
+export function MenuLateral({ navigation, state }: DrawerContentComponentProps) {
     const insets = useSafeAreaInsets();
     const colores = useColores();
     const { esquema, setEsquema } = useTema();
     const { salirDeSuplantacion, cerrarSesion } = useSesion();
     const { sesion, staff } = useSesionActiva();
     const conversaciones = useConversaciones(useDrawerStatus() === 'open');
+    const chatActivo = (state.routes[state.index].params as AppDrawerParamList['Chat'])?.chatId;
+
+    const abrirChat = (chatId?: string) => {
+        navigation.navigate('Chat', { chatId });
+        navigation.closeDrawer();
+    };
 
     return (
         <View className="flex-1 bg-superficie" style={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 8 }}>
@@ -54,7 +61,7 @@ export function MenuLateral({ navigation }: DrawerContentComponentProps) {
             </View>
 
             <Pressable
-                onPress={() => navigation.closeDrawer()}
+                onPress={() => abrirChat()}
                 className="mx-4 mt-5 h-12 flex-row items-center justify-center gap-2 rounded-2xl bg-primario active:bg-primario-presionado"
             >
                 <Plus size={20} color={colores['sobre-primario']} />
@@ -65,8 +72,9 @@ export function MenuLateral({ navigation }: DrawerContentComponentProps) {
             <View className="mt-2 flex-1">
                 <ListaConversaciones
                     {...conversaciones}
+                    activoId={chatActivo}
                     onReintentar={conversaciones.recargar}
-                    onAbrir={() => navigation.closeDrawer()}
+                    onAbrir={(chat) => abrirChat(chat.id)}
                 />
             </View>
 
