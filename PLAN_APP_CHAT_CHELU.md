@@ -367,6 +367,11 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 
 La fase 0 (back) está **parada** hasta hablarla con el equipo. La fase 1 avanza en paralelo.
 
+**Estado (2026-10-05): fase 1 cerrada en la app**, probada contra el back local. Queda fuera, a propósito:
+- **Depende del back:** subir los endpoints de login móvil y, hasta entonces, la app solo funciona con `API_URL_LOCAL` (ahora fijado en `authApi.ts`; al subirlos, volver a usar `API_URL` de `Constants.ts`).
+- **Antes de la primera versión para clientes:** perfiles EAS y EAS Update, icono y pantalla de arranque, firma del APK, Sentry (pregunta 14).
+- **Solo si aparece:** el parche de LogBox (#1834).
+
 | # | Paso | Estado |
 |---|---|---|
 | 1 | Proyecto Expo SDK 57 (`blank-typescript`), nombres provisionales, `expo-dev-client`, primera compilación con `runappdevice` | Hecho |
@@ -384,20 +389,18 @@ La fase 0 (back) está **parada** hasta hablarla con el equipo. La fase 1 avanza
 - Suplantar: etiqueta "Staff · usuario", fila "Entrar sin maestro" pulsable entera y "Cerrar sesión" como botón de texto.
 - Componentes: `CheluAvatar`, `PantallaAcceso`, `ui/CampoTexto`, `ui/Boton` (variantes primario, secundario, peligro y texto), `ui/MensajeError` y `ui/Pantalla`. Llevan propiedades de accesibilidad (rol, estado, etiquetas) para TalkBack/VoiceOver.
 
-**Pendiente en el login (propuesto, sin decidir):**
-- Guardar las credenciales solo cuando se entra de verdad: ahora se guardan en cuanto el back acepta el login, antes de comprobar `puedeUsarChat`, así que se guardan aunque la app no le deje entrar (empresa 100 o rol sin acceso).
-- Unificar el mensaje de "sin acceso": el back dice "La empresa no tiene Chat Chelu" y la app "Tu usuario no tiene acceso a Chat Chelu.".
-- Cerrar la sesión al momento si una petición da 403 con `detail: "EMPRESA_INACTIVA"` (ahora se cierra en la siguiente renovación, hasta 1 h después). El resto de 403 no deben cerrarla.
-- Empresa desactivada: se muestra "Usuario o contraseña incorrectos." (decidido así para no dar pistas).
-- Quitar el bloque `"web"` de `app.json`, que apunta a `favicon.png`, ya borrado.
+**Mensajes de error del login:**
+- Sin acceso al chat, lo pare el back (empresa sin perfil) o la app (empresa fuera de `CHAT_CHELU` o rol sin acceso): siempre "Tu usuario no tiene acceso a Chat Chelu." (`SIN_ACCESO_CHAT` en `mensajesError.ts`). En suplantación: "El usuario X no tiene acceso a Chat Chelu.".
+- Empresa desactivada: "Usuario o contraseña incorrectos." (decidido así para no dar pistas).
+- Conductores: el back los excluye del login, así que responden 401 como si las credenciales fueran incorrectas.
 
 **Cómo funciona la sesión en la app:**
 - Solo se guardan en SecureStore los tokens de renovación, en dos ranuras: `usuario` (la sesión con chat, normal o suplantada) y `staff` (la propia del staff, para volver al salir de suplantación). El de acceso vive en memoria.
 - Al abrir la app se renuevan las sesiones guardadas. Sin conexión se muestra "No se pudo conectar" con botón de reintentar.
 - Login: staff sin suplantar → pantalla de suplantar; usuario que no cumple la regla de acceso (D9) → error, no se guarda nada; resto → inicio.
 - Suplantar: se renueva antes el token del staff (puede llevar más de una hora parado) y se comprueba la regla de acceso del usuario suplantado.
-- `authFetch`: si una petición da 401, renueva el token y reintenta una vez. Si la renovación da 401/403, la sesión caduca: en suplantación se vuelve a la pantalla de suplantar; si no, al login. **A diferencia de AppGovoy, un 403 en una petición normal no cierra la sesión**, porque en el chat también significa "no puedes tocar este chat".
-- Se guardan el usuario y la contraseña del último login (en SecureStore, como AppGovoy) para rellenar los campos. Se conservan al cerrar sesión.
+- `authFetch`: si una petición da 401, renueva el token y reintenta una vez. Si la renovación da 401/403, la sesión caduca: en suplantación se vuelve a la pantalla de suplantar; si no, al login. **A diferencia de AppGovoy, un 403 solo cierra la sesión si es por empresa desactivada** (`detail: "EMPRESA_INACTIVA"`, se cierra al momento); el resto llegan a la pantalla, porque en el chat también significan "no puedes tocar este chat".
+- Se guardan el usuario y la contraseña del último login (en SecureStore, como AppGovoy) para rellenar los campos, **solo si se entra de verdad** (staff o con acceso al chat; no si la app rechaza al usuario). Se conservan al cerrar sesión.
 
 **Diferencias con lo previsto en la fase 0:**
 - El token de renovación lleva `typ: "refresh"` (la propuesta pendiente); los de acceso no. `/refresh-token-chat-movil` solo acepta los de renovación e `/impersonate-chat-movil` los rechaza.
@@ -537,3 +540,4 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-05 | Login rediseñado para móvil (Chelu de la web arriba, hoja inferior, campos grandes con iconos y ojo); iconos con `lucide-react-native` |
 | 2026-10-05 | `expo-dev-client` se mantiene; en móvil físico, Metro va por Wi-Fi (o `adb reverse tcp:8081`) |
 | 2026-10-05 | D2 2.1: el equipo ha hecho que `get_chats` devuelva solo los chats propios (`c67f863`); `get_chat` (2.2) sigue pendiente |
+| 2026-10-05 | Fase 1 cerrada en la app; EAS, icono, firma y Sentry se dejan para antes de la primera versión para clientes |

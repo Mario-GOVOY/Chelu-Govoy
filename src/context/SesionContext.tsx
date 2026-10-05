@@ -3,6 +3,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, u
 import * as authApi from '@/auth/authApi';
 import { ErrorAuth } from '@/auth/authApi';
 import { registerAuthHandlers } from '@/auth/authManager';
+import { SIN_ACCESO_CHAT } from '@/auth/mensajesError';
 import { borrarRenovaciones, guardarCredenciales, guardarRenovacion, leerRenovaciones } from '@/auth/tokenStorage';
 import { Sesion } from '@/types/Sesion';
 import { esStaffSinSuplantar, puedeUsarChat } from '@/utils/ControlOpcionesUsuarios';
@@ -104,17 +105,19 @@ export function SesionProvider({ children }: { children: ReactNode }) {
     const iniciarSesion = useCallback(
         async (username: string, password: string) => {
             const sesion = await authApi.login(username, password);
-            await guardarCredenciales(username, password);
 
+            // Las credenciales solo se guardan si se entra de verdad (staff o con acceso al chat).
             if (esStaffSinSuplantar(sesion)) {
+                await guardarCredenciales(username, password);
                 await guardarRenovacion('usuario', null);
                 await guardarRenovacion('staff', sesion.refreshToken);
                 cambiarEstado({ tipo: 'staff', staff: sesion });
                 return;
             }
             if (!puedeUsarChat(sesion)) {
-                throw new ErrorAuth('sin-acceso', 'Tu usuario no tiene acceso a Chat Chelu.');
+                throw new ErrorAuth('sin-acceso', SIN_ACCESO_CHAT);
             }
+            await guardarCredenciales(username, password);
             await guardarRenovacion('staff', null);
             await guardarRenovacion('usuario', sesion.refreshToken);
             cambiarEstado({ tipo: 'dentro', sesion, staff: null });

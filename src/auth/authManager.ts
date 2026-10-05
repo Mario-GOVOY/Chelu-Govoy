@@ -47,10 +47,21 @@ async function renovarAcceso(): Promise<string | null> {
     }
 }
 
+// 403 por empresa desactivada: la sesión se cierra ya, sin esperar a la siguiente renovación.
+// Se lee una copia de la respuesta (clone) para que quien hizo la petición pueda leerla igual.
+async function cerrarSiEmpresaInactiva(respuesta: Response) {
+    if (respuesta.status !== 403) return;
+    const detalle = await respuesta
+        .clone()
+        .json()
+        .then((j) => j?.detail)
+        .catch(() => undefined);
+    if (detalle === 'EMPRESA_INACTIVA') handlers?.onCaducada();
+}
+
 /**
  * fetch con el token de acceso. Si responde 401, renueva el token y reintenta una vez.
- * A diferencia de AppGovoy, un 403 no cierra la sesión: en el chat también significa
- * "no puedes tocar este chat"
+ * Solo cierra la sesión un 403 si es por empresa desactivada
  */
 export async function authFetch(url: string, init: RequestInit = {}): Promise<Response> {
     const conToken = (token: string): RequestInit => ({
@@ -58,10 +69,13 @@ export async function authFetch(url: string, init: RequestInit = {}): Promise<Re
         headers: { ...init.headers, Authorization: `Bearer ${token}` },
     });
 
-    const respuesta = await fetch(url, conToken(handlers?.getSesion()?.accessToken ?? ''));
-    if (respuesta.status !== 401) return respuesta;
+    let respuesta = await fetch(url, conToken(handlers?.getSesion()?.accessToken ?? ''));
+    if (respuesta.status === 401) {
+        const nuevo = await refreshAccessToken();
+        if (!nuevo) return respuesta;
+        respuesta = await fetch(url, conToken(nuevo));
+    }
 
-    const nuevo = await refreshAccessToken();
-    if (!nuevo) return respuesta;
-    return fetch(url, conToken(nuevo));
+    await cerrarSiEmpresaInactiva(respuesta);
+    return respuesta;
 }
