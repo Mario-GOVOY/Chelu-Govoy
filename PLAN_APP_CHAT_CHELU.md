@@ -162,9 +162,32 @@ Consecuencias:
 ### D5. Mismo stack que AppGovoy, en versiones actuales
 
 - Mismas librerías que AppGovoy: Expo, React Native, TypeScript estricto, React Navigation, NativeWind, `expo-secure-store`, AsyncStorage, NetInfo y EAS.
-- Se crea con el **último SDK estable de Expo** y las versiones de librerías compatibles con él, no con SDK 53 / RN 0.79.
+- Se crea con el **último SDK estable de Expo** y las versiones de librerías compatibles con él, no con SDK 53 / RN 0.79. **Decidido: SDK 57** (comparado con 55 y 56: el 55 ya no recibe parches y el 56 solo evita el fallo de LogBox #1834, que es solo en desarrollo).
+- **Desarrollo con build de desarrollo** (`npx expo run:android`, alias `runappdevice`) + `expo-dev-client`, no con Expo Go. La carpeta `android/` se genera y no se sube al repo.
+- **Builds de release (APK/AAB):** los comandos de AppGovoy (`generateapk` / `generateaab` = `gradlew assembleRelease` / `bundleRelease`) siguen funcionando, con dos diferencias:
+  - Antes de compilar hay que ejecutar `npx expo prebuild`, porque `gradlew` no lee `app.json` y `android/` tiene que estar al día.
+  - **Firma:** en AppGovoy la firma de release se editó a mano en `android/app/build.gradle` + `android/gradle.properties`. Aquí esos cambios se perderían al regenerar `android/` y la plantilla firma el release con la clave de debug.
+  - Opciones (se decide antes de la primera distribución):
+    - **Plugin de configuración local** (`plugins/withReleaseSigning.js`) que añade la firma de release a `build.gradle` y lee el keystore y las contraseñas de `~/.gradle/gradle.properties` (fuera del repo). Se mantienen los comandos de siempre.
+    - **EAS Build**, que guarda el keystore y genera APK o AAB por perfil (`eas build -p android --profile preview|production`, en la nube o con `--local`).
+  - Pendiente: keystore nuevo para `com.govoy.chelu` o reutilizar el de AppGovoy.
+  - Aviso: en AppGovoy, `android/gradle.properties` (con las contraseñas del keystore) está subido a git. Valorar sacarlo.
 - NativeWind en la versión estable actual (v4 o posterior) en lugar de v2. Las clases se escriben igual; cambia la configuración inicial (CSS + plugin de Metro).
 - El código copiado de AppGovoy (`authManager`, `tokenStorage`, `useConnectivity`) no depende de la versión.
+
+**Versiones y compatibilidad (revisado el 2026-10-02):** SDK 57 (`expo` 57.0.26) = React Native 0.86.3, React 19.2.3, Reanimated 4.5.1. Datos de los `peerDependencies` en npm y de los issues de GitHub.
+
+| Librería | Versión | Estado | Notas |
+|---|---|---|---|
+| Módulos de Expo (`expo-secure-store`, `expo-audio`, `expo-sharing`, `expo-updates`, `expo/fetch`…) | ~57.x | OK | Van con el SDK |
+| `react-native-webview`, `@react-native-community/netinfo`, `@react-native-async-storage/async-storage`, `react-native-safe-area-context`, `react-native-screens`, `react-native-gesture-handler`, `react-native-svg` | Las que fija el SDK | OK | Instalar con `npx expo install` |
+| `react-native-keyboard-controller` | 1.21.9 (la que fija el SDK) | OK | |
+| `@sentry/react-native` | ~7.11 (la que fija el SDK) | OK | |
+| `@react-navigation/*` v7 | native 7.5 / native-stack 7.20 / drawer 7.14 | OK | Requieren screens ≥4 y safe-area ≥4 |
+| **NativeWind** | 4.2.7 + `react-native-css-interop` 0.2.7 + `tailwindcss` 3.4.x | **OK con un problema menor** | El PR #1864 (adaptación al SDK 57, RN 0.86 y React 19.2) se fusionó el 14/09 y 4.2.7 salió el 15/09. **Problema abierto #1834:** en RN 0.86 la ventana de errores de desarrollo (LogBox) se ve rota con NativeWind; la app funciona y producción no se ve afectada. Arreglo: un parche con `patch-package`, como en AppGovoy. También hay un problema conocido con `useAnimatedRef` de Reanimated 4 (#1560), que no usaremos al principio. |
+| `@maplibre/maplibre-react-native` (fase 3, si se elige) | 11.4.1 | OK | Pide expo ≥54, RN ≥0.80 y React ≥19.1. Necesita build de desarrollo |
+| **`react-native-markdown-display`** | 7.0.2 (dic. 2023) | **DESCARTADA** | Sin mantenimiento desde 2023. Alternativas para la fase 2: `react-native-marked` (8.3.2, JS, tablas, mantenida), `react-native-enriched-markdown` (1.1.0, de Software Mansion, nativa, necesita build de desarrollo) o el fork `@ronradtke/react-native-markdown-display` (9.0.3) |
+| `jwt-decode` | 4.0.0 | OK | Solo JavaScript |
 
 ### D6. Mismo backend que el resto de repositorios
 
@@ -177,8 +200,9 @@ Consecuencias:
 - **Paleta clara:** se saca de los colores del chat web (`#f7f9fb`, `#1c242b`, `#128bec`, `#0e1b2a`, `#e6eaef`…). La web **no tiene modo oscuro**, así que **la paleta oscura hay que diseñarla**.
 - **Cómo se implementa:**
   - Variables de color en el CSS de NativeWind, con un valor para claro y otro para oscuro, mapeadas en Tailwind a clases con nombre según su uso (`bg-fondo`, `bg-superficie`, `text-texto`, `border-borde`, `bg-primario`…). Los componentes usan solo esas clases, sin escribir `dark:` en cada uno.
-  - Un archivo `theme/colors.ts` con la misma paleta para lo que no admite clases: navegación, barra de estado, iconos, ApexCharts y mapas.
-  - Por defecto sigue el modo del sistema, con opción de elegir claro u oscuro en ajustes (guardado en AsyncStorage). `userInterfaceStyle: "automatic"` en `app.config.ts`.
+  - La paleta está en `src/theme/palette.ts` (claro y oscuro, en hexadecimal). `ThemeProvider` la convierte en variables con `vars()`, y `useColores()` la da en hexadecimal para lo que no admite clases: navegación, barra de estado, iconos, ApexCharts y mapas. Los nombres se repiten en `tailwind.config.js` y tienen que coincidir.
+  - Colores actuales: `fondo`, `superficie`, `superficie-alt`, `borde`, `borde-fuerte`, `texto`, `texto-secundario`, `texto-tenue`, `primario`, `primario-presionado`, `primario-suave`, `sobre-primario`, `peligro`, `peligro-suave`, `exito`, `exito-suave`, `aviso`, `aviso-suave`.
+  - **Por defecto la app arranca en claro**, aunque el sistema esté en oscuro (`colorScheme.set('light')`). Más adelante, opción en ajustes para elegir claro u oscuro (guardado en AsyncStorage). `userInterfaceStyle: "automatic"` en `app.json`, necesario para poder cambiarlo desde la app.
   - **Norma:** no se escriben colores a mano en los componentes.
 - **Requieren atención especial:**
   - Los estilos del markdown.
@@ -242,7 +266,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 ## 3. Notas técnicas para el diseño
 
 - **Streaming:** el `fetch` estándar de React Native no permite leer la respuesta poco a poco; se usa `expo/fetch`, que sí lo permite. La lectura de eventos puede seguir la de la web (`Front-Govoy/src/routes/components/ChatChelu/useChatChelu.ts:880`), con el mismo procesado agrupado por fotograma y la cancelación con `AbortController`.
-- **Markdown:** `react-native-markdown-display`, con las tablas dentro de un scroll horizontal.
+- **Markdown:** `react-native-marked` o `react-native-enriched-markdown` (se decide en la fase 2; `react-native-markdown-display` está sin mantenimiento, ver D5), con las tablas dentro de un scroll horizontal.
 - **Gráficas:** el back envía configuraciones de ApexCharts. Se muestran con ApexCharts dentro de un WebView, sin cambios en el back.
 - **Mapas:** pintando la geometría GeoJSON; la librería está pendiente (ver D8).
 - **Voz:** grabación en m4a con `expo-audio` y envío a `/transcribir`, que ya acepta m4a y mp4.
@@ -387,9 +411,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 
 6. ~~**Versiones**~~ → **Decidido (D5):** mismo stack que AppGovoy, en versiones actuales.
 7. **Repositorio:** ¿uno nuevo (p. ej. `App-Chelu`)? ¿Se copia el código común de AppGovoy o se comparte en un paquete?
-8. **Identidad de la app:**
-   - Nombre visible.
-   - Identificadores de Android e iOS (p. ej. `com.govoy.chelu`).
+8. **Identidad de la app (provisional, 2026-10-02):** nombre visible **"Chelu Govoy"**, slug y nombre del paquete npm `chelu-govoy`, identificador de Android e iOS **`com.govoy.chelu`**. Pendiente:
    - Icono y pantalla de arranque.
    - Cuenta EAS: ¿la misma que AppGovoy (`sanchez_andres`) o una de organización?
 9. ~~**Entornos**~~ → **Decidido (D6):** el mismo backend que el resto de repositorios. Pendiente: ¿se mantiene el selector de backend en una pantalla de depuración como en AppGovoy?
@@ -430,3 +452,4 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-02 | D10: modelos como en la web, con `deepseek-v4-flash` por defecto y selector solo en sesiones master |
 | 2026-10-02 | D9: mismos usuarios y credenciales que la web; misma regla de acceso que el menú web (empresa + rol administrador/jefeDeOperaciones) |
 | 2026-10-02 | D8 (parcial): teselas de OSM como el chat web, con la URL en una sola constante; el mapa queda fuera del modo oscuro (solo el marco sigue el tema); `react-native-maps` descartado |
+| 2026-10-05 | D7: la app arranca en modo claro por defecto (no sigue al sistema); paleta en `src/theme/palette.ts` |
