@@ -1,7 +1,7 @@
 # App móvil Chat Chelu — Definición del proyecto
 
 > Documento vivo: se actualiza a medida que se toman decisiones.
-> Última actualización: 2026-10-02
+> Última actualización: 2026-10-05
 
 ## Objetivo
 
@@ -164,6 +164,8 @@ Consecuencias:
 - Mismas librerías que AppGovoy: Expo, React Native, TypeScript estricto, React Navigation, NativeWind, `expo-secure-store`, AsyncStorage, NetInfo y EAS.
 - Se crea con el **último SDK estable de Expo** y las versiones de librerías compatibles con él, no con SDK 53 / RN 0.79. **Decidido: SDK 57** (comparado con 55 y 56: el 55 ya no recibe parches y el 56 solo evita el fallo de LogBox #1834, que es solo en desarrollo).
 - **Desarrollo con build de desarrollo** (`npx expo run:android`, alias `runappdevice`) + `expo-dev-client`, no con Expo Go. La carpeta `android/` se genera y no se sube al repo.
+  - **Diferencia con AppGovoy (que no tiene `expo-dev-client`):** en un móvil físico, la app descarga el JavaScript de Metro **por la Wi-Fi** (`http://<IP del PC>:8081`), no por el cable. Hace falta que el móvil y el PC estén en la misma red, que la IP sea la del adaptador Wi-Fi/Ethernet (en Windows, Expo puede coger la de un adaptador virtual; se fuerza con `REACT_NATIVE_PACKAGER_HOSTNAME`) y que el firewall deje pasar a Node. Alternativa por cable: `adb reverse tcp:8081 tcp:8081` y conectarse a `localhost:8081`. `connectback` solo cubre el 8000 (el back).
+  - No afecta a los APK/AAB de release: llevan el JavaScript dentro y `expo-dev-client` no actúa.
 - **Builds de release (APK/AAB):** los comandos de AppGovoy (`generateapk` / `generateaab` = `gradlew assembleRelease` / `bundleRelease`) siguen funcionando, con dos diferencias:
   - Antes de compilar hay que ejecutar `npx expo prebuild`, porque `gradlew` no lee `app.json` y `android/` tiene que estar al día.
   - **Firma:** en AppGovoy la firma de release se editó a mano en `android/app/build.gradle` + `android/gradle.properties`. Aquí esos cambios se perderían al regenerar `android/` y la plantilla firma el release con la clave de debug.
@@ -173,6 +175,14 @@ Consecuencias:
   - Pendiente: keystore nuevo para `com.govoy.chelu` o reutilizar el de AppGovoy.
   - Aviso: en AppGovoy, `android/gradle.properties` (con las contraseñas del keystore) está subido a git. Valorar sacarlo.
 - NativeWind en la versión estable actual (v4 o posterior) en lugar de v2. Las clases se escriben igual; cambia la configuración inicial (CSS + plugin de Metro).
+- **Detalles de instalación con el SDK 57 (comprobados al montar el proyecto):**
+  - `babel-preset-expo` **hay que declararlo** en `package.json`: npm no lo deja en la raíz de `node_modules` (queda dentro de `expo/`) y `babel.config.js` no lo encontraría. En AppGovoy funciona sin declararlo porque con el SDK 53 sí quedaba en la raíz.
+  - `expo-system-ui` es necesario para que Android aplique `userInterfaceStyle` (el `prebuild` avisa si falta).
+  - TypeScript 6 comprueba los imports sin valor (`import './global.css'`); `css.d.ts` declara los `.css` para que no dé error.
+  - Reanimated 4 separa los worklets en `react-native-worklets`. `babel-preset-expo` ya añade su plugin, no se pone en `babel.config.js`.
+  - `tailwindcss` va en `dependencies`, como en AppGovoy.
+  - Iconos con **`lucide-react-native`** (la misma librería que la web, `lucide-react`), que necesita `react-native-svg`. `react-native-svg` también pinta el robot de Chelu.
+  - Alias `@/*` → `src/*` en `tsconfig.json` (`paths`, sin `baseUrl`, que TypeScript 6 da por obsoleto). Metro lo entiende sin configuración extra.
 - El código copiado de AppGovoy (`authManager`, `tokenStorage`, `useConnectivity`) no depende de la versión.
 
 **Versiones y compatibilidad (revisado el 2026-10-02):** SDK 57 (`expo` 57.0.26) = React Native 0.86.3, React 19.2.3, Reanimated 4.5.1. Datos de los `peerDependencies` en npm y de los issues de GitHub.
@@ -187,21 +197,41 @@ Consecuencias:
 | **NativeWind** | 4.2.7 + `react-native-css-interop` 0.2.7 + `tailwindcss` 3.4.x | **OK con un problema menor** | El PR #1864 (adaptación al SDK 57, RN 0.86 y React 19.2) se fusionó el 14/09 y 4.2.7 salió el 15/09. **Problema abierto #1834:** en RN 0.86 la ventana de errores de desarrollo (LogBox) se ve rota con NativeWind; la app funciona y producción no se ve afectada. Arreglo: un parche con `patch-package`, como en AppGovoy. También hay un problema conocido con `useAnimatedRef` de Reanimated 4 (#1560), que no usaremos al principio. |
 | `@maplibre/maplibre-react-native` (fase 3, si se elige) | 11.4.1 | OK | Pide expo ≥54, RN ≥0.80 y React ≥19.1. Necesita build de desarrollo |
 | **`react-native-markdown-display`** | 7.0.2 (dic. 2023) | **DESCARTADA** | Sin mantenimiento desde 2023. Alternativas para la fase 2: `react-native-marked` (8.3.2, JS, tablas, mantenida), `react-native-enriched-markdown` (1.1.0, de Software Mansion, nativa, necesita build de desarrollo) o el fork `@ronradtke/react-native-markdown-display` (9.0.3) |
-| `jwt-decode` | 4.0.0 | OK | Solo JavaScript |
+| `jwt-decode` | 4.0.0 | No hace falta por ahora | La respuesta del login ya trae todos los datos de la sesión |
+| `lucide-react-native` | 1.52 | OK | Admite React 19 y `react-native-svg` 12–15 (el SDK fija la 15.15) |
 
 ### D6. Mismo backend que el resto de repositorios
 
 - La app usa el mismo backend (`Back-Govoy`) y los mismos entornos que la web y AppGovoy. Se crean o adaptan endpoints según haga falta.
-- Las URL se configuran por entorno con `EXPO_PUBLIC_API_URL`, no comentando líneas como en `Constants.tsx`.
+- **Las URL van en `src/auth/Constants.ts`, como en AppGovoy** (decidido el 2026-10-05, en lugar de `EXPO_PUBLIC_API_URL`): `API_URL` (la que usa la app, por defecto `https://api.govoy.es/`), `API_URL_DEV` (`https://developer.govoy.es/`) y `API_URL_LOCAL` (`http://127.0.0.1:8000/`, con `connectback`). Para cambiar de back se edita la línea de `API_URL`.
 
 ### D7. Diseño parecido al Chat Chelu web, con modo oscuro desde el inicio
 
 - **Aspecto:** parecido al chat web (`Front-Govoy/src/routes/components/ChatChelu/`, `chatChelu.css`).
-- **Paleta clara:** se saca de los colores del chat web (`#f7f9fb`, `#1c242b`, `#128bec`, `#0e1b2a`, `#e6eaef`…). La web **no tiene modo oscuro**, así que **la paleta oscura hay que diseñarla**.
+- **Paleta clara:** sale del chat web. La web mezcla colores propios del chat (`#128bec`, `#e6eaef`, `#f4f6f9`…) con grises de serie de Tailwind (`gray-200`, `gray-500`…). Criterio: el color propio del chat donde existe y, si no, el de Tailwind que más se usa en la web.
+
+  | Color | Claro | Origen en la web |
+  |---|---|---|
+  | `fondo` | `#f4f6f9` | fondo del chat (`ChatCheluBody`) |
+  | `superficie` | `#ffffff` | `bg-white` (lateral, tarjetas) |
+  | `superficie-alt` | `#f7f9fb` | filas pares de tablas (≈ `gray-50`) |
+  | `borde` | `#e6eaef` | tarjetas de herramientas y tablas (≈ `gray-200`) |
+  | `borde-fuerte` | `#d1d5db` | `gray-300` |
+  | `texto` | `#1c242b` | texto del markdown |
+  | `texto-secundario` | `#6b7280` | `gray-500` |
+  | `texto-tenue` | `#9ca3af` | `gray-400` |
+  | `primario` | `#128bec` | burbuja del usuario |
+  | `primario-presionado` | `#0c6fbe` | texto de las sugerencias (en la web no hay "pulsado"; en móvil, más oscuro al pulsar) |
+  | `primario-suave` | `#e7f3fd` | fondo de las citas (≈ `sky-50`) |
+  | `sobre-primario` | `#ffffff` | texto sobre el primario |
+  | `peligro` / `peligro-suave` | `#c0392b` / `#fdecec` | mensaje de error |
+  | `exito` / `exito-suave` | `#059669` / `#d1fae5` | `emerald-600` / `emerald-100` |
+  | `aviso` / `aviso-suave` | `#d97706` / `#fffbeb` | `amber-600` / `amber-50` |
+
+- **Paleta oscura:** la web **no tiene modo oscuro**, así que es propia de la app (en `palette.ts`). Se revisará al verla en las pantallas reales.
 - **Cómo se implementa:**
-  - Variables de color en el CSS de NativeWind, con un valor para claro y otro para oscuro, mapeadas en Tailwind a clases con nombre según su uso (`bg-fondo`, `bg-superficie`, `text-texto`, `border-borde`, `bg-primario`…). Los componentes usan solo esas clases, sin escribir `dark:` en cada uno.
+  - Variables de color (`--color-fondo`…) con un valor para claro y otro para oscuro, mapeadas en Tailwind a clases con nombre según su uso (`bg-fondo`, `bg-superficie`, `text-texto`, `border-borde`, `bg-primario`…). Los componentes usan solo esas clases, sin escribir `dark:` en cada uno. Admiten transparencia (`bg-primario/50`).
   - La paleta está en `src/theme/palette.ts` (claro y oscuro, en hexadecimal). `ThemeProvider` la convierte en variables con `vars()`, y `useColores()` la da en hexadecimal para lo que no admite clases: navegación, barra de estado, iconos, ApexCharts y mapas. Los nombres se repiten en `tailwind.config.js` y tienen que coincidir.
-  - Colores actuales: `fondo`, `superficie`, `superficie-alt`, `borde`, `borde-fuerte`, `texto`, `texto-secundario`, `texto-tenue`, `primario`, `primario-presionado`, `primario-suave`, `sobre-primario`, `peligro`, `peligro-suave`, `exito`, `exito-suave`, `aviso`, `aviso-suave`.
   - **Por defecto la app arranca en claro**, aunque el sistema esté en oscuro (`colorScheme.set('light')`). Más adelante, opción en ajustes para elegir claro u oscuro (guardado en AsyncStorage). `userInterfaceStyle: "automatic"` en `app.json`, necesario para poder cambiarlo desde la app.
   - **Norma:** no se escriben colores a mano en los componentes.
 - **Requieren atención especial:**
@@ -329,9 +359,54 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 | **1. Base** | Proyecto Expo, entornos con `EXPO_PUBLIC_API_URL`, login y tokens (copiados de AppGovoy), `ControlOpcionesUsuarios.ts` (D3), navegación, tema, perfiles EAS y EAS Update |
 | **2. Versión mínima** | Chat con streaming, markdown, sugerencias, botón de parar, lista de conversaciones (nueva y borrar) y descarga de documentos |
 | **3. Contenido enriquecido** | Gráficas, mapas, valoración y notas de voz |
-| **4. Más adelante** | Borradores de correo, optimización de sectores, push y modo oscuro |
+| **4. Más adelante** | Borradores de correo, optimización de sectores y push |
 
 **Fuera de alcance:** el panel de simulación.
+
+### Progreso de la fase 1
+
+La fase 0 (back) está **parada** hasta hablarla con el equipo. La fase 1 avanza en paralelo.
+
+| # | Paso | Estado |
+|---|---|---|
+| 1 | Proyecto Expo SDK 57 (`blank-typescript`), nombres provisionales, `expo-dev-client`, primera compilación con `runappdevice` | Hecho |
+| 2 | NativeWind 4, paleta clara y oscura (`src/theme/`), arranque en claro, `expo-system-ui`. Pantalla de prueba provisional en `App.tsx` | Hecho |
+| 3 | URL del back en `src/auth/Constants.ts` (D6) | Hecho |
+| 4 | Back: `/login-chat-movil`, `/refresh-token-chat-movil` e `/impersonate-chat-movil` en `routes/login.py`, en una **rama local de Back-Govoy sin subir** hasta hablarlo con el equipo | Hecho (probado sin BD; falta probar con BD) |
+| 5 | Tokens (`tokenStorage`, `authApi`, `authManager` con `authFetch`), contexto de sesión (`SesionContext`), navegación (React Navigation 7, pantallas según el estado de la sesión) y regla de acceso (`ControlOpcionesUsuarios.ts`) | Hecho, falta probar en el móvil |
+| 6 | Pantallas: login, suplantar (staff) e inicio provisional (datos de la sesión, cambiar tema, salir de suplantación, cerrar sesión) | Hecho; diseño del login revisado en el móvil. Falta probar el flujo completo contra el back local |
+
+**Diseño de las pantallas de acceso (login y suplantar):**
+- Estructura común en `PantallaAcceso`: arriba, el robot de Chelu de la web (`Front-Govoy/public/chelu.svg`, sin los filtros de brillo) flotando como en el chat web, sobre `primario-suave`; abajo, una hoja blanca con las esquinas superiores redondeadas, título grande alineado a la izquierda, subtítulo y el formulario. La zona de Chelu ocupa el espacio que sobra; la hoja mide lo que su contenido, con 56 px de margen inferior para subir el formulario.
+- Con el teclado abierto, Chelu se encoge de 170 a 120 px (animación de 300 ms) y el margen inferior baja a 16 px (`useTecladoVisible`).
+- Campos de 56 px con icono (usuario, candado), el texto dentro como placeholder, fondo gris sin borde en reposo y borde azul al enfocar. El ojo muestra u oculta la contraseña.
+- Botón "Entrar" de 56 px justo debajo de los campos. Error en línea con icono.
+- Suplantar: etiqueta "Staff · usuario", fila "Entrar sin maestro" pulsable entera y "Cerrar sesión" como botón de texto.
+- Componentes: `CheluAvatar`, `PantallaAcceso`, `ui/CampoTexto`, `ui/Boton` (variantes primario, secundario, peligro y texto), `ui/MensajeError` y `ui/Pantalla`. Llevan propiedades de accesibilidad (rol, estado, etiquetas) para TalkBack/VoiceOver.
+
+**Pendiente en el login (propuesto, sin decidir):**
+- Guardar las credenciales solo cuando se entra de verdad: ahora se guardan en cuanto el back acepta el login, antes de comprobar `puedeUsarChat`, así que se guardan aunque la app no le deje entrar (empresa 100 o rol sin acceso).
+- Unificar el mensaje de "sin acceso": el back dice "La empresa no tiene Chat Chelu" y la app "Tu usuario no tiene acceso a Chat Chelu.".
+- Cerrar la sesión al momento si una petición da 403 con `detail: "EMPRESA_INACTIVA"` (ahora se cierra en la siguiente renovación, hasta 1 h después). El resto de 403 no deben cerrarla.
+- Empresa desactivada: se muestra "Usuario o contraseña incorrectos." (decidido así para no dar pistas).
+- Quitar el bloque `"web"` de `app.json`, que apunta a `favicon.png`, ya borrado.
+
+**Cómo funciona la sesión en la app:**
+- Solo se guardan en SecureStore los tokens de renovación, en dos ranuras: `usuario` (la sesión con chat, normal o suplantada) y `staff` (la propia del staff, para volver al salir de suplantación). El de acceso vive en memoria.
+- Al abrir la app se renuevan las sesiones guardadas. Sin conexión se muestra "No se pudo conectar" con botón de reintentar.
+- Login: staff sin suplantar → pantalla de suplantar; usuario que no cumple la regla de acceso (D9) → error, no se guarda nada; resto → inicio.
+- Suplantar: se renueva antes el token del staff (puede llevar más de una hora parado) y se comprueba la regla de acceso del usuario suplantado.
+- `authFetch`: si una petición da 401, renueva el token y reintenta una vez. Si la renovación da 401/403, la sesión caduca: en suplantación se vuelve a la pantalla de suplantar; si no, al login. **A diferencia de AppGovoy, un 403 en una petición normal no cierra la sesión**, porque en el chat también significa "no puedes tocar este chat".
+- Se guardan el usuario y la contraseña del último login (en SecureStore, como AppGovoy) para rellenar los campos. Se conservan al cerrar sesión.
+
+**Diferencias con lo previsto en la fase 0:**
+- El token de renovación lleva `typ: "refresh"` (la propuesta pendiente); los de acceso no. `/refresh-token-chat-movil` solo acepta los de renovación e `/impersonate-chat-movil` los rechaza.
+- En suplantación, el token de acceso dura lo normal (1 h) y el de renovación 6 h, en lugar de los dos 6 h: la sesión de soporte sigue teniendo el tope de 6 h.
+- Los tres endpoints devuelven el mismo body (el de la web más `refreshToken`, `is_impersonation` e `impersonated_by`).
+- El body incluye `zoom` (y `CorreoElectronico`) por ser igual que el de la web, pero **no hay planes de usar `zoom` en la app**: `sesionDesdeBody` no lo lee.
+- Ojo: un token de renovación sigue valiendo como token de acceso en el resto de endpoints (`validar_token` ignora `typ`). Cerrarlo exigiría tocar `auth.py`, que usan todos; queda para hablarlo con el equipo.
+
+Estructura de carpetas: como AppGovoy, código en `src/` (`auth/`, `components/`, `constants/`, `context/`, `hooks/`, `navigation/`, `screens/`, `theme/`, `types/`, `utils/`). En la raíz solo `App.tsx`, `index.ts` y los archivos de configuración.
 
 ### Fase 0 en detalle (Back-Govoy)
 
@@ -352,8 +427,8 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 
 | # | Dónde | Cambio |
 |---|---|---|
-| 2.1 | `get_chats` (l.2669-2671) | **EN REVISIÓN (ver nota).** Propuesta inicial: si no es master, solo los chats propios. |
-| 2.2 | `get_chat` (l.2740) | **EN REVISIÓN (ver nota).** Propuesta inicial: si no es master, 404 si el chat no es suyo. |
+| 2.1 | `get_chats` | **HECHO por el equipo** (`c67f863`, 2026-10-05): cada usuario solo ve sus chats (opción 3 de la nota). Afecta también a master: ya no ve los chats de desarrollo de otros. Mejora posible: el filtro está en la segunda consulta; ponerlo también en la primera evita cargar todos los `session_id` de la empresa. |
+| 2.2 | `get_chat` | **Pendiente:** sigue sin comprobar el dueño; cualquier usuario de la empresa puede abrir un chat ajeno si conoce su `session_id`. Para ser coherente con 2.1: 404 si el chat no es suyo. También sigue el `print(chat)`. |
 
 > **Nota sobre 2.1 y 2.2:** según el historial de git, hoy los chats **se consultan por empresa a propósito**.
 >
@@ -410,7 +485,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 ### B. Bloquean la fase 1 (crear el proyecto)
 
 6. ~~**Versiones**~~ → **Decidido (D5):** mismo stack que AppGovoy, en versiones actuales.
-7. **Repositorio:** ¿uno nuevo (p. ej. `App-Chelu`)? ¿Se copia el código común de AppGovoy o se comparte en un paquete?
+7. ~~**Repositorio**~~ → **Decidido:** repo nuevo `Mario-GOVOY/Chelu-Govoy`. El código común de AppGovoy (tokens, `authManager`, conectividad) se copia y adapta, no se comparte en un paquete.
 8. **Identidad de la app (provisional, 2026-10-02):** nombre visible **"Chelu Govoy"**, slug y nombre del paquete npm `chelu-govoy`, identificador de Android e iOS **`com.govoy.chelu`**. Pendiente:
    - Icono y pantalla de arranque.
    - Cuenta EAS: ¿la misma que AppGovoy (`sanchez_andres`) o una de organización?
@@ -453,3 +528,12 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-02 | D9: mismos usuarios y credenciales que la web; misma regla de acceso que el menú web (empresa + rol administrador/jefeDeOperaciones) |
 | 2026-10-02 | D8 (parcial): teselas de OSM como el chat web, con la URL en una sola constante; el mapa queda fuera del modo oscuro (solo el marco sigue el tema); `react-native-maps` descartado |
 | 2026-10-05 | D7: la app arranca en modo claro por defecto (no sigue al sistema); paleta en `src/theme/palette.ts` |
+| 2026-10-05 | D7: paleta clara revisada contra la web (colores propios del chat y, si no hay, el gris de Tailwind más usado); añadidos `exito-suave` y `aviso-suave` |
+| 2026-10-05 | D5: `babel-preset-expo` declarado aparte (no queda en la raíz con el SDK 57), `expo-system-ui` instalado, `tailwindcss` en `dependencies` |
+| 2026-10-05 | Repo `Mario-GOVOY/Chelu-Govoy`; código común de AppGovoy copiado y adaptado. Fase 1, pasos 1 y 2 hechos |
+| 2026-10-05 | D6: URL del back en `src/auth/Constants.ts` (`API_URL`, `API_URL_DEV`, `API_URL_LOCAL`) en lugar de variables de entorno |
+| 2026-10-05 | D1: endpoints de login móvil hechos en una rama local del back, con `typ: "refresh"`; la app los usa desde ya (con `API_URL_LOCAL` hasta que se suban) |
+| 2026-10-05 | Login: se guardan usuario y contraseña en SecureStore (como AppGovoy); se conservan al cerrar sesión |
+| 2026-10-05 | Login rediseñado para móvil (Chelu de la web arriba, hoja inferior, campos grandes con iconos y ojo); iconos con `lucide-react-native` |
+| 2026-10-05 | `expo-dev-client` se mantiene; en móvil físico, Metro va por Wi-Fi (o `adb reverse tcp:8081`) |
+| 2026-10-05 | D2 2.1: el equipo ha hecho que `get_chats` devuelva solo los chats propios (`c67f863`); `get_chat` (2.2) sigue pendiente |

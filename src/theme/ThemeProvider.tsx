@@ -9,26 +9,26 @@ import { Esquema, hexACanales, NombreColor, Paleta, paletas } from './palette';
 colorScheme.set('light');
 
 function variablesDe(paleta: Paleta) {
-  const entradas = Object.entries(paleta).map(([nombre, hex]) => [`--color-${nombre}`, hexACanales(hex)]);
-  return vars(Object.fromEntries(entradas));
+    const entradas = Object.entries(paleta).map(([nombre, hex]) => [`--color-${nombre}`, hexACanales(hex)]);
+    return vars(Object.fromEntries(entradas));
 }
 
 const variables: Record<Esquema, ReturnType<typeof vars>> = {
-  light: variablesDe(paletas.light),
-  dark: variablesDe(paletas.dark),
+    light: variablesDe(paletas.light),
+    dark: variablesDe(paletas.dark),
 };
 
 export function useEsquema(): Esquema {
-  const { colorScheme: actual } = useColorScheme();
-  return actual === 'dark' ? 'dark' : 'light';
+    const { colorScheme: actual } = useColorScheme();
+    return actual === 'dark' ? 'dark' : 'light';
 }
 
 // Colores en hexadecimal para lo que no admite clases (navegación, iconos, gráficas...).
 export function useColores(): Record<NombreColor, string> {
-  return paletas[useEsquema()];
+    return paletas[useEsquema()];
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const esquema = useEsquema();
-  return <View style={[{ flex: 1 }, variables[esquema]]}>{children}</View>;
+    const esquema = useEsquema();
+    return <View style={[{ flex: 1 }, variables[esquema]]}>{children}</View>;
 }
