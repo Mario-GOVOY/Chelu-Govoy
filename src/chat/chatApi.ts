@@ -1,3 +1,5 @@
+import { fetch as fetchStreaming } from 'expo/fetch';
+
 import { authFetch } from '@/auth/authManager';
 import { API_URL } from '@/auth/Constants';
 
@@ -11,6 +13,17 @@ export type Mensaje = {
     id: string;
     rol: 'usuario' | 'chelu';
     texto: string;
+    // Solo en la respuesta que se está recibiendo o que se acaba de recibir.
+    estado?: 'escribiendo' | 'detenida' | 'error';
+    herramientas?: Herramienta[];
+};
+
+// Tarjeta "Consultando…" de la respuesta. Las llamadas iguales se agrupan en una.
+export type Herramienta = {
+    clave: string;
+    etiqueta: string;
+    veces: number;
+    enCurso: number;
 };
 
 export type Chat = {
@@ -54,4 +67,70 @@ export async function obtenerChat(id: string): Promise<Chat> {
             return [];
         }),
     };
+}
+
+// Como la web. Más adelante, guardado en AsyncStorage y con selector para master.
+const MODELO = 'deepseek-v4-flash';
+
+// Eventos del stream que usa la app por ahora; el resto se ignoran.
+export type EventoChat =
+    | { tipo: 'session'; session_id: string }
+    | { tipo: 'delta'; texto: string }
+    | { tipo: 'tool'; fase: 'inicio' | 'fin'; nombre: string; args?: Record<string, unknown> }
+    | { tipo: 'sugerencias'; preguntas: string[] }
+    | { tipo: 'done'; run_id?: string }
+    | { tipo: 'error'; detail?: string };
+
+const TIPOS = ['session', 'delta', 'tool', 'sugerencias', 'done', 'error'];
+
+/**
+ * Manda una pregunta y va pasando a onEvento cada evento según llega.
+ * Sin sessionId, el back crea una conversación nueva y devuelve su id en el evento 'session'.
+ * Al abortar con signal, lanza un AbortError.
+ */
+export async function enviarMensaje({ pregunta, sessionId, signal, onEvento }: {
+    pregunta: string;
+    sessionId?: string;
+    signal?: AbortSignal;
+    onEvento: (evento: EventoChat) => void;
+}): Promise<void> {
+    const respuesta = await authFetch(
+        `${API_URL}chat-cex/stream`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                pregunta,
+                session_id: sessionId,
+                modelo: MODELO,
+                incluir_herramientas: true,
+                incluir_metricas: false,
+            }),
+            signal,
+        },
+        fetchStreaming,
+    );
+    if (!respuesta.ok || !respuesta.body) throw new Error(`stream ${respuesta.status}`);
+
+    // Cada evento llega como "data: {json}\n\n"; un trozo puede traer varios o cortar uno a medias.
+    const lector = respuesta.body.getReader();
+    const decodificador = new TextDecoder();
+    let pendiente = '';
+    while (true) {
+        const { value, done } = await lector.read();
+        if (done) break;
+        pendiente += decodificador.decode(value, { stream: true });
+        const bloques = pendiente.split('\n\n');
+        pendiente = bloques.pop() ?? '';
+        for (const bloque of bloques) {
+            const linea = bloque.split('\n').find((l) => l.startsWith('data:'));
+            if (!linea) continue;
+            try {
+                const evento = JSON.parse(linea.slice(5));
+                if (TIPOS.includes(evento?.tipo)) onEvento(evento);
+            } catch {
+                // Línea mal formada: se salta, como en la web.
+            }
+        }
+    }
 }

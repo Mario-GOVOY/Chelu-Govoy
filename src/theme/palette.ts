@@ -33,18 +33,19 @@ const claro = {
 export type NombreColor = keyof typeof claro;
 export type Paleta = Record<NombreColor, string>;
 
+// Grises casi neutros (con un punto de azul) y el azul solo en los acentos.
 const oscuro: Paleta = {
-    fondo: '#0b1520',
-    superficie: '#121f2c',
-    'superficie-alt': '#182736',
-    borde: '#223345',
-    'borde-fuerte': '#3a4d62',
-    texto: '#e6edf3',
-    'texto-secundario': '#a3b3c2',
-    'texto-tenue': '#6f8294',
+    fondo: '#0e1013',
+    superficie: '#171a1e',
+    'superficie-alt': '#1d2126',
+    borde: '#2a2f36',
+    'borde-fuerte': '#3e454e',
+    texto: '#d4d7dc',
+    'texto-secundario': '#9fa6af',
+    'texto-tenue': '#757d88',
     primario: '#1a8fe3',
     'primario-presionado': '#1477c8',
-    'primario-suave': '#102a42',
+    'primario-suave': '#14273a',
     'sobre-primario': '#ffffff',
     peligro: '#f2726a',
     'peligro-suave': '#3b1d1f',
@@ -52,8 +53,8 @@ const oscuro: Paleta = {
     'exito-suave': '#0f2e25',
     aviso: '#fbbf24',
     'aviso-suave': '#33270d',
-    'cabecera-tabla': '#1d3044',
-    'sobre-cabecera-tabla': '#ffffff',
+    'cabecera-tabla': '#262c34',
+    'sobre-cabecera-tabla': '#e2e5e9',
 };
 
 export const paletas: Record<Esquema, Paleta> = { light: claro, dark: oscuro };

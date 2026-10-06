@@ -59,21 +59,24 @@ async function cerrarSiEmpresaInactiva(respuesta: Response) {
     if (detalle === 'EMPRESA_INACTIVA') handlers?.onCaducada();
 }
 
+type Fetch = (url: string, init: RequestInit) => Promise<Response>;
+
 /**
  * fetch con el token de acceso. Si responde 401, renueva el token y reintenta una vez.
  * Solo cierra la sesión un 403 si es por empresa desactivada
+ * @param hacerFetch otro fetch, p. ej. el de expo/fetch para leer la respuesta en streaming.
  */
-export async function authFetch(url: string, init: RequestInit = {}): Promise<Response> {
+export async function authFetch(url: string, init: RequestInit = {}, hacerFetch: Fetch = fetch): Promise<Response> {
     const conToken = (token: string): RequestInit => ({
         ...init,
         headers: { ...init.headers, Authorization: `Bearer ${token}` },
     });
 
-    let respuesta = await fetch(url, conToken(handlers?.getSesion()?.accessToken ?? ''));
+    let respuesta = await hacerFetch(url, conToken(handlers?.getSesion()?.accessToken ?? ''));
     if (respuesta.status === 401) {
         const nuevo = await refreshAccessToken();
         if (!nuevo) return respuesta;
-        respuesta = await fetch(url, conToken(nuevo));
+        respuesta = await hacerFetch(url, conToken(nuevo));
     }
 
     await cerrarSiEmpresaInactiva(respuesta);

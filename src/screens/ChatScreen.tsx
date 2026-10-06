@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Pressable, Text, View } from 'react-native';
 import { DrawerScreenProps } from '@react-navigation/drawer';
 import { Menu } from 'lucide-react-native';
@@ -19,12 +19,14 @@ export default function ChatScreen({ navigation, route }: Props) {
     const colores = useColores();
     const { sesion } = useSesionActiva();
     const chatId = route.params?.chatId;
-    const { chat, cargando, error, reintentar } = useChat(chatId);
+    // Al crearse la conversación se pone su id en la ruta, para que el menú la marque como activa.
+    const alCrearse = useCallback((id: string) => navigation.setParams({ chatId: id }), [navigation]);
+    const { mensajes, titulo, cargando, error, reintentar, enviar, parar, respondiendo } = useChat(chatId, alCrearse);
 
     // La lista va invertida para que empiece abajo, en el último mensaje.
-    const mensajes = useMemo(() => (chat ? [...chat.mensajes].reverse() : []), [chat]);
+    const invertidos = useMemo(() => [...mensajes].reverse(), [mensajes]);
 
-    const titulo = chatId ? chat?.titulo ?? '' : 'Nueva conversación';
+    const cabecera = chatId ? titulo ?? '' : 'Nueva conversación';
 
     return (
         <Pantalla margenInferior={false}>
@@ -39,12 +41,21 @@ export default function ChatScreen({ navigation, route }: Props) {
                     <Menu size={24} color={colores.texto} />
                 </Pressable>
                 <Text className="flex-1 text-lg font-semibold text-texto" numberOfLines={1}>
-                    {titulo}
+                    {cabecera}
                 </Text>
             </View>
 
             <KeyboardAvoidingView behavior="padding" className="flex-1">
-                {!chatId ? (
+                {error ? (
+                    <View className="flex-1 items-center justify-center gap-4 px-8">
+                        <Text className="text-center text-base text-texto-secundario">No se pudo cargar la conversación.</Text>
+                        <Boton texto="Reintentar" variante="secundario" onPress={reintentar} />
+                    </View>
+                ) : cargando ? (
+                    <View className="flex-1 items-center justify-center">
+                        <ActivityIndicator size="large" color={colores.primario} />
+                    </View>
+                ) : mensajes.length === 0 ? (
                     <View className="flex-1 items-center justify-center px-8">
                         <View className="h-32 w-28">
                             <CheluAvatar />
@@ -54,25 +65,22 @@ export default function ChatScreen({ navigation, route }: Props) {
                             Pregúntame en chat CHELU sobre rutas, alertas, paradas, proveedores, depots, recogidas o PUDOS de {sesion.nombreEmpresa}.
                         </Text>
                     </View>
-                ) : error ? (
-                    <View className="flex-1 items-center justify-center gap-4 px-8">
-                        <Text className="text-center text-base text-texto-secundario">No se pudo cargar la conversación.</Text>
-                        <Boton texto="Reintentar" variante="secundario" onPress={reintentar} />
-                    </View>
-                ) : cargando ? (
-                    <View className="flex-1 items-center justify-center">
-                        <ActivityIndicator size="large" color={colores.primario} />
-                    </View>
                 ) : (
                     <FlatList
                         inverted
-                        data={mensajes}
+                        data={invertidos}
                         keyExtractor={(m) => m.id}
                         contentContainerClassName="gap-5 px-4 py-4"
+                        keyboardShouldPersistTaps="handled"
                         renderItem={({ item }) => <BurbujaMensaje mensaje={item} />}
                     />
                 )}
-                <CajaMensaje onEnviar={() => {}} />
+                <CajaMensaje
+                    onEnviar={enviar}
+                    onParar={parar}
+                    respondiendo={respondiendo}
+                    desactivada={cargando || error}
+                />
             </KeyboardAvoidingView>
         </Pantalla>
     );

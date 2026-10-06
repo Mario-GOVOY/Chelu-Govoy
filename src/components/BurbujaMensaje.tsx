@@ -2,6 +2,8 @@ import { Text, View } from 'react-native';
 
 import { Mensaje } from '@/chat/chatApi';
 import { CheluAvatar } from '@/components/CheluAvatar';
+import { PuntosEscribiendo } from '@/components/PuntosEscribiendo';
+import { TarjetasHerramientas } from '@/components/TarjetasHerramientas';
 import { TextoMarkdown } from '@/components/TextoMarkdown';
 import { useSesionActiva } from '@/context/SesionContext';
 
@@ -36,8 +38,19 @@ export function BurbujaMensaje({ mensaje }: { mensaje: Mensaje }) {
                 </View>
                 <Text className="text-sm font-bold text-texto">CHELU</Text>
             </View>
-            <View className="pl-9">
-                <TextoMarkdown texto={mensaje.texto} />
+            <View className="gap-2 pl-9">
+                {!!mensaje.herramientas?.length && <TarjetasHerramientas herramientas={mensaje.herramientas} />}
+                {!!mensaje.texto && <TextoMarkdown texto={mensaje.texto} />}
+                {/* También tras el texto: si Chelu está llamando a una herramienta, pasan segundos sin texto nuevo. */}
+                {mensaje.estado === 'escribiendo' && <PuntosEscribiendo />}
+                {mensaje.estado === 'detenida' && (
+                    <Text className="text-sm italic text-texto-tenue">Respuesta detenida.</Text>
+                )}
+                {mensaje.estado === 'error' && (
+                    <View className="rounded-xl bg-peligro-suave px-3 py-2">
+                        <Text className="text-sm text-peligro">No se pudo completar la respuesta. Inténtalo de nuevo.</Text>
+                    </View>
+                )}
             </View>
         </View>
     );

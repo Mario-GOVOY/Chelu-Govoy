@@ -1,20 +1,25 @@
 import { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
-import { Send } from 'lucide-react-native';
+import { Send, Square } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTecladoVisible } from '@/hooks/useTecladoVisible';
 import { useColores } from '@/theme/ThemeProvider';
 
-export function CajaMensaje({ onEnviar }: { onEnviar: (texto: string) => void }) {
+export function CajaMensaje({ onEnviar, onParar, respondiendo = false, desactivada = false }: {
+    onEnviar: (texto: string) => void;
+    onParar: () => void;
+    respondiendo?: boolean;
+    desactivada?: boolean;
+}) {
     const colores = useColores();
     const insets = useSafeAreaInsets();
     const teclado = useTecladoVisible();
     const [texto, setTexto] = useState('');
-    const vacio = texto.trim() === '';
+    const sinEnvio = texto.trim() === '' || desactivada;
 
     const enviar = () => {
-        if (vacio) return;
+        if (sinEnvio) return;
         onEnviar(texto.trim());
         setTexto('');
     };
@@ -38,16 +43,31 @@ export function CajaMensaje({ onEnviar }: { onEnviar: (texto: string) => void })
                     textAlignVertical="center"
                     className="max-h-32 flex-1 py-2 text-base text-texto"
                 />
-                <Pressable
-                    onPress={enviar}
-                    disabled={vacio}
-                    accessibilityRole="button"
-                    accessibilityLabel="Enviar"
-                    accessibilityState={{ disabled: vacio }}
-                    className={`h-10 w-10 items-center justify-center rounded-full ${vacio ? 'bg-borde' : 'bg-primario active:bg-primario-presionado'}`}
-                >
-                    <Send size={18} color={vacio ? colores['texto-tenue'] : colores['sobre-primario']} />
-                </Pressable>
+                {/* El fondo va en style: con la clase bg-peligro NativeWind lo dejaba gris. */}
+                {respondiendo ? (
+                    <Pressable
+                        key="parar"
+                        onPress={onParar}
+                        accessibilityRole="button"
+                        accessibilityLabel="Detener respuesta"
+                        className="h-10 w-10 items-center justify-center rounded-full"
+                        style={{ backgroundColor: colores.peligro }}
+                    >
+                        <Square size={14} color={colores['sobre-primario']} fill={colores['sobre-primario']} />
+                    </Pressable>
+                ) : (
+                    <Pressable
+                        key="enviar"
+                        onPress={enviar}
+                        disabled={sinEnvio}
+                        accessibilityRole="button"
+                        accessibilityLabel="Enviar"
+                        accessibilityState={{ disabled: sinEnvio }}
+                        className={`h-10 w-10 items-center justify-center rounded-full ${sinEnvio ? 'bg-borde' : 'bg-primario active:bg-primario-presionado'}`}
+                    >
+                        <Send size={18} color={sinEnvio ? colores['texto-tenue'] : colores['sobre-primario']} />
+                    </Pressable>
+                )}
             </View>
         </View>
     );
