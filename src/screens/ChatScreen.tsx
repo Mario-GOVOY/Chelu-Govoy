@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { DrawerScreenProps } from '@react-navigation/drawer';
-import { BarChart3, Menu, RefreshCw, TrendingUp, TriangleAlert, Truck } from 'lucide-react-native';
+import { BarChart3, FileText, Menu, RefreshCw, TrendingUp, TriangleAlert, Truck } from 'lucide-react-native';
 
 import { duplicarChat } from '@/chat/chatApi';
 import { useChat } from '@/chat/useChat';
+import { ArchivosGenerados } from '@/components/ArchivosGenerados';
 import { BurbujaMensaje } from '@/components/BurbujaMensaje';
 import { CajaMensaje } from '@/components/CajaMensaje';
 import { CheluAvatar } from '@/components/CheluAvatar';
@@ -13,6 +14,7 @@ import { Pantalla } from '@/components/ui/Pantalla';
 import { AppDrawerParamList } from '@/navigation/AppNavigator';
 import { useColores } from '@/theme/ThemeProvider';
 import { useSesionActiva } from '@/context/SesionContext';
+import type { Documento } from '@/types/Chat';
 
 type Props = DrawerScreenProps<AppDrawerParamList, 'Chat'>;
 
@@ -34,6 +36,18 @@ export default function ChatScreen({ navigation, route }: Props) {
 
     // La lista va invertida para que empiece abajo, en el último mensaje.
     const invertidos = useMemo(() => [...mensajes].reverse(), [mensajes]);
+
+    // Documentos de la conversación, los más recientes primero y sin repetir.
+    const documentos = useMemo(() => {
+        const unicos = new Map<string, Documento>();
+        for (const m of invertidos) {
+            for (const d of [...(m.documentos ?? [])].reverse()) {
+                if (!unicos.has(d.fileId)) unicos.set(d.fileId, d);
+            }
+        }
+        return [...unicos.values()];
+    }, [invertidos]);
+    const [archivosAbierto, setArchivosAbierto] = useState(false);
 
     // La copia la hace el back; aquí solo se abre. La conversación actual no cambia.
     // Respuesta desde la que se está duplicando, para pintar su botón cargando.
@@ -75,6 +89,21 @@ export default function ChatScreen({ navigation, route }: Props) {
                 <Text className="flex-1 text-lg font-semibold text-texto" numberOfLines={1}>
                     {cabecera}
                 </Text>
+                {chatId && (
+                    <Pressable
+                        onPress={() => setArchivosAbierto(true)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Archivos generados (${documentos.length})`}
+                        className="h-10 w-10 items-center justify-center rounded-full active:bg-fondo"
+                    >
+                        <FileText size={20} color={colores['texto-secundario']} />
+                        {documentos.length > 0 && (
+                            <View className="absolute right-0.5 top-0.5 h-4 min-w-4 items-center justify-center rounded-full bg-primario px-1">
+                                <Text className="text-[10px] font-bold text-sobre-primario">{documentos.length}</Text>
+                            </View>
+                        )}
+                    </Pressable>
+                )}
                 {/* Vuelve a pedir la conversación al back; con una respuesta en curso no, porque la cortaría. */}
                 {chatId && (
                     <Pressable
@@ -162,6 +191,11 @@ export default function ChatScreen({ navigation, route }: Props) {
                     desactivada={cargando || error}
                 />
             </KeyboardAvoidingView>
+            <ArchivosGenerados
+                visible={archivosAbierto}
+                documentos={documentos}
+                onCerrar={() => setArchivosAbierto(false)}
+            />
         </Pantalla>
     );
 }
