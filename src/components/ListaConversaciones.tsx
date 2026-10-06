@@ -1,5 +1,5 @@
 import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native';
-import { MessageSquare } from 'lucide-react-native';
+import { CopyPlus, MessageSquare } from 'lucide-react-native';
 
 import { ResumenChat } from '@/chat/chatApi';
 import { useColores } from '@/theme/ThemeProvider';
@@ -11,9 +11,11 @@ type Props = {
     activoId?: string;
     onReintentar: () => void;
     onAbrir: (chat: ResumenChat) => void;
+    onDuplicar: (chat: ResumenChat) => void;
+    duplicandoId?: string | null;
 };
 
-export function ListaConversaciones({ chats, error, activoId, onReintentar, onAbrir }: Props) {
+export function ListaConversaciones({ chats, error, activoId, onReintentar, onAbrir, onDuplicar, duplicandoId }: Props) {
     const colores = useColores();
 
     if (chats === null) {
@@ -48,6 +50,20 @@ export function ListaConversaciones({ chats, error, activoId, onReintentar, onAb
                             {item.titulo}
                         </Text>
                         <Text className="text-xs text-texto-tenue">{fechaRelativa(item.actualizado)}</Text>
+                        <Pressable
+                            onPress={() => onDuplicar(item)}
+                            disabled={!!duplicandoId}
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityLabel="Duplicar conversación"
+                            className="h-7 w-7 items-center justify-center"
+                        >
+                            {duplicandoId === item.id ? (
+                                <ActivityIndicator size={14} color={colores['texto-tenue']} />
+                            ) : (
+                                <CopyPlus size={16} color={colores['texto-tenue']} />
+                            )}
+                        </Pressable>
                     </Pressable>
                 );
             }}

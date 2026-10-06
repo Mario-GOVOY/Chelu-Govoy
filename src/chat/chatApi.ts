@@ -13,6 +13,8 @@ export type Mensaje = {
     id: string;
     rol: 'usuario' | 'chelu';
     texto: string;
+    // Turno del back al que pertenece la respuesta; hace falta para duplicar desde ella.
+    runId?: string;
     // Solo en la respuesta que se está recibiendo o que se acaba de recibir.
     estado?: 'escribiendo' | 'detenida' | 'error';
     herramientas?: Herramienta[];
@@ -63,10 +65,26 @@ export async function obtenerChat(id: string): Promise<Chat> {
             const texto = typeof m.content === 'string' ? m.content : '';
             if (!texto) return [];
             if (m.role === 'user' && !esResumenFormulario(texto)) return [{ id: String(i), rol: 'usuario', texto }];
-            if (m.role === 'assistant') return [{ id: m.run_id ?? String(i), rol: 'chelu', texto }];
+            if (m.role === 'assistant') return [{ id: m.run_id ?? String(i), rol: 'chelu', texto, runId: m.run_id ?? undefined }];
             return [];
         }),
     };
+}
+
+/**
+ * Copia una conversación en otra nueva y devuelve su id; la original no cambia.
+ * Con hastaRunId la copia acaba en esa respuesta y descarta lo posterior.
+ */
+export async function duplicarChat(sessionId: string, hastaRunId?: string): Promise<string> {
+    const respuesta = await authFetch(`${API_URL}chat-cex/duplicate_chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, hasta_run_id: hastaRunId ?? null }),
+    });
+    if (!respuesta.ok) throw new Error(`duplicate_chat ${respuesta.status}`);
+    const json = await respuesta.json();
+    if (!json?.session_id) throw new Error('duplicate_chat sin session_id');
+    return json.session_id;
 }
 
 // Como la web. Más adelante, guardado en AsyncStorage y con selector para master.

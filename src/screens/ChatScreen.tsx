@@ -1,8 +1,9 @@
-import { useCallback, useMemo } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Pressable, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Pressable, Text, View } from 'react-native';
 import { DrawerScreenProps } from '@react-navigation/drawer';
 import { Menu } from 'lucide-react-native';
 
+import { duplicarChat } from '@/chat/chatApi';
 import { useChat } from '@/chat/useChat';
 import { BurbujaMensaje } from '@/components/BurbujaMensaje';
 import { CajaMensaje } from '@/components/CajaMensaje';
@@ -25,6 +26,29 @@ export default function ChatScreen({ navigation, route }: Props) {
 
     // La lista va invertida para que empiece abajo, en el último mensaje.
     const invertidos = useMemo(() => [...mensajes].reverse(), [mensajes]);
+
+    // La copia la hace el back; aquí solo se abre. La conversación actual no cambia.
+    // Respuesta desde la que se está duplicando, para pintar su botón cargando.
+    const [duplicando, setDuplicando] = useState<string | null>(null);
+    const duplicarDesde = (runId: string) => {
+        if (!chatId || duplicando) return;
+        Alert.alert('Duplicar desde aquí', 'Se creará una conversación nueva hasta esta respuesta.', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Duplicar',
+                onPress: async () => {
+                    setDuplicando(runId);
+                    try {
+                        navigation.setParams({ chatId: await duplicarChat(chatId, runId) });
+                    } catch {
+                        Alert.alert('No se pudo duplicar la conversación', 'Inténtalo de nuevo.');
+                    } finally {
+                        setDuplicando(null);
+                    }
+                },
+            },
+        ]);
+    };
 
     const cabecera = chatId ? titulo ?? '' : 'Nueva conversación';
 
@@ -72,7 +96,16 @@ export default function ChatScreen({ navigation, route }: Props) {
                         keyExtractor={(m) => m.id}
                         contentContainerClassName="gap-5 px-4 py-4"
                         keyboardShouldPersistTaps="handled"
-                        renderItem={({ item }) => <BurbujaMensaje mensaje={item} />}
+                        renderItem={({ item }) => (
+                            <BurbujaMensaje
+                                mensaje={item}
+                                // Solo respuestas guardadas y completas: las detenidas o con error no tienen turno en el back.
+                                onDuplicarDesde={item.runId && !item.estado && !respondiendo
+                                    ? () => duplicarDesde(item.runId!)
+                                    : undefined}
+                                duplicando={!!item.runId && item.runId === duplicando}
+                            />
+                        )}
                     />
                 )}
                 <CajaMensaje

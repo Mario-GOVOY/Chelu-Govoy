@@ -72,6 +72,7 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
             let texto = '';
             let pintadoPendiente = false;
             let fallo = false;
+            let runId: string | undefined;
 
             // El 'fin' de una herramienta no dice cuál de sus llamadas acaba: se toma la última abierta con ese nombre.
             const herramientas = new Map<string, Herramienta>();
@@ -115,12 +116,14 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
                             }
                         } else if (evento.tipo === 'tool') {
                             herramienta(evento);
+                        } else if (evento.tipo === 'done') {
+                            runId = evento.run_id;
                         } else if (evento.tipo === 'error') {
                             fallo = true;
                         }
                     },
                 });
-                actualizar({ texto, estado: fallo ? 'error' : undefined });
+                actualizar({ texto, runId, estado: fallo ? 'error' : undefined });
             } catch {
                 actualizar({ texto, estado: controlador.signal.aborted ? 'detenida' : 'error' });
             } finally {

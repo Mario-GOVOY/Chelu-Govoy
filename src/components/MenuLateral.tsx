@@ -1,8 +1,10 @@
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import { DrawerContentComponentProps, useDrawerStatus } from '@react-navigation/drawer';
 import { LogOut, Moon, Plus, RefreshCw, Sun, UserRoundX } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { duplicarChat, ResumenChat } from '@/chat/chatApi';
 import { useConversaciones } from '@/chat/useConversaciones';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { ListaConversaciones } from '@/components/ListaConversaciones';
@@ -42,6 +44,28 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
     const abrirChat = (chatId?: string) => {
         navigation.navigate('Chat', { chatId });
         navigation.closeDrawer();
+    };
+
+    // Conversación que se está duplicando, para pintar su icono cargando.
+    const [duplicando, setDuplicando] = useState<string | null>(null);
+    const duplicar = (chat: ResumenChat) => {
+        if (duplicando) return;
+        Alert.alert('Duplicar conversación', `Se creará una copia de «${chat.titulo}».`, [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Duplicar',
+                onPress: async () => {
+                    setDuplicando(chat.id);
+                    try {
+                        abrirChat(await duplicarChat(chat.id));
+                    } catch {
+                        Alert.alert('No se pudo duplicar la conversación', 'Inténtalo de nuevo.');
+                    } finally {
+                        setDuplicando(null);
+                    }
+                },
+            },
+        ]);
     };
 
     return (
@@ -91,6 +115,8 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                     activoId={chatActivo}
                     onReintentar={conversaciones.recargar}
                     onAbrir={(chat) => abrirChat(chat.id)}
+                    onDuplicar={duplicar}
+                    duplicandoId={duplicando}
                 />
             </View>
 

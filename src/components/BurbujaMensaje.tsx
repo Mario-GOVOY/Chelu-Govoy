@@ -1,4 +1,5 @@
-import { Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { createLucideIcon } from 'lucide-react-native';
 
 import { Mensaje } from '@/chat/chatApi';
 import { CheluAvatar } from '@/components/CheluAvatar';
@@ -6,9 +7,22 @@ import { PuntosEscribiendo } from '@/components/PuntosEscribiendo';
 import { TarjetasHerramientas } from '@/components/TarjetasHerramientas';
 import { TextoMarkdown } from '@/components/TextoMarkdown';
 import { useSesionActiva } from '@/context/SesionContext';
+import { useColores } from '@/theme/ThemeProvider';
 
-export function BurbujaMensaje({ mensaje }: { mensaje: Mensaje }) {
+const GitBranch = createLucideIcon('git-branch-web', [
+    ['path', { d: 'M6 15V3', key: '35l0bk' }],
+    ['path', { d: 'M18 9a9 9 0 0 1-9 9', key: '142qza' }],
+    ['circle', { cx: '18', cy: '6', r: '3', key: '1h7g24' }],
+    ['circle', { cx: '6', cy: '18', r: '3', key: 'fqmcym' }],
+]);
+
+export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false }: {
+    mensaje: Mensaje;
+    onDuplicarDesde?: () => void;
+    duplicando?: boolean;
+}) {
     const { sesion } = useSesionActiva();
+    const colores = useColores();
 
     if (mensaje.rol === 'usuario') {
         return (
@@ -50,6 +64,26 @@ export function BurbujaMensaje({ mensaje }: { mensaje: Mensaje }) {
                     <View className="rounded-xl bg-peligro-suave px-3 py-2">
                         <Text className="text-sm text-peligro">No se pudo completar la respuesta. Inténtalo de nuevo.</Text>
                     </View>
+                )}
+                {onDuplicarDesde && (
+                    <Pressable
+                        onPress={onDuplicarDesde}
+                        disabled={duplicando}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel="Duplicar chat desde aquí"
+                        accessibilityState={{ busy: duplicando }}
+                        className="mt-1 flex-row items-center gap-1.5 self-start py-1"
+                    >
+                        {duplicando ? (
+                            <ActivityIndicator size={14} color={colores['texto-secundario']} />
+                        ) : (
+                            <GitBranch size={14} color={colores['texto-secundario']} />
+                        )}
+                        <Text className="text-xs font-medium text-texto-secundario">
+                            {duplicando ? 'Duplicando…' : 'Duplicar desde aquí'}
+                        </Text>
+                    </Pressable>
                 )}
             </View>
         </View>
