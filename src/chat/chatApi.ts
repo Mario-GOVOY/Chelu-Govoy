@@ -18,6 +18,8 @@ export type Mensaje = {
     // Solo en la respuesta que se está recibiendo o que se acaba de recibir.
     estado?: 'escribiendo' | 'detenida' | 'error';
     herramientas?: Herramienta[];
+    // Preguntas que propone Chelu al acabar la respuesta.
+    sugerencias?: string[];
 };
 
 // Tarjeta "Consultando…" de la respuesta. Las llamadas iguales se agrupan en una.
@@ -65,7 +67,15 @@ export async function obtenerChat(id: string): Promise<Chat> {
             const texto = typeof m.content === 'string' ? m.content : '';
             if (!texto) return [];
             if (m.role === 'user' && !esResumenFormulario(texto)) return [{ id: String(i), rol: 'usuario', texto }];
-            if (m.role === 'assistant') return [{ id: m.run_id ?? String(i), rol: 'chelu', texto, runId: m.run_id ?? undefined }];
+            if (m.role === 'assistant') {
+                return [{
+                    id: m.run_id ?? String(i),
+                    rol: 'chelu',
+                    texto,
+                    runId: m.run_id ?? undefined,
+                    sugerencias: Array.isArray(m.suggestions) ? m.suggestions : [],
+                }];
+            }
             return [];
         }),
     };

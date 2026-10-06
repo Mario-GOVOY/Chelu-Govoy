@@ -19,18 +19,26 @@ Crear una app móvil para usar el chatbot **Chat Chelu** (hoy solo en la web, `/
 | GET | `/chat-cex/get_chats` | Sí, lista de conversaciones |
 | GET | `/chat-cex/get_chat` | Sí, abrir una conversación |
 | DELETE | `/chat-cex/delete_chat` | Sí, borrado lógico |
+| POST | `/chat-cex/duplicate_chat` | Sí, duplicar conversación (entera o hasta una respuesta) |
 | PUT | `/chat-cex/feedback` | Sí (fase 3) |
 | POST | `/chat-cex/transcribir` | Sí, notas de voz (fase 3) |
 | GET | `/chat-cex/archivo/{file_id}` | Sí, descarga de documentos generados |
 | POST | `/chat-cex/correo/enviar` | Fase 4 |
-| GET | `/chat-cex/optimizacion/{id}`, POST `/resumen-optimizacion`, GET `/formulario-sectores` | Fase 4 / probablemente no |
+| GET | `/chat-cex/optimizacion/{id}`, POST `/resumen-optimizacion`, GET `/formulario-sectores` | Fase 4: los que necesite el formulario de sectores (ver abajo); abrir la optimización, no |
 | GET | `/chat-cex/syncronize_data` | No (migración puntual de la web) |
 
 Eventos del stream: `session, delta, tool, progreso, sugerencias, done, error, documento, grafica, mapa, sql, sectores, comparativa, correo_borrador, formulario_sectores, acciones_editor, carga_simulacion, orden_optimizacion`.
 
 - **Fases 2–3:** `session`, `delta`, `tool`/`progreso`, `sugerencias`, `done`, `error`, `documento`, `grafica`, `mapa`.
-- **Fase 4:** `correo_borrador`, `sectores`, `comparativa`.
-- **No aplican:** los eventos del panel de simulación (`acciones_editor`, `carga_simulacion`, `orden_optimizacion`, `formulario_sectores`) y `contexto_pantalla`.
+- **Fase 4:** `correo_borrador`, `sectores`, `comparativa`, `formulario_sectores`.
+- **No aplican:** los eventos del panel de simulación (`acciones_editor`, `carga_simulacion`, `orden_optimizacion`) y `contexto_pantalla`.
+- **Optimización de sectores desde el chat (fase 4):** en la web, Chelu puede abrir un formulario de optimización de sectores en la conversación (mapa, zona, rango, demanda, flota, vehículos, capacidad…), lanzarla con "Optimizar" y luego mostrar el resultado con su valoración y una tarjeta con "Abrir en SmartZone". En la app **sí** se quiere el formulario (revisarlo, ajustarlo y lanzar la optimización) y ver el resultado en el chat, pero **no** abrir la optimización en sí: sin "Abrir en SmartZone" ni el editor, que se quedan en la web. Revisar en la web cómo se pinta (`useChatChelu.ts`, `AsstBubble.tsx`) y qué endpoints usa el formulario antes de empezar.
+- **Regla general: en la app no se "abre" nada en otras herramientas de GOVOY.** En el chat web solo hay dos sitios, y los dos acaban en `abrirEnSmartZone` (borrador en el editor):
+  - `SectoresCard`: "Abrir en SmartZone" en el resultado de una optimización.
+  - `ComparativaTable`: "Abrir" en cada escenario de una comparativa.
+  
+  En la app esas tarjetas se muestran sin el botón, y `GET /chat-cex/optimizacion/{id}` (que solo sirve para abrir) no se usa. Lo demás no abre nada: descargar documentos, enviar correos y lanzar el formulario sí se pueden hacer.
+- **Ojo con el texto de Chelu:** a veces propone "abre esta optimización y guárdala". Valorar con el back que la app indique que es el móvil (p. ej. un campo en `ChatCexRequest`) para que Chelu no lo proponga.
 
 ### App de referencia — `C:/AppGovoy`
 
@@ -358,7 +366,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 |---|---|
 | **0. Backend** | D1 (login y renovación para móvil) y D2 (seguridad) |
 | **1. Base** | Proyecto Expo, entornos con `EXPO_PUBLIC_API_URL`, login y tokens (copiados de AppGovoy), `ControlOpcionesUsuarios.ts` (D3), navegación, tema, perfiles EAS y EAS Update |
-| **2. Versión mínima** | Chat con streaming, markdown, sugerencias, botón de parar, lista de conversaciones (nueva y borrar) y descarga de documentos |
+| **2. Versión mínima** | Chat con streaming, markdown, sugerencias, botón de parar, lista de conversaciones (nueva, duplicar y borrar) y descarga de documentos |
 | **3. Contenido enriquecido** | Gráficas, mapas, valoración y notas de voz |
 | **4. Más adelante** | Borradores de correo, optimización de sectores y push |
 
@@ -421,8 +429,10 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
 | 1 | Navegación de la app: menú lateral (Drawer de React Navigation) con una sola pantalla `Chat` (parámetro `chatId`), sustituyendo a la pantalla de inicio provisional. En el menú: Chelu y empresa, "Nueva conversación", lista, datos del usuario, tema, salir de suplantación y cerrar sesión | Hecho |
 | 2 | Lista de conversaciones (`get_chats`, `useConversaciones`, `ListaConversaciones`) con fecha relativa. Se recarga al abrir el menú y con un botón junto a "Conversaciones" (se quitó deslizar para recargar porque a veces impedía cerrar el menú) | Hecho |
 | 3 | Abrir una conversación (`get_chat`, `useChat`): mensajes en una `FlatList` invertida para empezar abajo, markdown, cabeceras de emisor y conversación activa resaltada en el menú | Hecho, falta probar en el móvil |
-| 4 | Enviar mensajes: (1) caja de texto ✔, (2) streaming con `expo/fetch`, (3) conectar el envío (mensaje optimista, texto en directo, botón de parar, `session_id` nuevo y refrescar la lista), (4) preguntas sugeridas | En curso (paso 2) |
+| 4 | Enviar mensajes: (1) caja de texto ✔, (2) streaming con `expo/fetch` ✔, (3) conectar el envío (mensaje optimista, texto en directo, tarjetas de herramientas, puntos de "escribiendo", botón de parar, `session_id` nuevo) ✔, (4) preguntas sugeridas (píldoras en la última respuesta, ejemplos en la bienvenida) ✔ | Hecho, falta probar en el móvil |
 | 5 | Borrar conversación y descarga de documentos | Pendiente |
+| 6 | Duplicar conversación (entera desde el menú y "desde aquí" en cada respuesta), como la web | Hecho, falta probar en el móvil |
+| 7 | Botón de actualizar la conversación en la cabecera del chat | Hecho |
 
 **Detalles:**
 - **Navegación:** `navigate('Chat', { chatId })` cambia los parámetros de la misma pantalla, no apila otra. Sin `chatId` es una conversación nueva (pantalla de bienvenida). El menú saca la conversación activa de `state.routes[state.index].params`.
@@ -437,6 +447,23 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
 - **Teclado:** `KeyboardAvoidingView` con `behavior="padding"`, como en el login. `Pantalla` tiene `margenInferior={false}` para que el margen inferior lo ponga la caja de texto, que lo quita con el teclado abierto (`useTecladoVisible`). `react-native-keyboard-controller` no se ha instalado; se valorará si en iOS hace falta.
 - **Robot de Chelu (`CheluAvatar`):** rehecho a partir de la imagen de referencia (robot azul en 3/4 saludando). **Pendiente de retocar**, todavía no queda bien.
 - **Gráficas y mapas:** no se pintan todavía (fase 3). Opcional: un aviso "📊 Gráfica disponible en la web" mientras tanto.
+- **Tablas del markdown:** `react-native-marked` da a la cabecera el mismo estilo que a las filas, así que `TextoMarkdown` sustituye la tabla con un `Renderer` propio (`RendererChelu.table`): cabecera oscura (`cabecera-tabla` / `sobre-cabecera-tabla`), filas alternas, columnas de 140 px como mínimo y scroll horizontal. Se probó justificar el texto y no tuvo efecto; se descartó.
+- **Streaming (`chatApi.enviarMensaje`):** `POST /chat-cex/stream` con `expo/fetch` (`authFetch` admite otro `fetch` como tercer parámetro). Se leen los eventos `data: {json}` separados por línea en blanco, guardando el trozo incompleto. Eventos usados: `session`, `delta`, `tool`, `sugerencias` (aún sin pintar), `done` (`run_id`) y `error`. Se envía `incluir_herramientas: true` e `incluir_metricas: false`; modelo fijo `deepseek-v4-flash`.
+- **Envío (`useChat.enviar`):**
+  - Mensaje del usuario y respuesta vacía en estado `escribiendo` al momento.
+  - El texto se pinta como mucho una vez por fotograma (`requestAnimationFrame`).
+  - Al acabar, la respuesta queda sin estado, `detenida` (se abortó) o `error`; se conserva el texto recibido.
+  - En una conversación nueva, el evento `session` pone el id en la ruta (`setParams`). `creadaRef` evita que eso vuelva a cargar desde el back una conversación que ya está en pantalla.
+  - Salir de la pantalla o cambiar de conversación aborta la respuesta en curso.
+- **Tarjetas de herramientas (`TarjetasHerramientas`, `chat/herramientas.ts`):** copia de la lógica de la web (`describirConsulta`, `describirHerramienta`, "Generando gráfica de…"); hay que mantenerla igual que la web. Las llamadas con el mismo nombre y etiqueta se agrupan (×N) y el `fin` cierra la última abierta con ese nombre. Spinner mientras hay alguna en curso; check al acabar.
+- **Puntos de "escribiendo" (`PuntosEscribiendo`):** tres puntos con Reanimated, como la web, mientras la respuesta está en curso (también tras el texto, porque una herramienta puede tardar segundos).
+- **Duplicar:** `POST /chat-cex/duplicate_chat` (`session_id`, `hasta_run_id` opcional) devuelve el id de la copia, que se abre. Con confirmación en los dos casos (en la web no la hay), porque en el móvil es fácil tocar sin querer.
+  - Desde el menú: icono `CopyPlus` a la derecha de la fecha; al acabar abre la copia y cierra el menú.
+  - Desde una respuesta: "Duplicar desde aquí" con el icono de rama, solo en respuestas con `runId` que acabaron bien y nunca mientras se responde. El `runId` sale de `get_chat` o del evento `done`. Spinner y "Duplicando…" en la respuesta pulsada.
+  - El `GitBranch` de `lucide-react-native` 1.x tiene otro dibujo que el de la web (`lucide-react` 0.477); se crea con `createLucideIcon` y el dibujo de la web. En `react-native-svg` las banderas de un arco deben ir separadas (`0 0 1`, no `001`).
+- **Actualizar conversación:** botón a la derecha del título (truncado a una línea). Solo en conversaciones existentes; desactivado mientras se responde, porque cortaría la respuesta.
+- **Modo oscuro:** paleta revisada hacia negros y grises casi neutros, con el azul solo en los acentos, y el texto principal sin llegar a blanco (`#d4d7dc`).
+- **Problema conocido de NativeWind:** en algunos `Pressable` no aplica el fondo o el borde de las clases (el botón de parar salía gris; un botón tipo píldora no se veía). El de parar lleva el color en `style`. Pendiente de mirar con un caso mínimo. En `Animated.View` de Reanimated las clases no se aplican: se usa `style`.
 
 ### Fase 0 en detalle (Back-Govoy)
 
@@ -572,3 +599,9 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-05 | Fase 2: markdown con `react-native-marked` (hook `useMarkdown`); mensajes con cabecera de emisor como la web |
 | 2026-10-05 | Fase 2: teclado con `KeyboardAvoidingView` (`padding`); `react-native-keyboard-controller` solo si hace falta en iOS |
 | 2026-10-05 | Todas las llamadas usan `API_URL`, que apunta de momento al back local |
+| 2026-10-06 | Fase 2: streaming con `expo/fetch`; tarjetas de herramientas y puntos de "escribiendo" como la web (lógica de etiquetas copiada de la web) |
+| 2026-10-06 | Fase 2: tablas del markdown con renderer propio como la web; texto justificado descartado |
+| 2026-10-06 | D7: modo oscuro más hacia negros y grises, azul solo en acentos, texto sin blanco puro |
+| 2026-10-06 | Fase 2: duplicar conversación (menú y "desde aquí"), con confirmación; botón de actualizar en la cabecera del chat |
+| 2026-10-06 | Fase 2: preguntas sugeridas (píldoras en la última respuesta) y ejemplos con icono en la bienvenida |
+| 2026-10-06 | Fase 4: formulario de optimización de sectores en el chat (lanzar y ver el resultado), pero sin abrir la optimización en SmartZone |

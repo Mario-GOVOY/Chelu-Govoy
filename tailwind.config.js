@@ -5,6 +5,7 @@ const nombres = [
   'superficie',
   'superficie-alt',
   'borde',
+  'borde-medio',
   'borde-fuerte',
   'texto',
   'texto-secundario',

@@ -16,10 +16,12 @@ const GitBranch = createLucideIcon('git-branch-web', [
     ['circle', { cx: '6', cy: '18', r: '3', key: 'fqmcym' }],
 ]);
 
-export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false }: {
+export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar }: {
     mensaje: Mensaje;
     onDuplicarDesde?: () => void;
     duplicando?: boolean;
+    // Envía una pregunta sugerida. Sin él no se pintan las sugerencias.
+    onPreguntar?: (pregunta: string) => void;
 }) {
     const { sesion } = useSesionActiva();
     const colores = useColores();
@@ -65,6 +67,20 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false }:
                         <Text className="text-sm text-peligro">No se pudo completar la respuesta. Inténtalo de nuevo.</Text>
                     </View>
                 )}
+                {onPreguntar && !!mensaje.sugerencias?.length && (
+                    <View className="mt-1 flex-row flex-wrap gap-2">
+                        {mensaje.sugerencias.map((pregunta) => (
+                            <Pressable
+                                key={pregunta}
+                                onPress={() => onPreguntar(pregunta)}
+                                accessibilityRole="button"
+                                className="rounded-full border border-borde-medio bg-superficie px-3 py-2 active:bg-primario-suave"
+                            >
+                                <Text className="text-[11px] font-medium text-primario">{pregunta}</Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                )}
                 {onDuplicarDesde && (
                     <Pressable
                         onPress={onDuplicarDesde}
@@ -73,7 +89,7 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false }:
                         accessibilityRole="button"
                         accessibilityLabel="Duplicar chat desde aquí"
                         accessibilityState={{ busy: duplicando }}
-                        className="mt-1 flex-row items-center gap-1.5 self-start py-1"
+                        className="mt-1 flex-row items-center gap-1.5 self-start rounded-full border border-borde-medio px-3 py-1.5 active:bg-superficie-alt"
                     >
                         {duplicando ? (
                             <ActivityIndicator size={14} color={colores['texto-secundario']} />

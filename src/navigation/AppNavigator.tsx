@@ -16,7 +16,7 @@ export function AppNavigator() {
             screenOptions={{
                 headerShown: false,
                 drawerStyle: { width: '85%' },
-                swipeEdgeWidth: 80,
+                swipeEdgeWidth: 50,
             }}
         >
             <Drawer.Screen name="Chat" component={ChatScreen} />

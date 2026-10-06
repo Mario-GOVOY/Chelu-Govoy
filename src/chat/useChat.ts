@@ -73,6 +73,7 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
             let pintadoPendiente = false;
             let fallo = false;
             let runId: string | undefined;
+            let sugerencias: string[] = [];
 
             // El 'fin' de una herramienta no dice cuál de sus llamadas acaba: se toma la última abierta con ese nombre.
             const herramientas = new Map<string, Herramienta>();
@@ -116,6 +117,8 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
                             }
                         } else if (evento.tipo === 'tool') {
                             herramienta(evento);
+                        } else if (evento.tipo === 'sugerencias') {
+                            sugerencias = Array.isArray(evento.preguntas) ? evento.preguntas : [];
                         } else if (evento.tipo === 'done') {
                             runId = evento.run_id;
                         } else if (evento.tipo === 'error') {
@@ -123,7 +126,8 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
                         }
                     },
                 });
-                actualizar({ texto, runId, estado: fallo ? 'error' : undefined });
+                // Las sugerencias se muestran al acabar, no según llegan.
+                actualizar({ texto, runId, sugerencias, estado: fallo ? 'error' : undefined });
             } catch {
                 actualizar({ texto, estado: controlador.signal.aborted ? 'detenida' : 'error' });
             } finally {
