@@ -1,7 +1,7 @@
 import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native';
 import { CopyPlus, MessageSquare, Trash2 } from 'lucide-react-native';
 
-import { ResumenChat } from '@/chat/chatApi';
+import type { ResumenChat } from '@/types/Chat';
 import { useColores } from '@/theme/ThemeProvider';
 import { fechaRelativa } from '@/utils/fechas';
 

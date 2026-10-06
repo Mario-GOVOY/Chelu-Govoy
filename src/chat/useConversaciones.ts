@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { obtenerChats, ResumenChat } from '@/chat/chatApi';
+import { obtenerChats } from '@/chat/chatApi';
+import type { ResumenChat } from '@/types/Chat';
 
 export function useConversaciones(activo: boolean) {
     const [chats, setChats] = useState<ResumenChat[] | null>(null);

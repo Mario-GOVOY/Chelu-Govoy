@@ -1,7 +1,7 @@
 import { ActivityIndicator, Text, View } from 'react-native';
 import { BarChart3, Check, CloudSun, Database, Map, TrafficCone } from 'lucide-react-native';
 
-import { Herramienta } from '@/chat/chatApi';
+import type { Herramienta } from '@/types/Chat';
 import { useColores } from '@/theme/ThemeProvider';
 
 // Como la web: el icono se deduce de la etiqueta.

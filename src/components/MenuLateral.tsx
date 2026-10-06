@@ -4,12 +4,13 @@ import { DrawerContentComponentProps, useDrawerStatus } from '@react-navigation/
 import { LogOut, Moon, Plus, RefreshCw, Sun, UserRoundX } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { borrarChat, duplicarChat, ResumenChat } from '@/chat/chatApi';
+import { borrarChat, duplicarChat } from '@/chat/chatApi';
 import { useConversaciones } from '@/chat/useConversaciones';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { ListaConversaciones } from '@/components/ListaConversaciones';
 import { useSesion, useSesionActiva } from '@/context/SesionContext';
 import type { AppDrawerParamList } from '@/navigation/AppNavigator';
+import type { ResumenChat } from '@/types/Chat';
 import { useColores, useTema } from '@/theme/ThemeProvider';
 
 const ROLES: Record<string, string> = {

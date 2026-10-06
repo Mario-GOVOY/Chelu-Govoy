@@ -1,40 +1,18 @@
 import { fetch as fetchStreaming } from 'expo/fetch';
+import { Linking, Platform } from 'react-native';
+import ReactNativeBlobUtil from 'react-native-blob-util';
 
 import { authFetch } from '@/auth/authManager';
 import { API_URL } from '@/auth/Constants';
+import type { Chat, Documento, Mensaje, ResumenChat } from '@/types/Chat';
 
-export type ResumenChat = {
-    id: string;
-    titulo: string;
-    actualizado: number;
-};
-
-export type Mensaje = {
-    id: string;
-    rol: 'usuario' | 'chelu';
-    texto: string;
-    // Turno del back al que pertenece la respuesta; hace falta para duplicar desde ella.
-    runId?: string;
-    // Solo en la respuesta que se está recibiendo o que se acaba de recibir.
-    estado?: 'escribiendo' | 'detenida' | 'error';
-    herramientas?: Herramienta[];
-    // Preguntas que propone Chelu al acabar la respuesta.
-    sugerencias?: string[];
-};
-
-// Tarjeta "Consultando…" de la respuesta. Las llamadas iguales se agrupan en una.
-export type Herramienta = {
-    clave: string;
-    etiqueta: string;
-    veces: number;
-    enCurso: number;
-};
-
-export type Chat = {
-    id: string;
-    titulo: string;
-    mensajes: Mensaje[];
-};
+// El enlace que trae el back caduca; se descarga siempre pidiendo uno nuevo con el fileId.
+const aDocumento = (d: any): Documento => ({
+    fileId: d.file_id,
+    nombre: d.nombre || 'documento',
+    formato: d.formato || '',
+    tamano: d.tamano_bytes ?? undefined,
+});
 
 // El back manda los tiempos en segundos.
 const aMs = (ts?: number | null) => (ts == null ? Date.now() : ts < 1e12 ? ts * 1000 : ts);
@@ -74,11 +52,51 @@ export async function obtenerChat(id: string): Promise<Chat> {
                     texto,
                     runId: m.run_id ?? undefined,
                     sugerencias: Array.isArray(m.suggestions) ? m.suggestions : [],
+                    documentos: Array.isArray(m.docs) ? m.docs.filter((d: any) => d?.file_id).map(aDocumento) : [],
                 }];
             }
             return [];
         }),
     };
+}
+
+// Sin el tipo, el gestor de descargas de Android lo guarda como texto.
+const MIME: Record<string, string> = {
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    xls: 'application/vnd.ms-excel',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    pdf: 'application/pdf',
+    csv: 'text/csv',
+};
+
+/**
+ * Pide al back un enlace nuevo del documento y lo descarga.
+ * Android: con su gestor de descargas, a Descargas y con notificación, sin salir de la app.
+ * iOS: lo abre en el navegador, que lo descarga a Archivos › Descargas (el enlace lleva Content-Disposition: attachment).
+ */
+export async function descargarDocumento(documento: Documento): Promise<void> {
+    // La clave de S3 lleva barras y el back la recibe como ruta: se codifica por partes, como la web.
+    const ruta = documento.fileId.split('/').map(encodeURIComponent).join('/');
+    const respuesta = await authFetch(`${API_URL}chat-cex/archivo/${ruta}`);
+    if (!respuesta.ok) throw new Error(`archivo ${respuesta.status}`);
+    const json = await respuesta.json();
+    if (!json?.url) throw new Error('archivo sin url');
+
+    if (Platform.OS !== 'android') {
+        await Linking.openURL(json.url);
+        return;
+    }
+    
+    await ReactNativeBlobUtil.config({
+        addAndroidDownloads: {
+            useDownloadManager: true,
+            storeInDownloads: true,
+            title: documento.nombre,
+            mime: MIME[documento.formato.toLowerCase()],
+            mediaScannable: true,
+            notification: true,
+        },
+    }).fetch('GET', json.url);
 }
 
 // Borrado lógico: el back la marca como borrada y deja de listarla.
@@ -114,9 +132,11 @@ export type EventoChat =
     | { tipo: 'delta'; texto: string }
     | { tipo: 'tool'; fase: 'inicio' | 'fin'; nombre: string; args?: Record<string, unknown> }
     | { tipo: 'sugerencias'; preguntas: string[] }
+    | { tipo: 'documento'; documento: Documento }
     | { tipo: 'done'; run_id?: string }
     | { tipo: 'error'; detail?: string };
 
+// 'documento' se trata aparte: se convierte a Documento antes de pasarlo.
 const TIPOS = ['session', 'delta', 'tool', 'sugerencias', 'done', 'error'];
 
 /**
@@ -163,7 +183,11 @@ export async function enviarMensaje({ pregunta, sessionId, signal, onEvento }: {
             if (!linea) continue;
             try {
                 const evento = JSON.parse(linea.slice(5));
-                if (TIPOS.includes(evento?.tipo)) onEvento(evento);
+                if (evento?.tipo === 'documento') {
+                    if (evento.file_id) onEvento({ tipo: 'documento', documento: aDocumento(evento) });
+                } else if (TIPOS.includes(evento?.tipo)) {
+                    onEvento(evento);
+                }
             } catch {
                 // Línea mal formada: se salta, como en la web.
             }

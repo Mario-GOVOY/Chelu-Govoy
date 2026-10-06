@@ -21,7 +21,8 @@
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "react-native-blob-util"
     ]
   }
 }

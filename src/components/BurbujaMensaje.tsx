@@ -1,9 +1,10 @@
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { createLucideIcon } from 'lucide-react-native';
 
-import { Mensaje } from '@/chat/chatApi';
+import type { Mensaje } from '@/types/Chat';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { PuntosEscribiendo } from '@/components/PuntosEscribiendo';
+import { TarjetaDocumento } from '@/components/TarjetaDocumento';
 import { TarjetasHerramientas } from '@/components/TarjetasHerramientas';
 import { TextoMarkdown } from '@/components/TextoMarkdown';
 import { useSesionActiva } from '@/context/SesionContext';
@@ -57,6 +58,7 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
             <View className="gap-2 pl-9">
                 {!!mensaje.herramientas?.length && <TarjetasHerramientas herramientas={mensaje.herramientas} />}
                 {!!mensaje.texto && <TextoMarkdown texto={mensaje.texto} />}
+                {mensaje.documentos?.map((d) => <TarjetaDocumento key={d.fileId} documento={d} />)}
                 {/* También tras el texto: si Chelu está llamando a una herramienta, pasan segundos sin texto nuevo. */}
                 {mensaje.estado === 'escribiendo' && <PuntosEscribiendo />}
                 {mensaje.estado === 'detenida' && (
