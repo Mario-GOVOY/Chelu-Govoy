@@ -22,6 +22,14 @@ export type Mensaje = {
     // Preguntas que propone Chelu al acabar la respuesta.
     sugerencias?: string[];
     documentos?: Documento[];
+    voto?: Voto | null;
+};
+
+// Valoración de una respuesta. El motivo solo en las negativas.
+export type Voto = {
+    valoracion: 1 | -1;
+    motivo?: string | null;
+    nota?: string | null;
 };
 
 // Tarjeta "Consultando…" de la respuesta. Las llamadas iguales se agrupan en una.

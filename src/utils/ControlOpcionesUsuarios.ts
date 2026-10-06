@@ -2,6 +2,7 @@ import { Sesion } from '@/types/Sesion';
 
 export const CHAT_CHELU = ['1', '92', '101'];
 export const CHAT_CHELU_MASTER = ['92', '101'];
+export const HAS_FEEDBACK_CHAT_CHELU = ['100', '92', '101'];
 
 const ROLES_CHAT = ['administrador', 'jefeDeOperaciones'];
 

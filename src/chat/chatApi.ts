@@ -4,7 +4,7 @@ import ReactNativeBlobUtil from 'react-native-blob-util';
 
 import { authFetch } from '@/auth/authManager';
 import { API_URL } from '@/auth/Constants';
-import type { Chat, Documento, Mensaje, ResumenChat } from '@/types/Chat';
+import type { Chat, Documento, Mensaje, ResumenChat, Voto } from '@/types/Chat';
 
 // El enlace que trae el back caduca; se descarga siempre pidiendo uno nuevo con el fileId.
 const aDocumento = (d: any): Documento => ({
@@ -53,11 +53,28 @@ export async function obtenerChat(id: string): Promise<Chat> {
                     runId: m.run_id ?? undefined,
                     sugerencias: Array.isArray(m.suggestions) ? m.suggestions : [],
                     documentos: Array.isArray(m.docs) ? m.docs.filter((d: any) => d?.file_id).map(aDocumento) : [],
+                    voto: m.feedback ?? null,
                 }];
             }
             return [];
         }),
     };
+}
+
+/**
+ * Valora una respuesta; votar otra vez sustituye el voto anterior.
+ * Devuelve el voto tal como quedó guardado.
+ */
+export async function votarRespuesta(sessionId: string, runId: string, voto: Voto): Promise<Voto> {
+    const respuesta = await authFetch(`${API_URL}chat-cex/feedback`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, run_id: runId, ...voto }),
+    });
+    const json = await respuesta.json().catch(() => null);
+    // El detail del back ya viene en español (p. ej. el 409 si el cliente no tiene valoraciones).
+    if (!respuesta.ok) throw new Error(json?.detail || 'No se pudo guardar la valoración.');
+    return json?.feedback ?? voto;
 }
 
 // Sin el tipo, el gestor de descargas de Android lo guarda como texto.

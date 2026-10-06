@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { enviarMensaje, EventoChat, obtenerChat } from '@/chat/chatApi';
-import type { Documento, Herramienta, Mensaje } from '@/types/Chat';
+import { enviarMensaje, EventoChat, obtenerChat, votarRespuesta } from '@/chat/chatApi';
+import type { Documento, Herramienta, Mensaje, Voto } from '@/types/Chat';
 import { etiquetaHerramienta } from '@/chat/herramientas';
 
 /**
@@ -146,5 +146,25 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
     const parar = useCallback(() => abortRef.current?.abort(), []);
     const recargar = useCallback(() => setIntento((n) => n + 1), []);
 
-    return { mensajes, titulo, cargando, error, recargar, enviar, parar, respondiendo };
+    /**
+     * Valora una respuesta. Se pinta al momento y, si el back falla, vuelve el voto anterior
+     * y se relanza el error para que lo enseñe quien llama.
+     */
+    const votar = useCallback(
+        async (runId: string, voto: Voto, anterior: Voto | null) => {
+            if (!chatId) throw new Error('La conversación aún no se ha guardado.');
+            const poner = (v: Voto | null) =>
+                setMensajes((prev) => prev.map((m) => (m.runId === runId ? { ...m, voto: v } : m)));
+            poner(voto);
+            try {
+                poner(await votarRespuesta(chatId, runId, voto));
+            } catch (e) {
+                poner(anterior);
+                throw e;
+            }
+        },
+        [chatId],
+    );
+
+    return { mensajes, titulo, cargando, error, recargar, enviar, parar, respondiendo, votar };
 }

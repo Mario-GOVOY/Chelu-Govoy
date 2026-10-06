@@ -9,12 +9,14 @@ import { ArchivosGenerados } from '@/components/ArchivosGenerados';
 import { BurbujaMensaje } from '@/components/BurbujaMensaje';
 import { CajaMensaje } from '@/components/CajaMensaje';
 import { CheluAvatar } from '@/components/CheluAvatar';
+import { HojaValoracion, type Valorando } from '@/components/HojaValoracion';
 import { Boton } from '@/components/ui/Boton';
 import { Pantalla } from '@/components/ui/Pantalla';
 import { AppDrawerParamList } from '@/navigation/AppNavigator';
 import { useColores } from '@/theme/ThemeProvider';
 import { useSesionActiva } from '@/context/SesionContext';
 import type { Documento } from '@/types/Chat';
+import { esSesionMaster, HAS_FEEDBACK_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
 
 type Props = DrawerScreenProps<AppDrawerParamList, 'Chat'>;
 
@@ -32,7 +34,11 @@ export default function ChatScreen({ navigation, route }: Props) {
     const chatId = route.params?.chatId;
     // Al crearse la conversación se pone su id en la ruta, para que el menú la marque como activa.
     const alCrearse = useCallback((id: string) => navigation.setParams({ chatId: id }), [navigation]);
-    const { mensajes, titulo, cargando, error, recargar, enviar, parar, respondiendo } = useChat(chatId, alCrearse);
+    const { mensajes, titulo, cargando, error, recargar, enviar, parar, respondiendo, votar } = useChat(chatId, alCrearse);
+    const puedeValorar = validatorUserHasOption(HAS_FEEDBACK_CHAT_CHELU, sesion.empresaId, esSesionMaster(sesion));
+    // Respuesta que se está valorando (su runId y el pulgar pulsado); null con la hoja cerrada.
+    const [valorando, setValorando] = useState<(Valorando & { runId: string }) | null>(null);
+    const cerrarValoracion = useCallback(() => setValorando(null), []);
 
     // La lista va invertida para que empiece abajo, en el último mensaje.
     const invertidos = useMemo(() => [...mensajes].reverse(), [mensajes]);
@@ -180,6 +186,10 @@ export default function ChatScreen({ navigation, route }: Props) {
                                     ? () => duplicarDesde(item.runId!)
                                     : undefined}
                                 duplicando={!!item.runId && item.runId === duplicando}
+                                // Igual que duplicar: solo respuestas con turno guardado en el back.
+                                onValorar={puedeValorar && item.runId && !item.estado
+                                    ? (valoracion) => setValorando({ runId: item.runId!, valoracion, anterior: item.voto ?? null })
+                                    : undefined}
                             />
                         )}
                     />
@@ -195,6 +205,11 @@ export default function ChatScreen({ navigation, route }: Props) {
                 visible={archivosAbierto}
                 documentos={documentos}
                 onCerrar={() => setArchivosAbierto(false)}
+            />
+            <HojaValoracion
+                valorando={valorando}
+                onCerrar={cerrarValoracion}
+                onEnviar={(voto) => votar(valorando!.runId, voto, valorando!.anterior)}
             />
         </Pantalla>
     );

@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { createLucideIcon } from 'lucide-react-native';
+import { createLucideIcon, ThumbsDown, ThumbsUp } from 'lucide-react-native';
 
 import type { Mensaje } from '@/types/Chat';
 import { CheluAvatar } from '@/components/CheluAvatar';
@@ -17,12 +17,14 @@ const GitBranch = createLucideIcon('git-branch-web', [
     ['circle', { cx: '6', cy: '18', r: '3', key: 'fqmcym' }],
 ]);
 
-export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar }: {
+export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar, onValorar }: {
     mensaje: Mensaje;
     onDuplicarDesde?: () => void;
     duplicando?: boolean;
     // Envía una pregunta sugerida. Sin él no se pintan las sugerencias.
     onPreguntar?: (pregunta: string) => void;
+    // Abre la valoración con ese pulgar. Sin él no se pintan los pulgares.
+    onValorar?: (valoracion: 1 | -1) => void;
 }) {
     const { sesion } = useSesionActiva();
     const colores = useColores();
@@ -83,25 +85,50 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
                         ))}
                     </View>
                 )}
-                {onDuplicarDesde && (
-                    <Pressable
-                        onPress={onDuplicarDesde}
-                        disabled={duplicando}
-                        hitSlop={8}
-                        accessibilityRole="button"
-                        accessibilityLabel="Duplicar chat desde aquí"
-                        accessibilityState={{ busy: duplicando }}
-                        className="mt-1 flex-row items-center gap-1.5 self-start rounded-full border border-borde-medio px-3 py-1.5 active:bg-superficie-alt"
-                    >
-                        {duplicando ? (
-                            <ActivityIndicator size={14} color={colores['texto-secundario']} />
-                        ) : (
-                            <GitBranch size={14} color={colores['texto-secundario']} />
+                {(onValorar || onDuplicarDesde) && (
+                    <View className="mt-1 flex-row items-center gap-1">
+                        {onValorar && ([1, -1] as const).map((valoracion) => {
+                            const Icono = valoracion === 1 ? ThumbsUp : ThumbsDown;
+                            const activo = mensaje.voto?.valoracion === valoracion;
+                            return (
+                                <Pressable
+                                    key={valoracion}
+                                    onPress={() => onValorar(valoracion)}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={valoracion === 1 ? 'Buena respuesta' : 'Mala respuesta'}
+                                    accessibilityState={{ selected: activo }}
+                                    className="h-8 w-8 items-center justify-center rounded-lg active:bg-superficie-alt"
+                                >
+                                    {/* El votado, relleno, como en la web. */}
+                                    <Icono
+                                        size={16}
+                                        color={activo ? colores['texto-secundario'] : colores['texto-tenue']}
+                                        fill={activo ? colores['texto-secundario'] : 'none'}
+                                    />
+                                </Pressable>
+                            );
+                        })}
+                        {onDuplicarDesde && (
+                            <Pressable
+                                onPress={onDuplicarDesde}
+                                disabled={duplicando}
+                                hitSlop={8}
+                                accessibilityRole="button"
+                                accessibilityLabel="Duplicar chat desde aquí"
+                                accessibilityState={{ busy: duplicando }}
+                                className="ml-1 flex-row items-center gap-1.5 rounded-full border border-borde-medio px-3 py-1.5 active:bg-superficie-alt"
+                            >
+                                {duplicando ? (
+                                    <ActivityIndicator size={14} color={colores['texto-secundario']} />
+                                ) : (
+                                    <GitBranch size={14} color={colores['texto-secundario']} />
+                                )}
+                                <Text className="text-xs font-medium text-texto-secundario">
+                                    {duplicando ? 'Duplicando…' : 'Duplicar desde aquí'}
+                                </Text>
+                            </Pressable>
                         )}
-                        <Text className="text-xs font-medium text-texto-secundario">
-                            {duplicando ? 'Duplicando…' : 'Duplicar desde aquí'}
-                        </Text>
-                    </Pressable>
+                    </View>
                 )}
             </View>
         </View>
