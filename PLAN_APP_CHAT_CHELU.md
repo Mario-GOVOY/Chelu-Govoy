@@ -309,7 +309,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 - **Gráficas:** el back envía configuraciones de ApexCharts. Se muestran con ApexCharts dentro de un WebView, sin cambios en el back.
 - **Mapas:** pintando la geometría GeoJSON; la librería está pendiente (ver D8).
 - **Voz:** grabación en m4a con `expo-audio` y envío a `/transcribir`, que ya acepta m4a y mp4.
-- **Documentos (decidido):** descarga simple con el navegador. `/archivo/{id}` devuelve un enlace temporal de S3 que ya lleva `Content-Disposition: attachment`, así que con `Linking.openURL` Android lo guarda en Descargas y iOS (Safari) en Archivos › Descargas. Sin librerías ni permisos. Si molesta salir de la app, más adelante: descarga en la app y menú de compartir (`expo-file-system` + `expo-sharing`).
+- **Documentos (decidido):** `/archivo/{id}` devuelve un enlace temporal de S3 que ya lleva `Content-Disposition: attachment`. En Android se descarga con el `DownloadManager` del sistema (`react-native-blob-util`), a Descargas y sin salir de la app; en iOS con `Linking.openURL`, y Safari lo guarda en Archivos › Descargas. Detalle en el progreso de la fase 2.
 
 ---
 
@@ -424,15 +424,21 @@ Estructura de carpetas: como AppGovoy, código en `src/` (`auth/`, `chat/`, `com
 
 Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
 
+**Estado (2026-10-06): fase 2 cerrada en la app**, probada en Android contra el back local. Queda fuera:
+- **Probar en iOS:** nada se ha probado aún (falta la build de EAS y un iPhone).
+- **Depende del back:** lo mismo que en la fase 1 (`API_URL` apunta al back local) y los puntos de D2.
+- **Robot de Chelu:** pendiente de retocar.
+
 | # | Bloque | Estado |
 |---|---|---|
 | 1 | Navegación de la app: menú lateral (Drawer de React Navigation) con una sola pantalla `Chat` (parámetro `chatId`), sustituyendo a la pantalla de inicio provisional. En el menú: Chelu y empresa, "Nueva conversación", lista, datos del usuario, tema, salir de suplantación y cerrar sesión | Hecho |
 | 2 | Lista de conversaciones (`get_chats`, `useConversaciones`, `ListaConversaciones`) con fecha relativa. Se recarga al abrir el menú y con un botón junto a "Conversaciones" (se quitó deslizar para recargar porque a veces impedía cerrar el menú) | Hecho |
-| 3 | Abrir una conversación (`get_chat`, `useChat`): mensajes en una `FlatList` invertida para empezar abajo, markdown, cabeceras de emisor y conversación activa resaltada en el menú | Hecho, falta probar en el móvil |
-| 4 | Enviar mensajes: (1) caja de texto ✔, (2) streaming con `expo/fetch` ✔, (3) conectar el envío (mensaje optimista, texto en directo, tarjetas de herramientas, puntos de "escribiendo", botón de parar, `session_id` nuevo) ✔, (4) preguntas sugeridas (píldoras en la última respuesta, ejemplos en la bienvenida) ✔ | Hecho, falta probar en el móvil |
-| 5 | Borrar conversación y descarga de documentos | Pendiente |
-| 6 | Duplicar conversación (entera desde el menú y "desde aquí" en cada respuesta), como la web | Hecho, falta probar en el móvil |
+| 3 | Abrir una conversación (`get_chat`, `useChat`): mensajes en una `FlatList` invertida para empezar abajo, markdown, cabeceras de emisor y conversación activa resaltada en el menú | Hecho |
+| 4 | Enviar mensajes: (1) caja de texto ✔, (2) streaming con `expo/fetch` ✔, (3) conectar el envío (mensaje optimista, texto en directo, tarjetas de herramientas, puntos de "escribiendo", botón de parar, `session_id` nuevo) ✔, (4) preguntas sugeridas (píldoras en la última respuesta, ejemplos en la bienvenida) ✔ | Hecho |
+| 5 | Borrar conversación ✔ y documentos (tarjeta en la respuesta y descarga) ✔ | Hecho |
+| 6 | Duplicar conversación (entera desde el menú y "desde aquí" en cada respuesta), como la web | Hecho |
 | 7 | Botón de actualizar la conversación en la cabecera del chat | Hecho |
+| 8 | "Archivos generados": botón en la cabecera con contador y hoja inferior con los documentos de la conversación | Hecho |
 
 **Detalles:**
 - **Navegación:** `navigate('Chat', { chatId })` cambia los parámetros de la misma pantalla, no apila otra. Sin `chatId` es una conversación nueva (pantalla de bienvenida). El menú saca la conversación activa de `state.routes[state.index].params`.
@@ -448,7 +454,7 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
 - **Robot de Chelu (`CheluAvatar`):** rehecho a partir de la imagen de referencia (robot azul en 3/4 saludando). **Pendiente de retocar**, todavía no queda bien.
 - **Gráficas y mapas:** no se pintan todavía (fase 3). Opcional: un aviso "📊 Gráfica disponible en la web" mientras tanto.
 - **Tablas del markdown:** `react-native-marked` da a la cabecera el mismo estilo que a las filas, así que `TextoMarkdown` sustituye la tabla con un `Renderer` propio (`RendererChelu.table`): cabecera oscura (`cabecera-tabla` / `sobre-cabecera-tabla`), filas alternas, columnas de 140 px como mínimo y scroll horizontal. Se probó justificar el texto y no tuvo efecto; se descartó.
-- **Streaming (`chatApi.enviarMensaje`):** `POST /chat-cex/stream` con `expo/fetch` (`authFetch` admite otro `fetch` como tercer parámetro). Se leen los eventos `data: {json}` separados por línea en blanco, guardando el trozo incompleto. Eventos usados: `session`, `delta`, `tool`, `sugerencias` (aún sin pintar), `done` (`run_id`) y `error`. Se envía `incluir_herramientas: true` e `incluir_metricas: false`; modelo fijo `deepseek-v4-flash`.
+- **Streaming (`chatApi.enviarMensaje`):** `POST /chat-cex/stream` con `expo/fetch` (`authFetch` admite otro `fetch` como tercer parámetro). Se leen los eventos `data: {json}` separados por línea en blanco, guardando el trozo incompleto. Eventos usados: `session`, `delta`, `tool`, `sugerencias`, `documento`, `done` (`run_id`) y `error`. Se envía `incluir_herramientas: true` e `incluir_metricas: false`; modelo fijo `deepseek-v4-flash`.
 - **Envío (`useChat.enviar`):**
   - Mensaje del usuario y respuesta vacía en estado `escribiendo` al momento.
   - El texto se pinta como mucho una vez por fotograma (`requestAnimationFrame`).
@@ -462,8 +468,22 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
   - Desde una respuesta: "Duplicar desde aquí" con el icono de rama, solo en respuestas con `runId` que acabaron bien y nunca mientras se responde. El `runId` sale de `get_chat` o del evento `done`. Spinner y "Duplicando…" en la respuesta pulsada.
   - El `GitBranch` de `lucide-react-native` 1.x tiene otro dibujo que el de la web (`lucide-react` 0.477); se crea con `createLucideIcon` y el dibujo de la web. En `react-native-svg` las banderas de un arco deben ir separadas (`0 0 1`, no `001`).
 - **Actualizar conversación:** botón a la derecha del título (truncado a una línea). Solo en conversaciones existentes; desactivado mientras se responde, porque cortaría la respuesta.
-- **Modo oscuro:** paleta revisada hacia negros y grises casi neutros, con el azul solo en los acentos, y el texto principal sin llegar a blanco (`#d4d7dc`).
-- **Problema conocido de NativeWind:** en algunos `Pressable` no aplica el fondo o el borde de las clases (el botón de parar salía gris; un botón tipo píldora no se veía). El de parar lleva el color en `style`. Pendiente de mirar con un caso mínimo. En `Animated.View` de Reanimated las clases no se aplican: se usa `style`.
+- **Modo oscuro:** paleta revisada hacia negros y grises casi neutros, con el azul solo en los acentos, y el texto principal sin llegar a blanco (`#d4d7dc`). Añadido `borde-medio`, entre `borde` y `borde-fuerte` (píldoras y tarjetas de ejemplo).
+- **Preguntas sugeridas:** las del evento `sugerencias` y las de `get_chat` (`suggestions`) se guardan en el mensaje al acabar la respuesta. Se pintan como píldoras solo en la última respuesta y nunca mientras se responde; al tocar una se envía. En la bienvenida, los cuatro ejemplos de la web (`EXAMPLES`) con un icono cada uno, bajo un único "Prueba a preguntar".
+- **Borrar conversación:** icono de papelera junto al de duplicar, con confirmación; `DELETE /chat-cex/delete_chat` (borrado lógico). Si era la abierta, se pasa a una nueva. Un solo estado `ocupado` en el menú para duplicar y borrar.
+- **Documentos:**
+  - Del evento `documento` y de los `docs` de `get_chat`. Se descarga **siempre por `fileId`** (la clave de S3): `/archivo/{fileId}` firma un enlace nuevo. El enlace que trae el back caduca (~15 min) y no se guarda; los documentos sin `file_id` se descartan.
+  - La clave lleva barras y el back la recibe como ruta: se codifica por partes, como la web.
+  - Tarjeta (`TarjetaDocumento`) como la web: icono y color por formato (Excel verde, PDF rojo, Word azul), nombre, tipo y tamaño, botón "Descargar" con spinner y aviso si falla. Sin número de filas ni "recortado".
+  - **Android:** `react-native-blob-util` (0.25.1, con plugin en `app.json`) con el `DownloadManager` del sistema: a Descargas (`storeInDownloads`, Android 10+), con notificación y tipo MIME, sin salir de la app. En Android 9 o anterior el archivo se quedaría en la carpeta interna del gestor.
+  - **iOS:** `Linking.openURL`, Safari lo descarga a Archivos › Descargas. Se probó el menú de compartir (`presentOptionsMenu`) y se descartó.
+- **Archivos generados:** solo los de la conversación abierta, del más reciente al más antiguo y sin repetir (la web junta los de las conversaciones cargadas en memoria, que no es fiable). Sin "Borrar": en la web solo lo quita de la pantalla. Listar todas las conversaciones o borrar de verdad necesitaría endpoints nuevos en el back.
+  - Es una capa dentro de la pantalla, no un `Modal`: en Android la ventana del `Modal` no llegaba al borde inferior y asomaba la caja de texto. Fondo con fundido y hoja que sube y baja con Reanimated; el botón atrás la cierra.
+- **Tipos:** los del dominio del chat (`ResumenChat`, `Chat`, `Mensaje`, `Herramienta`, `Documento`) están en `src/types/Chat.ts`, como `Sesion.ts`. `EventoChat` se queda en `chatApi.ts`.
+- **NativeWind, trampas conocidas:**
+  - En `Animated.View` de Reanimated las clases no se aplican: se usa `style` (o un `View` con clases dentro).
+  - Las clases que se eligen en tiempo de ejecución (p. ej. un fondo según el formato) a veces no se generan: el color va en `style` con `useColores()`.
+  - Tras cambiar `tailwind.config.js` hay que reiniciar Metro con caché limpia (`npx expo start -c`). Algunos fallos de clases en `Pressable` (el botón de parar gris, la píldora invisible) se debían a no haber recargado; el de parar sigue con el color en `style`.
 
 ### Fase 0 en detalle (Back-Govoy)
 
@@ -606,3 +626,6 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-06 | Fase 2: preguntas sugeridas (píldoras en la última respuesta) y ejemplos con icono en la bienvenida |
 | 2026-10-06 | Fase 4: formulario de optimización de sectores en el chat (lanzar y ver el resultado), pero sin abrir la optimización en SmartZone |
 | 2026-10-06 | Documentos: descarga con el navegador (`Linking.openURL` al enlace de `/archivo/{id}`), a la carpeta de descargas de cada sistema |
+| 2026-10-06 | Documentos: siempre por `fileId` (sin el enlace del stream); en Android con `react-native-blob-util` y el `DownloadManager`, en iOS se mantiene el navegador (menú de compartir descartado) |
+| 2026-10-06 | Fase 2: borrar conversación; "Archivos generados" solo de la conversación abierta y sin borrar (como capa, no `Modal`); tipos del chat en `src/types/Chat.ts` |
+| 2026-10-06 | Fase 2 cerrada en la app (probada en Android); falta probar en iOS |
