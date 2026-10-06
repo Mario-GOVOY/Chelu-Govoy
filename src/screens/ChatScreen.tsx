@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Pressable, Text, View } from 'react-native';
 import { DrawerScreenProps } from '@react-navigation/drawer';
-import { Menu } from 'lucide-react-native';
+import { Menu, RefreshCw } from 'lucide-react-native';
 
 import { duplicarChat } from '@/chat/chatApi';
 import { useChat } from '@/chat/useChat';
@@ -22,7 +22,7 @@ export default function ChatScreen({ navigation, route }: Props) {
     const chatId = route.params?.chatId;
     // Al crearse la conversación se pone su id en la ruta, para que el menú la marque como activa.
     const alCrearse = useCallback((id: string) => navigation.setParams({ chatId: id }), [navigation]);
-    const { mensajes, titulo, cargando, error, reintentar, enviar, parar, respondiendo } = useChat(chatId, alCrearse);
+    const { mensajes, titulo, cargando, error, recargar, enviar, parar, respondiendo } = useChat(chatId, alCrearse);
 
     // La lista va invertida para que empiece abajo, en el último mensaje.
     const invertidos = useMemo(() => [...mensajes].reverse(), [mensajes]);
@@ -67,13 +67,30 @@ export default function ChatScreen({ navigation, route }: Props) {
                 <Text className="flex-1 text-lg font-semibold text-texto" numberOfLines={1}>
                     {cabecera}
                 </Text>
+                {/* Vuelve a pedir la conversación al back; con una respuesta en curso no, porque la cortaría. */}
+                {chatId && (
+                    <Pressable
+                        onPress={recargar}
+                        disabled={cargando || respondiendo}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel="Actualizar conversación"
+                        className="h-10 w-10 items-center justify-center rounded-full active:bg-fondo"
+                    >
+                        {cargando ? (
+                            <ActivityIndicator size="small" color={colores['texto-secundario']} />
+                        ) : (
+                            <RefreshCw size={20} color={respondiendo ? colores['texto-tenue'] : colores['texto-secundario']} />
+                        )}
+                    </Pressable>
+                )}
             </View>
 
             <KeyboardAvoidingView behavior="padding" className="flex-1">
                 {error ? (
                     <View className="flex-1 items-center justify-center gap-4 px-8">
                         <Text className="text-center text-base text-texto-secundario">No se pudo cargar la conversación.</Text>
-                        <Boton texto="Reintentar" variante="secundario" onPress={reintentar} />
+                        <Boton texto="Reintentar" variante="secundario" onPress={recargar} />
                     </View>
                 ) : cargando ? (
                     <View className="flex-1 items-center justify-center">

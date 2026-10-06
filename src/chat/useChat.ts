@@ -135,7 +135,7 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
     );
 
     const parar = useCallback(() => abortRef.current?.abort(), []);
-    const reintentar = useCallback(() => setIntento((n) => n + 1), []);
+    const recargar = useCallback(() => setIntento((n) => n + 1), []);
 
-    return { mensajes, titulo, cargando, error, reintentar, enviar, parar, respondiendo };
+    return { mensajes, titulo, cargando, error, recargar, enviar, parar, respondiendo };
 }
