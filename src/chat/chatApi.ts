@@ -81,6 +81,14 @@ export async function obtenerChat(id: string): Promise<Chat> {
     };
 }
 
+// Borrado lógico: el back la marca como borrada y deja de listarla.
+export async function borrarChat(sessionId: string): Promise<void> {
+    const respuesta = await authFetch(`${API_URL}chat-cex/delete_chat?session_id=${encodeURIComponent(sessionId)}`, {
+        method: 'DELETE',
+    });
+    if (!respuesta.ok) throw new Error(`delete_chat ${respuesta.status}`);
+}
+
 /**
  * Copia una conversación en otra nueva y devuelve su id; la original no cambia.
  * Con hastaRunId la copia acaba en esa respuesta y descarta lo posterior.

@@ -4,7 +4,7 @@ import { DrawerContentComponentProps, useDrawerStatus } from '@react-navigation/
 import { LogOut, Moon, Plus, RefreshCw, Sun, UserRoundX } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { duplicarChat, ResumenChat } from '@/chat/chatApi';
+import { borrarChat, duplicarChat, ResumenChat } from '@/chat/chatApi';
 import { useConversaciones } from '@/chat/useConversaciones';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { ListaConversaciones } from '@/components/ListaConversaciones';
@@ -46,22 +46,47 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
         navigation.closeDrawer();
     };
 
-    // Conversación que se está duplicando, para pintar su icono cargando.
-    const [duplicando, setDuplicando] = useState<string | null>(null);
+    // Acción en curso sobre una conversación, para pintar su icono cargando.
+    const [ocupado, setOcupado] = useState<{ id: string; accion: 'duplicar' | 'borrar' } | null>(null);
+
     const duplicar = (chat: ResumenChat) => {
-        if (duplicando) return;
+        if (ocupado) return;
         Alert.alert('Duplicar conversación', `Se creará una copia de «${chat.titulo}».`, [
             { text: 'Cancelar', style: 'cancel' },
             {
                 text: 'Duplicar',
                 onPress: async () => {
-                    setDuplicando(chat.id);
+                    setOcupado({ id: chat.id, accion: 'duplicar' });
                     try {
                         abrirChat(await duplicarChat(chat.id));
                     } catch {
                         Alert.alert('No se pudo duplicar la conversación', 'Inténtalo de nuevo.');
                     } finally {
-                        setDuplicando(null);
+                        setOcupado(null);
+                    }
+                },
+            },
+        ]);
+    };
+
+    const borrar = (chat: ResumenChat) => {
+        if (ocupado) return;
+        Alert.alert('Borrar conversación', `Se borrará «${chat.titulo}».`, [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Borrar',
+                style: 'destructive',
+                onPress: async () => {
+                    setOcupado({ id: chat.id, accion: 'borrar' });
+                    try {
+                        await borrarChat(chat.id);
+                        // Si era la abierta, se pasa a una nueva; el menú sigue abierto.
+                        if (chat.id === chatActivo) navigation.navigate('Chat', { chatId: undefined });
+                        await conversaciones.recargar();
+                    } catch {
+                        Alert.alert('No se pudo borrar la conversación', 'Inténtalo de nuevo.');
+                    } finally {
+                        setOcupado(null);
                     }
                 },
             },
@@ -116,7 +141,8 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                     onReintentar={conversaciones.recargar}
                     onAbrir={(chat) => abrirChat(chat.id)}
                     onDuplicar={duplicar}
-                    duplicandoId={duplicando}
+                    onBorrar={borrar}
+                    ocupado={ocupado}
                 />
             </View>
 

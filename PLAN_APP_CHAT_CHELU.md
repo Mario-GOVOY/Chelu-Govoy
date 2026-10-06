@@ -309,7 +309,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 - **Gráficas:** el back envía configuraciones de ApexCharts. Se muestran con ApexCharts dentro de un WebView, sin cambios en el back.
 - **Mapas:** pintando la geometría GeoJSON; la librería está pendiente (ver D8).
 - **Voz:** grabación en m4a con `expo-audio` y envío a `/transcribir`, que ya acepta m4a y mp4.
-- **Documentos:** `/archivo/{id}` devuelve un enlace temporal de S3; se abre con `expo-sharing` o el navegador.
+- **Documentos (decidido):** descarga simple con el navegador. `/archivo/{id}` devuelve un enlace temporal de S3 que ya lleva `Content-Disposition: attachment`, así que con `Linking.openURL` Android lo guarda en Descargas y iOS (Safari) en Archivos › Descargas. Sin librerías ni permisos. Si molesta salir de la app, más adelante: descarga en la app y menú de compartir (`expo-file-system` + `expo-sharing`).
 
 ---
 
@@ -605,3 +605,4 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-06 | Fase 2: duplicar conversación (menú y "desde aquí"), con confirmación; botón de actualizar en la cabecera del chat |
 | 2026-10-06 | Fase 2: preguntas sugeridas (píldoras en la última respuesta) y ejemplos con icono en la bienvenida |
 | 2026-10-06 | Fase 4: formulario de optimización de sectores en el chat (lanzar y ver el resultado), pero sin abrir la optimización en SmartZone |
+| 2026-10-06 | Documentos: descarga con el navegador (`Linking.openURL` al enlace de `/archivo/{id}`), a la carpeta de descargas de cada sistema |

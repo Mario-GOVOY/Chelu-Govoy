@@ -1,5 +1,5 @@
 import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native';
-import { CopyPlus, MessageSquare } from 'lucide-react-native';
+import { CopyPlus, MessageSquare, Trash2 } from 'lucide-react-native';
 
 import { ResumenChat } from '@/chat/chatApi';
 import { useColores } from '@/theme/ThemeProvider';
@@ -12,10 +12,11 @@ type Props = {
     onReintentar: () => void;
     onAbrir: (chat: ResumenChat) => void;
     onDuplicar: (chat: ResumenChat) => void;
-    duplicandoId?: string | null;
+    onBorrar: (chat: ResumenChat) => void;
+    ocupado?: { id: string; accion: 'duplicar' | 'borrar' } | null;
 };
 
-export function ListaConversaciones({ chats, error, activoId, onReintentar, onAbrir, onDuplicar, duplicandoId }: Props) {
+export function ListaConversaciones({ chats, error, activoId, onReintentar, onAbrir, onDuplicar, onBorrar, ocupado }: Props) {
     const colores = useColores();
 
     if (chats === null) {
@@ -52,16 +53,28 @@ export function ListaConversaciones({ chats, error, activoId, onReintentar, onAb
                         <Text className="text-xs text-texto-tenue">{fechaRelativa(item.actualizado)}</Text>
                         <Pressable
                             onPress={() => onDuplicar(item)}
-                            disabled={!!duplicandoId}
-                            hitSlop={8}
+                            disabled={!!ocupado}
                             accessibilityRole="button"
                             accessibilityLabel="Duplicar conversación"
-                            className="h-7 w-7 items-center justify-center"
+                            className="h-8 w-8 items-center justify-center"
                         >
-                            {duplicandoId === item.id ? (
+                            {ocupado?.id === item.id && ocupado.accion === 'duplicar' ? (
                                 <ActivityIndicator size={14} color={colores['texto-tenue']} />
                             ) : (
                                 <CopyPlus size={16} color={colores['texto-tenue']} />
+                            )}
+                        </Pressable>
+                        <Pressable
+                            onPress={() => onBorrar(item)}
+                            disabled={!!ocupado}
+                            accessibilityRole="button"
+                            accessibilityLabel="Borrar conversación"
+                            className="-ml-2 h-8 w-8 items-center justify-center"
+                        >
+                            {ocupado?.id === item.id && ocupado.accion === 'borrar' ? (
+                                <ActivityIndicator size={14} color={colores['texto-tenue']} />
+                            ) : (
+                                <Trash2 size={16} color={colores['texto-tenue']} />
                             )}
                         </Pressable>
                     </Pressable>
