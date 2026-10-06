@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ScrollView, Text, TextInput, View } from 'react-native';
 
 import { Boton } from '@/components/ui/Boton';
 import { HojaInferior } from '@/components/ui/HojaInferior';
+import { Selector } from '@/components/ui/Selector';
 import { useColores } from '@/theme/ThemeProvider';
 import type { Voto } from '@/types/Chat';
 
@@ -74,32 +75,13 @@ function Formulario({ valorando, onCerrar, onEnviar }: {
             {!positiva && (
                 <View className="gap-2">
                     <Text className="text-sm text-texto-secundario">¿Qué tipo de problema quieres notificar? (opcional)</Text>
-                    <View className="flex-row flex-wrap gap-2">
-                        {MOTIVOS.map((m) => {
-                            const elegido = motivo === m.value;
-                            // Colores en style: al cambiar la clase de un Pressable ya montado, NativeWind puede no repintarlo.
-                            return (
-                                <Pressable
-                                    key={m.value}
-                                    onPress={() => setMotivo(elegido ? null : m.value)}
-                                    accessibilityRole="radio"
-                                    accessibilityState={{ selected: elegido }}
-                                    className="rounded-full border px-3 py-1.5"
-                                    style={{
-                                        borderColor: elegido ? colores.primario : colores['borde-medio'],
-                                        backgroundColor: elegido ? colores['primario-suave'] : colores.superficie,
-                                    }}
-                                >
-                                    <Text
-                                        className="text-[13px] font-medium"
-                                        style={{ color: elegido ? colores.primario : colores['texto-secundario'] }}
-                                    >
-                                        {m.label}
-                                    </Text>
-                                </Pressable>
-                            );
-                        })}
-                    </View>
+                    <Selector
+                        opciones={MOTIVOS}
+                        valor={motivo}
+                        onCambiar={setMotivo}
+                        opcionVacia="Sin especificar"
+                        etiqueta="Motivo"
+                    />
                 </View>
             )}
 
