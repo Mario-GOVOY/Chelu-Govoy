@@ -22,7 +22,17 @@ export type Mensaje = {
     // Preguntas que propone Chelu al acabar la respuesta.
     sugerencias?: string[];
     documentos?: Documento[];
+    graficas?: Grafica[];
     voto?: Voto | null;
+};
+
+// Gráfica de ApexCharts tal como la manda el back.
+export type Grafica = {
+    // Tipo de gráfica (bar, line, pie…), si no viene en options.chart.type.
+    grafico?: string;
+    titulo?: string;
+    series: unknown[];
+    options?: Record<string, unknown>;
 };
 
 // Valoración de una respuesta. El motivo solo en las negativas.

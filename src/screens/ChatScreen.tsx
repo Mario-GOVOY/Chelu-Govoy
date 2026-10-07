@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { DrawerScreenProps } from '@react-navigation/drawer';
+import { CompositeScreenProps } from '@react-navigation/native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BarChart3, FileText, Menu, RefreshCw, TrendingUp, TriangleAlert, Truck } from 'lucide-react-native';
 
 import { duplicarChat } from '@/chat/chatApi';
@@ -11,14 +13,20 @@ import { CajaMensaje } from '@/components/CajaMensaje';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { HojaValoracion, type Valorando } from '@/components/HojaValoracion';
 import { Boton } from '@/components/ui/Boton';
+import { CapaGiro } from '@/components/ui/CapaGiro';
 import { Pantalla } from '@/components/ui/Pantalla';
 import { AppDrawerParamList } from '@/navigation/AppNavigator';
+import { RootStackParamList } from '@/navigation/RootNavigator';
 import { useColores } from '@/theme/ThemeProvider';
 import { useSesionActiva } from '@/context/SesionContext';
 import type { Documento } from '@/types/Chat';
 import { esSesionMaster, HAS_FEEDBACK_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
 
-type Props = DrawerScreenProps<AppDrawerParamList, 'Chat'>;
+// Del drawer y, por encima, del stack raíz (para abrir la gráfica ampliada).
+type Props = CompositeScreenProps<
+    DrawerScreenProps<AppDrawerParamList, 'Chat'>,
+    NativeStackScreenProps<RootStackParamList>
+>;
 
 // Los mismos ejemplos que la web (EXAMPLES en ChatChelu/constants.ts).
 const EJEMPLOS = [
@@ -39,7 +47,6 @@ export default function ChatScreen({ navigation, route }: Props) {
     // Respuesta que se está valorando (su runId y el pulgar pulsado); null con la hoja cerrada.
     const [valorando, setValorando] = useState<(Valorando & { runId: string }) | null>(null);
     const cerrarValoracion = useCallback(() => setValorando(null), []);
-
     // La lista va invertida para que empiece abajo, en el último mensaje.
     const invertidos = useMemo(() => [...mensajes].reverse(), [mensajes]);
 
@@ -190,6 +197,7 @@ export default function ChatScreen({ navigation, route }: Props) {
                                 onValorar={puedeValorar && item.runId && !item.estado
                                     ? (valoracion) => setValorando({ runId: item.runId!, valoracion, anterior: item.voto ?? null })
                                     : undefined}
+                                onAmpliarGrafica={(grafica) => navigation.navigate('Grafica', { grafica })}
                             />
                         )}
                     />
@@ -211,6 +219,7 @@ export default function ChatScreen({ navigation, route }: Props) {
                 onCerrar={cerrarValoracion}
                 onEnviar={(voto) => votar(valorando!.runId, voto, valorando!.anterior)}
             />
+            <CapaGiro />
         </Pantalla>
     );
 }

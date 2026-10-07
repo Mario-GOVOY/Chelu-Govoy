@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { enviarMensaje, EventoChat, obtenerChat, votarRespuesta } from '@/chat/chatApi';
-import type { Documento, Herramienta, Mensaje, Voto } from '@/types/Chat';
+import type { Documento, Grafica, Herramienta, Mensaje, Voto } from '@/types/Chat';
 import { etiquetaHerramienta } from '@/chat/herramientas';
 
 /**
@@ -76,6 +76,7 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
             let runId: string | undefined;
             let sugerencias: string[] = [];
             const documentos: Documento[] = [];
+            const graficas: Grafica[] = [];
 
             // El 'fin' de una herramienta no dice cuál de sus llamadas acaba: se toma la última abierta con ese nombre.
             const herramientas = new Map<string, Herramienta>();
@@ -124,6 +125,9 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
                         } else if (evento.tipo === 'documento') {
                             documentos.push(evento.documento);
                             actualizar({ documentos: [...documentos] });
+                        } else if (evento.tipo === 'grafica') {
+                            graficas.push(evento.grafica);
+                            actualizar({ graficas: [...graficas] });
                         } else if (evento.tipo === 'done') {
                             runId = evento.run_id;
                         } else if (evento.tipo === 'error') {

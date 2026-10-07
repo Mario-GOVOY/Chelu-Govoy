@@ -8,14 +8,17 @@ import { Boton } from '@/components/ui/Boton';
 import { Pantalla } from '@/components/ui/Pantalla';
 import { useSesion } from '@/context/SesionContext';
 import { AppNavigator } from '@/navigation/AppNavigator';
+import GraficaScreen from '@/screens/GraficaScreen';
 import LoginScreen from '@/screens/LoginScreen';
 import SuplantarScreen from '@/screens/SuplantarScreen';
 import { useColores, useEsquema } from '@/theme/ThemeProvider';
+import type { Grafica } from '@/types/Chat';
 
 export type RootStackParamList = {
     Login: undefined;
     Suplantar: undefined;
     App: undefined;
+    Grafica: { grafica: Grafica };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -71,10 +74,26 @@ export function RootNavigator() {
 
     return (
         <NavigationContainer ref={navigationRef} theme={tema}>
-            <Stack.Navigator screenOptions={{ headerShown: false }}>
+            {/* La app va en vertical; solo la gráfica ampliada gira (app.json deja girar para eso). */}
+            <Stack.Navigator screenOptions={{ headerShown: false, orientation: 'portrait' }}>
                 {estado.tipo === 'fuera' && <Stack.Screen name="Login" component={LoginScreen} />}
                 {estado.tipo === 'staff' && <Stack.Screen name="Suplantar" component={SuplantarScreen} />}
-                {estado.tipo === 'dentro' && <Stack.Screen name="App" component={AppNavigator} />}
+                {estado.tipo === 'dentro' && (
+                    <>
+                        {/* Congelada mientras la gráfica está encima: así no se vuelve a pintar al girar. */}
+                        <Stack.Screen name="App" component={AppNavigator} options={{ freezeOnBlur: true }} />
+                        <Stack.Screen
+                            name="Grafica"
+                            component={GraficaScreen}
+                            options={{
+                                orientation: 'landscape',
+                                animation: 'fade',
+                                statusBarHidden: true,
+                                navigationBarHidden: true,
+                            }}
+                        />
+                    </>
+                )}
             </Stack.Navigator>
         </NavigationContainer>
     );

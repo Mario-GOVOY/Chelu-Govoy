@@ -4,7 +4,7 @@ import ReactNativeBlobUtil from 'react-native-blob-util';
 
 import { authFetch } from '@/auth/authManager';
 import { API_URL } from '@/auth/Constants';
-import type { Chat, Documento, Mensaje, ResumenChat, Voto } from '@/types/Chat';
+import type { Chat, Documento, Grafica, Mensaje, ResumenChat, Voto } from '@/types/Chat';
 
 // El enlace que trae el back caduca; se descarga siempre pidiendo uno nuevo con el fileId.
 const aDocumento = (d: any): Documento => ({
@@ -12,6 +12,13 @@ const aDocumento = (d: any): Documento => ({
     nombre: d.nombre || 'documento',
     formato: d.formato || '',
     tamano: d.tamano_bytes ?? undefined,
+});
+
+const aGrafica = (g: any): Grafica => ({
+    grafico: g.grafico ?? undefined,
+    titulo: g.titulo ?? undefined,
+    series: Array.isArray(g.series) ? g.series : [],
+    options: g.options ?? undefined,
 });
 
 // El back manda los tiempos en segundos.
@@ -43,20 +50,22 @@ export async function obtenerChat(id: string): Promise<Chat> {
         titulo: chat?.title || 'Conversación',
         mensajes: mensajes.flatMap((m, i): Mensaje[] => {
             const texto = typeof m.content === 'string' ? m.content : '';
-            if (!texto) return [];
-            if (m.role === 'user' && !esResumenFormulario(texto)) return [{ id: String(i), rol: 'usuario', texto }];
-            if (m.role === 'assistant') {
-                return [{
-                    id: m.run_id ?? String(i),
-                    rol: 'chelu',
-                    texto,
-                    runId: m.run_id ?? undefined,
-                    sugerencias: Array.isArray(m.suggestions) ? m.suggestions : [],
-                    documentos: Array.isArray(m.docs) ? m.docs.filter((d: any) => d?.file_id).map(aDocumento) : [],
-                    voto: m.feedback ?? null,
-                }];
-            }
-            return [];
+            if (m.role === 'user') return texto && !esResumenFormulario(texto) ? [{ id: String(i), rol: 'usuario', texto }] : [];
+            if (m.role !== 'assistant') return [];
+            const documentos = Array.isArray(m.docs) ? m.docs.filter((d: any) => d?.file_id).map(aDocumento) : [];
+            const graficas = Array.isArray(m.charts) ? m.charts.map(aGrafica) : [];
+            // Una respuesta sin texto pero con tarjetas (p. ej. solo una gráfica) sí se muestra, como en la web.
+            if (!texto && !documentos.length && !graficas.length) return [];
+            return [{
+                id: m.run_id ?? String(i),
+                rol: 'chelu',
+                texto,
+                runId: m.run_id ?? undefined,
+                sugerencias: Array.isArray(m.suggestions) ? m.suggestions : [],
+                documentos,
+                graficas,
+                voto: m.feedback ?? null,
+            }];
         }),
     };
 }
@@ -150,10 +159,11 @@ export type EventoChat =
     | { tipo: 'tool'; fase: 'inicio' | 'fin'; nombre: string; args?: Record<string, unknown> }
     | { tipo: 'sugerencias'; preguntas: string[] }
     | { tipo: 'documento'; documento: Documento }
+    | { tipo: 'grafica'; grafica: Grafica }
     | { tipo: 'done'; run_id?: string }
     | { tipo: 'error'; detail?: string };
 
-// 'documento' se trata aparte: se convierte a Documento antes de pasarlo.
+// 'documento' y 'grafica' se tratan aparte: se convierten antes de pasarlos.
 const TIPOS = ['session', 'delta', 'tool', 'sugerencias', 'done', 'error'];
 
 /**
@@ -202,6 +212,8 @@ export async function enviarMensaje({ pregunta, sessionId, signal, onEvento }: {
                 const evento = JSON.parse(linea.slice(5));
                 if (evento?.tipo === 'documento') {
                     if (evento.file_id) onEvento({ tipo: 'documento', documento: aDocumento(evento) });
+                } else if (evento?.tipo === 'grafica') {
+                    onEvento({ tipo: 'grafica', grafica: aGrafica(evento) });
                 } else if (TIPOS.includes(evento?.tipo)) {
                     onEvento(evento);
                 }
