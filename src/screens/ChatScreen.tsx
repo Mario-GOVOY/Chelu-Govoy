@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+﻿import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { DrawerScreenProps } from '@react-navigation/drawer';
 import { CompositeScreenProps } from '@react-navigation/native';
@@ -181,7 +181,7 @@ export default function ChatScreen({ navigation, route }: Props) {
                         inverted
                         data={invertidos}
                         keyExtractor={(m) => m.id}
-                        contentContainerClassName="gap-5 px-4 py-4"
+                        contentContainerClassName="gap-5 px-6 py-4"
                         keyboardShouldPersistTaps="handled"
                         renderItem={({ item, index }) => (
                             <BurbujaMensaje

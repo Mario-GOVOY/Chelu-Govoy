@@ -34,7 +34,8 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
     if (mensaje.rol === 'usuario') {
         return (
             <View className="items-end gap-2">
-                <View className="flex-row items-center gap-2">
+                {/* Avatar y nombre algo más pegados al borde que el contenido. */}
+                <View className="-mr-2 flex-row items-center gap-2">
                     <Text className="text-sm font-bold text-texto">Tú</Text>
                     <View className="h-7 w-7 items-center justify-center rounded-lg bg-texto-secundario">
                         <Text className="text-sm font-bold text-superficie">
@@ -42,7 +43,7 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
                         </Text>
                     </View>
                 </View>
-                <View className="mr-9 max-w-[85%] rounded-xl rounded-tr-sm bg-primario px-4 py-3">
+                <View className="max-w-[85%] rounded-xl rounded-tr-sm bg-primario px-4 py-3">
                     <Text selectable className="text-base text-sobre-primario">
                         {mensaje.texto}
                     </Text>
@@ -53,13 +54,13 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
 
     return (
         <View className="gap-1">
-            <View className="flex-row items-center gap-2">
+            <View className="-ml-2 flex-row items-center gap-2">
                 <View className="h-7 w-7 items-center justify-center rounded-lg border border-borde bg-superficie p-0.5">
                     <CheluAvatar />
                 </View>
                 <Text className="text-sm font-bold text-texto">CHELU</Text>
             </View>
-            <View className="gap-2 pl-9">
+            <View className="gap-2">
                 {!!mensaje.herramientas?.length && <TarjetasHerramientas herramientas={mensaje.herramientas} />}
                 {!!mensaje.texto && <TextoMarkdown texto={mensaje.texto} />}
                 {mensaje.graficas?.map((g, i) => (
