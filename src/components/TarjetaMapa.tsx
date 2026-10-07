@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 import { Map as IconoMapa, Maximize2 } from 'lucide-react-native';
 
-import { capasLeyenda, IMAGENES_PNG, iconoMarcador, marcadorCapa, tipoCapa } from '@/chat/mapas';
+import { capasLeyenda, IMAGENES_PNG, getMarkerIcon, getLayerMarker, tipoCapa } from '@/chat/mapas';
 import { SvgIcono } from '@/components/IconosMapa';
 import { useColores } from '@/theme/ThemeProvider';
 import type { CapaMapa, Mapa } from '@/types/Chat';
@@ -28,7 +28,7 @@ function MuestraCapa({ capa }: { capa: CapaMapa }) {
             </View>
         );
     }
-    const icono = iconoMarcador(marcadorCapa(capa), capa.color);
+    const icono = getMarkerIcon(getLayerMarker(capa), capa.color);
     if ('png' in icono) {
         return (
             <Image

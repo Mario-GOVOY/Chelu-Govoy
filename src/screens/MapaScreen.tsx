@@ -10,6 +10,7 @@ import {
     TransformRequestManager,
 } from '@maplibre/maplibre-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { FeatureCollection } from 'geojson';
 import { X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -24,6 +25,7 @@ import {
     URL_ATRIBUCION_OSM,
     vistaInicial,
 } from '@/chat/mapas';
+import { getLinesByStreets } from '@/chat/rutas';
 import { GeneradorIconos } from '@/components/IconosMapa';
 import { CargaMapa } from '@/components/Spinners/CargaMapa';
 import { LeyendaMapa } from '@/components/TarjetaMapa';
@@ -43,6 +45,8 @@ const TEXTOS_CON_PARADAS = [
 ];
 const TEXTOS_SIN_PARADAS = ['Cargando el mapa…', 'Descargando las calles…', 'Buscando el mejor encuadre…'];
 
+const SIN_LINEAS: FeatureCollection = { type: 'FeatureCollection', features: [] };
+
 // Se añade al cargar el módulo, antes de la primera petición de teselas.
 TransformRequestManager.addHeader({ id: 'user-agent', name: 'User-Agent', value: USER_AGENT_MAPAS });
 
@@ -60,7 +64,33 @@ export default function MapaScreen({ navigation, route }: Props) {
     const [entradaTerminada, setEntradaTerminada] = useState(false);
     const [iconos, setIconos] = useState<Record<string, ImageEntry> | null>(null);
     const imagenes = useMemo(() => ({ ...IMAGENES_PNG, ...iconos }), [iconos]);
+    const [lineas, setLineas] = useState<FeatureCollection | null>(null);
+    const [esperaRutasAgotada, setEsperaRutasAgotada] = useState(false);
+    const datos = useMemo(() => ({ ...elementos, lineas: lineas ?? SIN_LINEAS }), [elementos, lineas]);
+    const listo = iconos !== null && (lineas !== null || esperaRutasAgotada);
+    const [mapaCargado, setMapaCargado] = useState(false);
     const [mapaPintado, setMapaPintado] = useState(false);
+
+    const textosCarga = useMemo(() => {
+        const textos = elementos.iconos.length ? [...TEXTOS_CON_PARADAS] : [...TEXTOS_SIN_PARADAS];
+        if (elementos.lineas.features.length) textos.splice(1, 0, 'Trazando las rutas…');
+        return textos;
+    }, [elementos]);
+
+    // Si las rutas tardan más de 5 s, el mapa se abre sin ellas y se pintan al llegar.
+    useEffect(() => {
+        let cancelado = false;
+        const drawRoutes = async () => {
+            const routes = await getLinesByStreets(elementos.lineas);
+            if (!cancelado) setLineas(routes);
+        };
+        drawRoutes();
+        const tope = setTimeout(() => setEsperaRutasAgotada(true), 5000);
+        return () => {
+            cancelado = true;
+            clearTimeout(tope);
+        };
+    }, [elementos]);
 
     // El mapa y los iconos se montan al acabar la animación de entrada.
     useEffect(
@@ -71,12 +101,19 @@ export default function MapaScreen({ navigation, route }: Props) {
         [navigation],
     );
 
-    // La carga se quita cuando el mapa avisa de que ha pintado los iconos, o a los 3 s si no avisa.
+    // La carga se quita cuando el mapa avisa de que ha pintado todo, o a los 3 s si no avisa.
     useEffect(() => {
-        if (!iconos) return;
+        if (!listo) return;
         const tope = setTimeout(() => setMapaPintado(true), 3000);
         return () => clearTimeout(tope);
-    }, [iconos]);
+    }, [listo]);
+
+    // A los 10 s de cargar el mapa, la carga se quita aunque falte algo; lo que falte se pinta al llegar.
+    useEffect(() => {
+        if (!mapaCargado) return;
+        const tope = setTimeout(() => setMapaPintado(true), 10000);
+        return () => clearTimeout(tope);
+    }, [mapaCargado]);
 
     return (
         <View className="flex-1 bg-fondo">
@@ -110,12 +147,13 @@ export default function MapaScreen({ navigation, route }: Props) {
                             compass={false}
                             touchRotate={false}
                             touchPitch={false}
-                            onDidFinishRenderingMapFully={() => iconos && setMapaPintado(true)}
+                            onDidFinishLoadingMap={() => setMapaCargado(true)}
+                            onDidFinishRenderingMapFully={() => listo && setMapaPintado(true)}
                         >
                             <Camera initialViewState={vista} maxZoom={19} />
                             <Images images={imagenes} />
                             {TIPOS_ELEMENTO.map((tipo) => (
-                                <GeoJSONSource key={tipo} id={tipo} data={elementos[tipo]}>
+                                <GeoJSONSource key={tipo} id={tipo} data={datos[tipo]}>
                                     {CAPAS_ELEMENTOS.filter((capa) => capa.source === tipo).map((capa) => (
                                         <Layer key={capa.id} {...capa} />
                                     ))}
@@ -137,7 +175,7 @@ export default function MapaScreen({ navigation, route }: Props) {
                         © <Text className="text-[#0078a8] underline">OpenStreetMap</Text> contributors
                     </Text>
                 </Pressable>
-                {!mapaPintado && <CargaMapa textos={elementos.iconos.length ? TEXTOS_CON_PARADAS : TEXTOS_SIN_PARADAS} />}
+                {!mapaPintado && <CargaMapa textos={textosCarga} />}
             </View>
             {conLeyenda && (
                 <View className="border-t border-borde bg-superficie px-4 pt-3" style={{ paddingBottom: insets.bottom + 12 }}>

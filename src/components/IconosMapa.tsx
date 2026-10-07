@@ -17,7 +17,7 @@ const generados = new Map<string, string>();
 const MAX_GENERADOS = 3000;
 
 // Tamaño de cada icono. Los números se ensanchan si el texto no cabe.
-function medidas(icono: IconoGenerado) {
+function getIconSize(icono: IconoGenerado) {
     switch (icono.tipo) {
         case 'numero': {
             const ancho = Math.max(icono.tamano, Math.ceil(icono.texto.length * icono.letra * 0.6) + 2);
@@ -28,12 +28,12 @@ function medidas(icono: IconoGenerado) {
         case 'alerta':
             return { ancho: 22, alto: 22 };
         case 'pudo':
-            return { ancho: 26, alto: 26 };
+            return { ancho: 24, alto: 24 };
     }
 }
 
 // Las imágenes para MapLibre. Las que se usan pasan al final de la caché: son las últimas en borrarse.
-function aImagenes(iconos: IconoGenerado[]): Record<string, ImageEntry> {
+function getMapImages(iconos: IconoGenerado[]): Record<string, ImageEntry> {
     const imagenes: Record<string, ImageEntry> = {};
     for (const { id } of iconos) {
         const uri = generados.get(id);
@@ -108,9 +108,9 @@ function DibujoIcono({ icono, ancho, alto }: { icono: IconoGenerado; ancho: numb
                 </>
             );
         case 'pudo':
-            // Un paquete dentro de un círculo, dibujado sobre 24×24.
+            // Un paquete dentro de un círculo.
             return (
-                <G scale={ancho / 24}>
+                <>
                     <Circle cx={12} cy={12} r={11} fill="#ffffff" stroke="#000000" strokeWidth={2} />
                     <G fill="none" stroke="#000000" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                         <Path d="M16.5 9.4 L7.5 4.24" />
@@ -119,7 +119,7 @@ function DibujoIcono({ icono, ancho, alto }: { icono: IconoGenerado; ancho: numb
                         <Path d="M12 12 L12 21.6" />
                         <Path d="M21 7.5 L12 12" />
                     </G>
-                </G>
+                </>
             );
     }
 }
@@ -136,7 +136,7 @@ export function SvgIcono({
     style?: StyleProp<ViewStyle>;
     ref?: (svg: Svg | null) => void;
 }) {
-    const { ancho, alto } = medidas(icono);
+    const { ancho, alto } = getIconSize(icono);
     return (
         <Svg ref={ref} width={tamano} height={tamano} viewBox={`0 0 ${ancho} ${alto}`} style={style}>
             <DibujoIcono icono={icono} ancho={ancho} alto={alto} />
@@ -168,7 +168,7 @@ export function GeneradorIconos({ iconos, onListos }: Props) {
                 new Promise<void>((resolve) => {
                     const svg = svgs.current.get(icono.id);
                     if (!svg) return resolve();
-                    const { ancho, alto } = medidas(icono);
+                    const { ancho, alto } = getIconSize(icono);
                     svg.toDataURL(
                         (base64) => {
                             generados.set(icono.id, `data:image/png;base64,${base64}`);
@@ -185,7 +185,7 @@ export function GeneradorIconos({ iconos, onListos }: Props) {
                 return;
             }
             setTerminado(true);
-            onListos(aImagenes(iconos));
+            onListos(getMapImages(iconos));
             recortarCache();
         });
         return () => {

@@ -6,7 +6,16 @@ import type {
     StyleSpecification,
     SymbolLayerSpecification,
 } from '@maplibre/maplibre-react-native';
-import type { Feature, FeatureCollection, Position } from 'geojson';
+import type {
+    Feature,
+    FeatureCollection,
+    Geometry,
+    LineString,
+    MultiPolygon,
+    Point,
+    Polygon,
+    Position,
+} from 'geojson';
 
 import { TILE_URL } from '@/auth/Constants';
 import type { CapaMapa, Mapa, PropiedadesMapa } from '@/types/Chat';
@@ -30,9 +39,9 @@ export const CAPAS_ELEMENTOS: (FillLayerSpecification | LineLayerSpecification |
         type: 'line',
         source: 'lineas',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': ['get', 'color'], 'line-width': 3 },
+        paint: { 'line-color': ['get', 'color'], 'line-width': 2 },
     },
-    // Cada punto con la imagen de su `icono` (ver iconoPunto). Se pintan todos aunque se solapen,
+    // Cada punto con la imagen de su `icono` (ver getPointIcon). Se pintan todos aunque se solapen,
     // los posteriores encima.
     {
         id: 'puntos',
@@ -171,7 +180,7 @@ const marcadorDe = (propiedades: PropiedadesMapa | null, capa: CapaMapa) =>
     String(propiedades?.marcador ?? capa.marcador ?? 'circle').toLowerCase();
 
 /** El icono de un marcador sin número: su PNG, la alerta, el PUDO o, si no, un círculo del color de la capa. */
-export function iconoMarcador(marcador: string, color: string): IconoPunto {
+export function getMarkerIcon(marcador: string, color: string): IconoPunto {
     const png = PNG_MARCADOR[marcador];
     if (png) return { png };
     if (marcador === 'alert') return { generado: iconoGenerado({ tipo: 'alerta' }) };
@@ -184,9 +193,9 @@ export function iconoMarcador(marcador: string, color: string): IconoPunto {
  * - marker (parada de ruta): círculo con el borde del color de la capa, relleno según su estado
  *   y su número de orden en negro.
  * - number: solo el número, del color de la capa.
- * - el resto: ver iconoMarcador.
+ * - el resto: ver getMarkerIcon.
  */
-function iconoPunto(propiedades: PropiedadesMapa | null, capa: CapaMapa): IconoPunto {
+function getPointIcon(propiedades: PropiedadesMapa | null, capa: CapaMapa): IconoPunto {
     const marcador = marcadorDe(propiedades, capa);
     const texto = String(propiedades?.orden || (propiedades?.etiqueta ?? ''));
     if (marcador === 'marker') {
@@ -198,18 +207,21 @@ function iconoPunto(propiedades: PropiedadesMapa | null, capa: CapaMapa): IconoP
     if (marcador === 'number' && texto) {
         return { generado: iconoGenerado({ tipo: 'numero', texto, colorTexto: capa.color, tamano: 18, letra: 11.88 }) };
     }
-    return iconoMarcador(marcador, capa.color);
+    return getMarkerIcon(marcador, capa.color);
 }
 
 /** El marcador de los puntos de una capa, para su icono en la leyenda. */
-export function marcadorCapa(capa: CapaMapa) {
+export function getLayerMarker(capa: CapaMapa) {
     const conMarcador = capa.geojson.features.find((f) => f.geometry.type === 'Point' && f.properties?.marcador);
     return marcadorDe(conMarcador?.properties ?? null, capa);
 }
 
 export type TipoElemento = 'zonas' | 'lineas' | 'puntos';
 
-export type ElementosMapa = Record<TipoElemento, FeatureCollection> & {
+export type ElementosMapa = {
+    zonas: FeatureCollection<Polygon | MultiPolygon>;
+    lineas: FeatureCollection<LineString>;
+    puntos: FeatureCollection<Point>;
     // Los iconos que hay que generar, sin repetir.
     iconos: IconoGenerado[];
 };
@@ -217,12 +229,12 @@ export type ElementosMapa = Record<TipoElemento, FeatureCollection> & {
 /**
  * Los elementos de todas las capas agrupados por geometría, cada uno con el color de su capa
  * en `color`. Así se pintan zonas, líneas y puntos en ese orden aunque una capa los mezcle.
- * Los puntos llevan además en `icono` el id de su imagen (ver iconoPunto).
+ * Los puntos llevan además en `icono` el id de su imagen (ver getPointIcon).
  */
 export function elementosPorTipo(mapa: Mapa): ElementosMapa {
-    const zonas: Feature[] = [];
-    const lineas: Feature[] = [];
-    const puntos: Feature[] = [];
+    const zonas: Feature<Polygon | MultiPolygon>[] = [];
+    const lineas: Feature<LineString>[] = [];
+    const puntos: Feature<Point>[] = [];
     const iconos = new Map<string, IconoGenerado>();
     for (const capa of mapa.capas) {
         for (const elemento of capa.geojson.features) {
@@ -240,17 +252,21 @@ export function elementosPorTipo(mapa: Mapa): ElementosMapa {
                 const [coordinates] = filtrarPosiciones([geometria.coordinates], 2);
                 if (coordinates) lineas.push({ ...conColor, geometry: { type: 'LineString', coordinates } });
             } else if (geometria.type === 'MultiLineString') {
-                const coordinates = filtrarPosiciones(geometria.coordinates, 2);
-                if (coordinates.length) lineas.push({ ...conColor, geometry: { type: 'MultiLineString', coordinates } });
+                for (const coordinates of filtrarPosiciones(geometria.coordinates, 2)) {
+                    lineas.push({ ...conColor, geometry: { type: 'LineString', coordinates } });
+                }
             } else if (geometria.type === 'Point' && posicionValida(geometria.coordinates)) {
-                const icono = iconoPunto(elemento.properties, capa);
+                const icono = getPointIcon(elemento.properties, capa);
                 if ('generado' in icono) iconos.set(icono.generado.id, icono.generado);
                 const idIcono = 'png' in icono ? icono.png : icono.generado.id;
-                puntos.push({ ...conColor, properties: { ...conColor.properties, icono: idIcono } });
+                puntos.push({ ...conColor, geometry: geometria, properties: { ...conColor.properties, icono: idIcono } });
             }
         }
     }
-    const coleccion = (features: Feature[]): FeatureCollection => ({ type: 'FeatureCollection', features });
+    const coleccion = <Tipo extends Geometry>(features: Feature<Tipo>[]): FeatureCollection<Tipo> => ({
+        type: 'FeatureCollection',
+        features,
+    });
     return {
         zonas: coleccion(zonas),
         lineas: coleccion(lineas),
@@ -272,5 +288,5 @@ export function tipoCapa(capa: CapaMapa): TipoCapa {
     return 'puntos';
 }
 
-// La leyenda solo se pinta con dos capas o más.
+// Las capas que van en la leyenda: todas menos los recorridos.
 export const capasLeyenda = (mapa: Mapa) => mapa.capas.filter((capa) => tipoCapa(capa) !== 'recorrido');

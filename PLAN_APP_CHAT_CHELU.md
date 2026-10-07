@@ -272,7 +272,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
     - Atribución "© OpenStreetMap contributors" visible, enlazada a openstreetmap.org/copyright. El botón (i) de MapLibre no basta porque la esconde.
     - Usar la caché (MapLibre revalida con `If-None-Match`) y sin descargas masivas ni paquetes sin conexión (`OfflineManager` no se usa).
     - Sin garantías: pueden bloquear sin avisar, por eso la URL se puede cambiar en una línea.
-  - **Licencias del software:** MapLibre RN (MIT), MapLibre Native (BSD-2-Clause), turf (MIT), style-spec (ISC), OkHttp (Apache 2.0). Ninguna pide aparecer en el mapa (el logo de MapLibre se quita); van en la pantalla de licencias de terceros, pendiente antes de publicar.
+  - **Licencias del software:** MapLibre RN (MIT), MapLibre Native (BSD-2-Clause), turf (MIT), style-spec (ISC), OkHttp (Apache 2.0). Ninguna pide aparecer en el mapa (el logo de MapLibre se quita); van en la pantalla de licencias de terceros, pendiente antes de publicar. Falta revisar la de `leaflet-color-markers`, de donde vienen los pines que lleva la app.
   - **Modo oscuro (decidido): el mapa queda fuera.** Las teselas se ven siempre claras, como en la web, y los colores de polígonos se eligen para fondo claro.
     - El marco del mapa sí sigue el tema: tarjeta, cabecera, leyenda, tooltips, botones y pantalla completa.
     - Opcional más adelante: atenuar el mapa al ~85–90 % de brillo en modo oscuro para que no deslumbre (CSS en B, `raster-brightness-max` en A).
@@ -500,7 +500,7 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
 |---|---|
 | Gráficas | Hecho |
 | Valoración de respuestas | Hecho |
-| Mapas | Bloques 1 a 3 hechos; quedan marcadores, rutas reales y vista previa |
+| Mapas | Bloques 1 a 5 hechos; queda la vista previa (al final del plan) |
 | Notas de voz (`expo-audio`, m4a a `/transcribir`) | Pendiente |
 
 #### Gráficas
@@ -545,8 +545,8 @@ Decisión de librería y planteamiento en D8. Se trabaja en bloques, revisando c
 | 1 | Datos: tipos `Mapa`/`CapaMapa`, evento `mapa` del stream y `maps` de `get_chat`; tarjeta en el chat (`TarjetaMapa`) con título, número de puntos o zonas y leyenda | Hecho |
 | 2 | Pantalla completa (`MapaScreen`): teselas de OSM, encuadre inicial, atribución propia y User-Agent. Se abre al pulsar la tarjeta | Hecho |
 | 3 | Capas: zonas, líneas y puntos con el color de su capa; leyenda bajo el mapa | Hecho |
-| 4 | Marcadores: iconos (depósito, entrega, recogida, entrega y recogida, incidencia, agrupado, PUDO, alerta) y paradas numeradas según su estado | Pendiente |
-| 5 | Rutas reales: las líneas pasan por `/directionsForMap2-todas-las-rutas` del back (OSRM), con caché en memoria y la línea recta si falla, como la web | Pendiente |
+| 4 | Marcadores: iconos (depósito, entrega, recogida, entrega y recogida, incidencia, agrupado, PUDO, alerta), paradas numeradas según su estado y pantalla de carga | Hecho |
+| 5 | Rutas reales: las líneas pasan por `/directionsForMap2-todas-las-rutas` del back (OSRM), con caché en memoria; si una ruta falla no se dibuja | Hecho |
 | 6 | Vista previa en la tarjeta (ver D8): captura de un mapa oculto | Pendiente, al final del plan |
 
 **Detalles:**
@@ -555,14 +555,23 @@ Decisión de librería y planteamiento en D8. Se trabaja en bloques, revisando c
   - Une al leerlo las capas con nombre equivalente ("VALÈNCIA"/"VALENCIA"), con el color de la primera.
   - Ojo: `centro` y `bounds` llegan en `[lat, lon]` y el GeoJSON en `[lon, lat]`, que es lo que usa MapLibre.
   - El nombre de las capas lo pone el back. Las de puntos sin ruta ni categoría se llaman como su marcador (`depot`, `pudo`…); traducirlas a "Depósito", etc. queda pendiente de decidir (en el back o en la app).
-- **Tarjeta (`TarjetaMapa`):** icono, título, "N puntos · N zonas" ("(recortado)" si el back truncó) y leyenda (`LeyendaMapa`): cuadrado translúcido para zonas, círculo para puntos; sin los recorridos y solo con dos capas o más, como la web. Va tras las gráficas en la respuesta.
+- **Tarjeta (`TarjetaMapa`):** icono, título, "N puntos · N zonas" ("(recortado)" si el back truncó) y leyenda (`LeyendaMapa`): cuadrado translúcido para zonas y, para puntos, el icono real de su marcador a 16 (`getLayerMarker` + `getMarkerIcon`; las capas de paradas, un círculo de su color). Sin los recorridos y solo con dos capas o más, como la web. Va tras las gráficas en la respuesta.
 - **Pantalla completa (`MapaScreen`, pantalla `Mapa` del stack raíz):**
   - Cabecera con título y cerrar; sin giro ni inclinación (siempre con el norte arriba, sin brújula).
   - Encuadre (`vistaInicial`): `bounds` con 40 px de margen; si son un solo punto, su centro con zoom 15; sin `bounds`, `centro` con zoom 13; sin nada, Madrid con zoom 12, como la web.
   - Atribución propia abajo a la derecha, con colores fijos (el mapa es siempre claro): "© OpenStreetMap contributors", con "OpenStreetMap" como enlace. Logo y botón (i) de MapLibre desactivados.
   - User-Agent con `TransformRequestManager.addHeader`, registrado al cargar el módulo para que esté antes de la primera petición. Solo afecta a las peticiones de MapLibre (su propio cliente OkHttp en Android).
-- **Capas:** `elementosPorTipo()` junta los elementos de todas las capas en tres fuentes (zonas, líneas, puntos), cada uno con el color de su capa, para que se pinten siempre en ese orden. Descarta los puntos en (0, 0) o sin coordenadas, como la web. El estilo está en `CAPAS_ELEMENTOS` (estilo estándar de MapLibre, reutilizable en la vista previa): zonas al 25 % con borde de 2 px, líneas de 3 px y puntos de radio 6 con borde blanco.
-- **Números de orden (bloque 4):** el texto en MapLibre necesita *glyphs* (fuentes) y el estilo raster de OSM no los trae. Propuesta: dibujar cada número como icono, como hace la web con sus SVG, en lugar de meter un servicio de fuentes.
+- **Capas:** `elementosPorTipo()` junta los elementos de todas las capas en tres fuentes, tipadas por geometría (zonas `Polygon | MultiPolygon`, líneas `LineString`, puntos `Point`), cada elemento con el color de su capa, para que se pinten siempre en ese orden. Quita las posiciones en (0, 0) o sin coordenadas en todas las geometrías, como la web; las `MultiLineString` se separan en líneas sueltas. El estilo está en `CAPAS_ELEMENTOS` (estilo estándar de MapLibre, reutilizable en la vista previa): zonas al 25 % con borde de 2, líneas de 2 y una sola capa `symbol` para todos los puntos.
+- **Marcadores (bloque 4):**
+  - Todos los puntos son iconos en la capa `puntos`: `icon-image` = propiedad `icono` del punto, `icon-size` 0,8, todos visibles aunque se solapen y los posteriores encima (`symbol-z-order: 'source'`). Así una parada tapa entera a la de debajo.
+  - Qué icono lleva cada punto (`getPointIcon` / `getMarkerIcon`): `marker` → círculo con el número de orden (relleno: color de la ruta si está completada, rojo si tiene incidencia, blanco si no); `number` → solo el número; `depot` y pines (`entrega`, `recogida`, `entregaRecogida`, `incidencia`, `agrupado`) → PNG copiados de la web en `assets/mapa/` (pines `@1.5x`, se ven de 17×28; depósito reducido a 90 px `@3x`, se ve de 30); `alert`, `pudo` y el resto → iconos generados (alerta, paquete, círculo del color de la capa). `entregaRecogida` sale con su pin, no como en la web, que por un fallo lo pinta como círculo.
+  - Números como icono, no como texto: el texto en MapLibre necesita *glyphs* (fuentes) que el estilo de OSM no trae, y además se pintaría por encima de todos los iconos de la capa.
+  - **Generación (`IconosMapa.tsx`, `GeneradorIconos`):** se dibujan con `react-native-svg` (`SvgIcono`, SVG de 1×1 px montados debajo del mapa) y se pasan a PNG con `toDataURL` a la densidad de la pantalla (`PixelRatio.get()`), en tandas de 10. Caché en RAM de los PNG (data URI) con un tope de 3000, borrando los menos usados. El id de cada icono son sus datos en JSON, así que los iguales se generan una vez. Los PNG fijos y los generados se registran con `<Images>`.
+  - La captura ocupa el hilo de UI, por eso la animación de carga es el `ActivityIndicator` nativo (lo anima el sistema en otro hilo). Descartado de momento: módulo nativo para generar en segundo plano y caché en disco.
+  - `agrupado` no se puede probar: el back lo acepta pero nunca lo genera ni se lo explica al modelo.
+- **Pantalla de carga (`Spinners/CargaMapa`):** tapa el mapa desde el primer fotograma con el spinner y textos que van pasando cada 3,5 s (se queda en el último). El mapa y el generador se montan al acabar la animación de entrada (`transitionEnd`), porque crearlos durante ella daba tirones. Se quita cuando hay iconos y rutas y el mapa avisa de que ha pintado (`onDidFinishRenderingMapFully`), o a los 3 s si no avisa; tope general de 10 s desde que carga el mapa (`onDidFinishLoadingMap`), y lo que falte se pinta al llegar.
+- **Rutas (bloque 5, `chat/rutas.ts`):** `getLinesByStreets` manda todas las líneas en un POST a `/directionsForMap2-todas-las-rutas` (sin token, como la web) y cambia la geometría de cada una por el trazado de OSRM. Si una ruta falla no se dibuja (no la recta). Caché en memoria por coordenadas de la línea, solo de las trazadas. La petición sale al abrir la pantalla; si tarda más de 5 s, el mapa se abre sin líneas y se pintan al llegar.
+- **Pendientes de mapas:** revisar la licencia de `leaflet-color-markers` (los pines) para la pantalla de licencias; los pines se ven algo borrosos en pantallas densas (se podrían generar como SVG); el texto "Colocando las paradas…" sale también en mapas sin paradas.
 - **Vista previa (bloque 6), caso grande (20 mapas de 2000 puntos):** cola de una captura a la vez, priorizando las tarjetas visibles (la lista invertida monta primero las recientes); cancelar al desmontar la tarjeta; pausar la cola mientras se arrastra la lista (crear la vista nativa puede costar uno o dos fotogramas); capturar a densidad 2; caché en disco con clave `runId` + posición del mapa (el back no manda id); tiempo máximo, y si salta, la tarjeta queda sin imagen pero se puede abrir.
 
 ### Fase 0 en detalle (Back-Govoy)
@@ -717,3 +726,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-07 | D8: teselas de `tile.openstreetmap.org` sin subdominios, URL en `TILE_URL` (`Constants.ts`); User-Agent `CheluGovoy (com.govoy.chelu)`; atribución propia visible con enlace |
 | 2026-10-07 | D8: vista previa por captura de un mapa oculto (idéntica a la pantalla completa), al final del plan de mapas |
 | 2026-10-07 | Fase 3, mapas: bloques 1 a 3 hechos (datos y tarjeta, pantalla completa, capas y leyenda) |
+| 2026-10-07 | Mapas, bloque 4: todos los puntos como iconos en una capa `symbol`; números y formas generados con `react-native-svg` a PNG (densidad de pantalla, caché en RAM de 3000), PNG de la web para depósito y pines; `icon-size` 0,8 |
+| 2026-10-07 | Mapas: pantalla de carga con `ActivityIndicator` (el pin animado con Reanimated se paraba al generar iconos en el hilo de UI); mapa montado tras la animación de entrada; topes de 3 s y 10 s |
+| 2026-10-07 | Mapas, bloque 5: rutas por calles con `/directionsForMap2-todas-las-rutas`, grosor 2; si una ruta falla no se dibuja; espera máxima de 5 s |
+| 2026-10-07 | Descartados de momento: módulo nativo para generar iconos fuera del hilo de UI y caché de iconos en disco |
