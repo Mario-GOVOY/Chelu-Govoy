@@ -332,9 +332,10 @@ function Filas({ datos, radial = false }: { datos: DatosGrafica; radial?: boolea
     const escala = radial ? 100 : Math.max(...datos.series.flatMap((s) => s.valores.map(Math.abs)), 0) || 1;
     const sufijo = radial ? ' %' : '';
 
+    // Sin flex-1: con una serie va en una columna, y ahí flex-1 le quita el alto y a veces no se ve.
     const barra = (valor: number, colorBarra: string) => (
         <View
-            className="h-2 flex-1 overflow-hidden rounded-full"
+            className="h-2 w-full shrink overflow-hidden rounded-full"
             style={{ backgroundColor: radial ? colores['superficie-alt'] : 'transparent' }}
         >
             <View

@@ -23,7 +23,8 @@
     },
     "plugins": [
       "expo-secure-store",
-      "react-native-blob-util"
+      "react-native-blob-util",
+      "@maplibre/maplibre-react-native"
     ]
   }
 }
