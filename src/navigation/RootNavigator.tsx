@@ -10,15 +10,17 @@ import { useSesion } from '@/context/SesionContext';
 import { AppNavigator } from '@/navigation/AppNavigator';
 import GraficaScreen from '@/screens/GraficaScreen';
 import LoginScreen from '@/screens/LoginScreen';
+import MapaScreen from '@/screens/MapaScreen';
 import SuplantarScreen from '@/screens/SuplantarScreen';
 import { useColores, useEsquema } from '@/theme/ThemeProvider';
-import type { Grafica } from '@/types/Chat';
+import type { Grafica, Mapa } from '@/types/Chat';
 
 export type RootStackParamList = {
     Login: undefined;
     Suplantar: undefined;
     App: undefined;
     Grafica: { grafica: Grafica };
+    Mapa: { mapa: Mapa };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -92,6 +94,7 @@ export function RootNavigator() {
                                 navigationBarHidden: true,
                             }}
                         />
+                        <Stack.Screen name="Mapa" component={MapaScreen} options={{ animation: 'slide_from_bottom' }} />
                     </>
                 )}
             </Stack.Navigator>

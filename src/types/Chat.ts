@@ -1,3 +1,5 @@
+import type { FeatureCollection, Geometry } from 'geojson';
+
 export type ResumenChat = {
     id: string;
     titulo: string;
@@ -23,6 +25,7 @@ export type Mensaje = {
     sugerencias?: string[];
     documentos?: Documento[];
     graficas?: Grafica[];
+    mapas?: Mapa[];
     voto?: Voto | null;
 };
 
@@ -33,6 +36,40 @@ export type Grafica = {
     titulo?: string;
     series: unknown[];
     options?: Record<string, unknown>;
+};
+
+// Mapa del chat (generar_mapa en el back). Ojo: centro y bounds van en [lat, lon],
+// y las coordenadas del GeoJSON en [lon, lat].
+export type Mapa = {
+    titulo?: string;
+    centro?: [number, number];
+    bounds?: [[number, number], [number, number]];
+    // Los de puntos y rutas traen numPuntos; los de zonas, numPoligonos.
+    numPuntos?: number;
+    numPoligonos?: number;
+    // El back recortó los puntos por haber demasiados.
+    truncado?: boolean;
+    capas: CapaMapa[];
+};
+
+export type CapaMapa = {
+    nombre: string;
+    color: string;
+    // 'points', 'lines' o 'polygons'.
+    render?: string;
+    // Tipo de marcador de los puntos si no lo trae cada uno.
+    marcador?: string;
+    geojson: FeatureCollection<Geometry, PropiedadesMapa | null>;
+};
+
+export type PropiedadesMapa = {
+    etiqueta?: string | number;
+    marcador?: string;
+    // Posición de la parada en su ruta.
+    orden?: number;
+    estado?: string;
+    tipo?: string;
+    poligono?: string;
 };
 
 // Valoración de una respuesta. El motivo solo en las negativas.

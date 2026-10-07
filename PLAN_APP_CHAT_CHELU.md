@@ -203,7 +203,7 @@ Consecuencias:
 | `@sentry/react-native` | ~7.11 (la que fija el SDK) | OK | |
 | `@react-navigation/*` v7 | native 7.5 / native-stack 7.20 / drawer 7.14 | OK | Requieren screens ≥4 y safe-area ≥4 |
 | **NativeWind** | 4.2.7 + `react-native-css-interop` 0.2.7 + `tailwindcss` 3.4.x | **OK con un problema menor** | El PR #1864 (adaptación al SDK 57, RN 0.86 y React 19.2) se fusionó el 14/09 y 4.2.7 salió el 15/09. **Problema abierto #1834:** en RN 0.86 la ventana de errores de desarrollo (LogBox) se ve rota con NativeWind; la app funciona y producción no se ve afectada. Arreglo: un parche con `patch-package`, como en AppGovoy. También hay un problema conocido con `useAnimatedRef` de Reanimated 4 (#1560), que no usaremos al principio. |
-| `@maplibre/maplibre-react-native` (fase 3, si se elige) | 11.4.1 | OK | Pide expo ≥54, RN ≥0.80 y React ≥19.1. Necesita build de desarrollo |
+| `@maplibre/maplibre-react-native` (fase 3, elegida) | 11.5.0 | OK, instalada | Pide expo ≥54, RN ≥0.80 y React ≥19.1. Necesita build de desarrollo. Trae plugin de Expo (sin opciones: OpenGL y motor de ubicación propio). `@types/geojson` en `devDependencies` |
 | **`react-native-markdown-display`** | 7.0.2 (dic. 2023) | **DESCARTADA** | Sin mantenimiento desde 2023. Alternativas que se valoraron: `react-native-marked`, `react-native-enriched-markdown` (1.1.0, de Software Mansion, nativa) y el fork `@ronradtke/react-native-markdown-display` (9.0.3) |
 | **`react-native-marked`** | 8.3.2 | **OK, elegida (fase 2)** | JS puro, con tablas. Depende de `marked` 18 y `react-native-reanimated-table`; pide `react-native-svg` y RN ≥0.76 |
 | `jwt-decode` | 4.0.0 | No hace falta por ahora | La respuesta del login ya trae todos los datos de la sesión |
@@ -240,18 +240,24 @@ Consecuencias:
 - **Paleta oscura:** la web **no tiene modo oscuro**, así que es propia de la app (en `palette.ts`). Se revisará al verla en las pantallas reales.
 - **Cómo se implementa:**
   - Variables de color (`--color-fondo`…) con un valor para claro y otro para oscuro, mapeadas en Tailwind a clases con nombre según su uso (`bg-fondo`, `bg-superficie`, `text-texto`, `border-borde`, `bg-primario`…). Los componentes usan solo esas clases, sin escribir `dark:` en cada uno. Admiten transparencia (`bg-primario/50`).
-  - La paleta está en `src/theme/palette.ts` (claro y oscuro, en hexadecimal). `ThemeProvider` la convierte en variables con `vars()`, y `useColores()` la da en hexadecimal para lo que no admite clases: navegación, barra de estado, iconos, ApexCharts y mapas. Los nombres se repiten en `tailwind.config.js` y tienen que coincidir.
+  - La paleta está en `src/theme/palette.ts` (claro y oscuro, en hexadecimal). `ThemeProvider` la convierte en variables con `vars()`, y `useColores()` la da en hexadecimal para lo que no admite clases: navegación, barra de estado, iconos, gráficas y mapas. Los nombres se repiten en `tailwind.config.js` y tienen que coincidir.
   - **Por defecto la app arranca en claro**, aunque el sistema esté en oscuro. El tema elegido vive en el estado de `ThemeProvider` (`useTema()`), no en NativeWind: NativeWind sigue a `Appearance`, que Android devuelve al modo del sistema al volver a primer plano. Se reaplica a `Appearance` al volver a la app para los componentes nativos, y la barra de estado se pone según el tema. **La elección se guarda en AsyncStorage** (`preferencia_tema`) y se mantiene al cerrar la app. Pendiente: pantalla de ajustes y, si se quiere, la opción "igual que el sistema". Más adelante, opción en ajustes para elegir claro u oscuro (guardado en AsyncStorage). `userInterfaceStyle: "automatic"` en `app.json`, necesario para poder cambiarlo desde la app.
   - **Norma:** no se escriben colores a mano en los componentes.
 - **Requieren atención especial:**
   - Los estilos del markdown.
-  - ApexCharts en el WebView (`theme.mode`).
+  - Las gráficas (colores de ejes, rejilla y textos con `useColores()`; ver la fase 3).
   - Los mapas: **quedan fuera del modo oscuro**, solo el marco sigue el tema (ver D8).
   - La pantalla de arranque oscura.
 
-### D8. Librería de mapas (pendiente de decidir)
+### D8. Librería de mapas (decidido: MapLibre)
 
 En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y otras pantallas usan Carto `light_all` (`DispatchManagement.tsx:1067`).
+
+**Decisión (2026-10-07): opción A, MapLibre** (`@maplibre/maplibre-react-native` 11.5.0), con este planteamiento:
+- **En el chat no hay mapas vivos.** La tarjeta del mapa muestra título, número de puntos o zonas, la leyenda y (al final del plan) una vista previa en imagen. Así el coste no depende de cuántos mapas tenga la conversación y no hay conflictos entre los gestos del mapa y el desplazamiento del chat.
+- **Al pulsar la tarjeta se abre el mapa a pantalla completa**, interactivo (zoom y desplazamiento, sin giro ni inclinación). Como mucho hay un mapa vivo a la vez.
+- **Vista previa por captura:** se monta un mapa oculto con las mismas capas e iconos que la pantalla completa, se espera a `onDidFinishRenderingMapFully`, se captura con `createStaticMapImage()` y se desmonta. Así es idéntica a la pantalla completa (el generador sin vista, `StaticMapImageManager`, no admite los iconos registrados con `Images`). Una captura a la vez, en cola, y guardada en caché; de paso deja en la caché de MapLibre las teselas del encuadre inicial.
+- **Por qué no Leaflet en WebView:** la memoria por mapa vivo es del mismo orden, pero con un solo mapa vivo eso pesa poco. A favor de MapLibre: pinta en nativo (gestos más fluidos), permite capturar la vista previa sin montar un WebView y esperar a que "termine", y `ChatMapCard` de la web no se reutilizaría tal cual (depende de Pixi, glify y la caché de imágenes del navegador).
 
 | Opción | Pros | Contras |
 |---|---|---|
@@ -259,20 +265,20 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 | B. Leaflet en un WebView | Reutiliza `ChatMapCard` de la web, con el mismo aspecto | Rendimiento y gestos peores. Varios WebView en una conversación larga pesan |
 | C. `react-native-maps` (Google/Apple) | Ya lo conoce el equipo | En Android necesita clave y **estilo JSON propio para el modo oscuro** (Apple Maps se adapta solo). Se ve distinto en cada plataforma |
 
-- **Teselas (decidido):** **las mismas que el chat web**, OpenStreetMap estándar (`https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`).
+- **Teselas (decidido):** **las mismas que el chat web**, OpenStreetMap estándar, pero sin subdominios: `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (OSM ya no recomienda `{s}.`; la web aún los usa en `ChatMapCard.tsx` y `MapLayers.tsx`).
   - El volumen previsto (mapas puntuales en el chat, pocos usuarios) entra en el uso ligero que permite OSM.
-  - **Condiciones:**
-    - User-Agent propio de la app (p. ej. `GovoyChelu/<versión>`).
-    - En WebView, una URL base (`baseUrl`) para que las peticiones tengan origen.
-    - Atribución "© OpenStreetMap contributors" visible.
-    - Sin descargas masivas para uso sin conexión.
+  - **Condiciones (política de teselas y guía de atribución de OSM):**
+    - User-Agent propio de la app: `CheluGovoy (com.govoy.chelu)`, sin contacto (comprobado en las peticiones: sustituye al de la librería).
+    - Atribución "© OpenStreetMap contributors" visible, enlazada a openstreetmap.org/copyright. El botón (i) de MapLibre no basta porque la esconde.
+    - Usar la caché (MapLibre revalida con `If-None-Match`) y sin descargas masivas ni paquetes sin conexión (`OfflineManager` no se usa).
+    - Sin garantías: pueden bloquear sin avisar, por eso la URL se puede cambiar en una línea.
+  - **Licencias del software:** MapLibre RN (MIT), MapLibre Native (BSD-2-Clause), turf (MIT), style-spec (ISC), OkHttp (Apache 2.0). Ninguna pide aparecer en el mapa (el logo de MapLibre se quita); van en la pantalla de licencias de terceros, pendiente antes de publicar.
   - **Modo oscuro (decidido): el mapa queda fuera.** Las teselas se ven siempre claras, como en la web, y los colores de polígonos se eligen para fondo claro.
     - El marco del mapa sí sigue el tema: tarjeta, cabecera, leyenda, tooltips, botones y pantalla completa.
     - Opcional más adelante: atenuar el mapa al ~85–90 % de brillo en modo oscuro para que no deslumbre (CSS en B, `raster-brightness-max` en A).
     - (Descartado: oscurecer OSM con filtros.)
   - **C queda descartada** (las teselas abiertas se pintan por encima del mapa de Google o Apple y siguen necesitando el SDK de Google).
-  - **La URL de teselas va en una sola constante o variable de entorno** (`EXPO_PUBLIC_TILE_URL`), para cambiar de proveedor en una línea si hace falta. En la web ahora está repetida en `ChatMapCard.tsx`, `MapLayers.tsx` y `DispatchManagement.tsx`.
-- **En espera:** elegir entre A (MapLibre) y B (Leaflet en WebView). Se decidirá antes de la fase 3.
+  - **La URL de teselas va en una sola constante, `TILE_URL` en `src/auth/Constants.ts`** (como las del back, D6), para cambiar de proveedor en una línea si hace falta; más adelante podría venir del back. En la web ahora está repetida en `ChatMapCard.tsx`, `MapLayers.tsx` y `DispatchManagement.tsx`.
 - **Condiciones de Google Maps (opción C):**
   - Mostrar mapas con el SDK nativo de Android e iOS es gratis y sin límite (comprobar en la página de precios vigente). Directions, Geocoding y Places se pagan por llamada, y el chat no las necesita.
   - Hace falta una cuenta de facturación aunque no se pague nada.
@@ -306,8 +312,8 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 
 - **Streaming:** el `fetch` estándar de React Native no permite leer la respuesta poco a poco; se usa `expo/fetch`, que sí lo permite. La lectura de eventos puede seguir la de la web (`Front-Govoy/src/routes/components/ChatChelu/useChatChelu.ts:880`), con el mismo procesado agrupado por fotograma y la cancelación con `AbortController`.
 - **Markdown:** `react-native-marked` con el hook `useMarkdown` (decidido en la fase 2, ver su progreso), con las tablas dentro de un scroll horizontal.
-- **Gráficas:** el back envía configuraciones de ApexCharts. Se muestran con ApexCharts dentro de un WebView, sin cambios en el back.
-- **Mapas:** pintando la geometría GeoJSON; la librería está pendiente (ver D8).
+- **Gráficas:** el back envía configuraciones de ApexCharts. Se leen en la app y se pintan en nativo con `react-native-gifted-charts`, sin WebView y sin cambios en el back (ver el progreso de la fase 3).
+- **Mapas:** MapLibre pintando la geometría GeoJSON que manda el back (ver D8 y el progreso de la fase 3).
 - **Voz:** grabación en m4a con `expo-audio` y envío a `/transcribir`, que ya acepta m4a y mp4.
 - **Documentos (decidido):** `/archivo/{id}` devuelve un enlace temporal de S3 que ya lleva `Content-Disposition: attachment`. En Android se descarga con el `DownloadManager` del sistema (`react-native-blob-util`), a Descargas y sin salir de la app; en iOS con `Linking.openURL`, y Safari lo guarda en Archivos › Descargas. Detalle en el progreso de la fase 2.
 
@@ -448,12 +454,15 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
 - **Mensajes (`BurbujaMensaje`), como en la web:**
   - Usuario: cabecera "Tú" + cuadrado gris con la inicial, a la derecha; burbuja azul `rounded-xl` con la esquina superior derecha recta.
   - Chelu: cabecera con el avatar y "CHELU"; el texto sin burbuja, a todo el ancho.
-  - Los dos con sangría bajo la cabecera.
+  - Sin sangría bajo la cabecera (se quitó en la fase 3, para que gráficas y tablas tengan todo el ancho); la fila de avatar y nombre sobresale 8 px hacia el borde.
 - **Caja de texto (`CajaMensaje`):** campo multilínea (hasta ~5 líneas) y botón con el icono `Send` de lucide, como la web; gris y desactivado si está vacío.
 - **Teclado:** `KeyboardAvoidingView` con `behavior="padding"`, como en el login. `Pantalla` tiene `margenInferior={false}` para que el margen inferior lo ponga la caja de texto, que lo quita con el teclado abierto (`useTecladoVisible`). `react-native-keyboard-controller` no se ha instalado; se valorará si en iOS hace falta.
 - **Robot de Chelu (`CheluAvatar`):** rehecho a partir de la imagen de referencia (robot azul en 3/4 saludando). **Pendiente de retocar**, todavía no queda bien.
-- **Gráficas y mapas:** no se pintan todavía (fase 3). Opcional: un aviso "📊 Gráfica disponible en la web" mientras tanto.
-- **Tablas del markdown:** `react-native-marked` da a la cabecera el mismo estilo que a las filas, así que `TextoMarkdown` sustituye la tabla con un `Renderer` propio (`RendererChelu.table`): cabecera oscura (`cabecera-tabla` / `sobre-cabecera-tabla`), filas alternas, columnas de 140 px como mínimo y scroll horizontal. Se probó justificar el texto y no tuvo efecto; se descartó.
+- **Gráficas y mapas:** se hicieron en la fase 3.
+- **Tablas del markdown:** `react-native-marked` da a la cabecera el mismo estilo que a las filas, así que `TextoMarkdown` sustituye la tabla con un `Renderer` propio (`RendererChelu.table`): cabecera oscura (`cabecera-tabla` / `sobre-cabecera-tabla`), filas alternas, columnas de 140 px como mínimo y scroll horizontal. Se probó justificar el texto y no tuvo efecto; se descartó. Retoques de la fase 3 para que se note que se desplaza:
+  - El redondeo va en el marco y no en el contenido, así que el lado del corte también tiene esquinas.
+  - Sombra degradada (`expo-linear-gradient`) en el lado por el que queda tabla: negra al 8 % en claro y al 40 % en oscuro.
+  - Barra de desplazamiento nativa siempre visible (`persistentScrollbar`, solo Android). Se probó una barra propia con los colores del tema y se quitó.
 - **Streaming (`chatApi.enviarMensaje`):** `POST /chat-cex/stream` con `expo/fetch` (`authFetch` admite otro `fetch` como tercer parámetro). Se leen los eventos `data: {json}` separados por línea en blanco, guardando el trozo incompleto. Eventos usados: `session`, `delta`, `tool`, `sugerencias`, `documento`, `done` (`run_id`) y `error`. Se envía `incluir_herramientas: true` e `incluir_metricas: false`; modelo fijo `deepseek-v4-flash`.
 - **Envío (`useChat.enviar`):**
   - Mensaje del usuario y respuesta vacía en estado `escribiendo` al momento.
@@ -484,6 +493,77 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
   - En `Animated.View` de Reanimated las clases no se aplican: se usa `style` (o un `View` con clases dentro).
   - Las clases que se eligen en tiempo de ejecución (p. ej. un fondo según el formato) a veces no se generan: el color va en `style` con `useColores()`.
   - Tras cambiar `tailwind.config.js` hay que reiniciar Metro con caché limpia (`npx expo start -c`). Algunos fallos de clases en `Pressable` (el botón de parar gris, la píldora invisible) se debían a no haber recargado; el de parar sigue con el color en `style`.
+
+### Progreso de la fase 3
+
+| Parte | Estado |
+|---|---|
+| Gráficas | Hecho |
+| Valoración de respuestas | Hecho |
+| Mapas | Bloques 1 a 3 hechos; quedan marcadores, rutas reales y vista previa |
+| Notas de voz (`expo-audio`, m4a a `/transcribir`) | Pendiente |
+
+#### Gráficas
+
+- **Librería: `react-native-gifted-charts`** (1.4.81, con `expo-linear-gradient`), pintando en nativo, no ApexCharts en un WebView. El back no cambia: sigue mandando la configuración de ApexCharts.
+- **Lectura (`chat/graficas.ts`, `leerGrafica`):** tipo de `options.chart.type` (o `grafico`): `bar`/`column` → barras, `line`, `area`, `pie`, `donut`, `radialBar`. Las circulares toman las series como números y las etiquetas de `options.labels`; las cartesianas, `{ name, data }` y el eje X de `options.xaxis.categories`. Si el tipo no se sabe pintar o no hay datos, la tarjeta dice "No se puede mostrar esta gráfica".
+- **Colores:** `PALETA_GRAFICAS` (20 colores, el primero el azul de la app). Ejes, rejilla y textos con `useColores()`, así que siguen el tema.
+- **En el chat (`TarjetaGrafica`):** ajustada al ancho, sin toques dentro (el toque es de la tarjeta y la amplía).
+  - Las barras van en **filas horizontales** (`Filas`): al encoger el eje X se perdían los nombres de las columnas. Las radiales, también en filas.
+  - Valores en las columnas y en los vértices de las líneas (hasta 20 puntos) si caben, y porcentajes en las porciones de más del 5 %, como la web.
+  - Ejes con un máximo "redondo" (`maximoRedondo`) y números sin abreviar con 2 decimales como mucho, como ApexCharts.
+- **Ampliada (`GraficaScreen`, pantalla `Grafica` del stack raíz):** gira a horizontal, a pantalla completa, sin barras del sistema y con todas las etiquetas (scroll si no caben). Hasta que la ventana está en horizontal solo se ve un indicador, para no pintarla dos veces. El chat queda debajo congelado (`freezeOnBlur`) y `CapaGiro` lo tapa el momento en que vuelve a vertical.
+- **Trampas:**
+  - Con una sola serie las filas van en columna, y ahí `flex-1` le quitaba el alto a la barra (`flex-basis: 0`) y a veces no se veía: la barra usa `w-full shrink`.
+  - La librería suma dos veces el margen final y la rejilla se sale de la tarjeta: se le dan los anchos exactos (`rulesLength`, `xAxisLength`).
+
+#### Valoración de respuestas
+
+- Pulgares arriba y abajo en cada respuesta guardada y completa (con `runId` y sin estado), solo para las empresas de `HAS_FEEDBACK_CHAT_CHELU` (o en sesiones master), como la web. El votado va relleno.
+- Al pulsar se abre una hoja inferior (`HojaValoracion`, sobre `HojaInferior`): en la negativa, el motivo con un selector (`Selector`, los mismos motivos que la web) y una nota opcional (2000 caracteres). Si se repite el mismo pulgar, parte de lo ya puesto.
+- `PUT /chat-cex/feedback` (`votarRespuesta`). El voto se pinta al momento y, si el back falla, vuelve el anterior y la hoja enseña el error (el `detail` del back ya viene en español, p. ej. el 409 si la empresa no tiene valoraciones). El voto guardado llega en `get_chat` (`feedback`).
+
+#### Retoques de estilo del chat
+
+- **Sin sangría** bajo las cabeceras de emisor: el contenido usa todo el ancho; la fila de avatar y nombre ("CHELU" y "Tú") sobresale 8 px hacia el borde. Margen lateral de la lista: `px-6`.
+- Más espacio entre párrafos (6 px arriba y abajo) y entre elementos de lista (3 px).
+- La cabecera del chat llega hasta arriba, bajo la barra de estado, con su color (`Pantalla` admite `margenSuperior={false}`).
+- Tablas: ver los retoques en el progreso de la fase 2.
+
+#### Menú lateral que se quedaba abierto (Reanimated)
+
+- **Síntoma:** a veces el menú se abría solo y no se podía cerrar (los botones respondían). Se reproducía siempre mandando la app a segundo plano mientras cargaba un chat con gráficas.
+- **Causa:** en Reanimated 4.5.1 la opción estática `FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS` (activa por defecto) pasa a React cada 500 ms los valores de las animaciones que han terminado, y el lado nativo los borra a los 2 s. Si el JS no llega a tiempo (app en segundo plano, recarga en desarrollo, JS ocupado), React se queda con el menú "abierto", lo vuelve a abrir en el siguiente render y no se puede cerrar porque Reanimated cree que ya está cerrado.
+- **Arreglo:** desactivada en `package.json` (`reanimated.staticFeatureFlags`). Es una opción nativa: cambiarla exige recompilar.
+
+#### Mapas
+
+Decisión de librería y planteamiento en D8. Se trabaja en bloques, revisando cada uno antes de seguir.
+
+| # | Bloque | Estado |
+|---|---|---|
+| 1 | Datos: tipos `Mapa`/`CapaMapa`, evento `mapa` del stream y `maps` de `get_chat`; tarjeta en el chat (`TarjetaMapa`) con título, número de puntos o zonas y leyenda | Hecho |
+| 2 | Pantalla completa (`MapaScreen`): teselas de OSM, encuadre inicial, atribución propia y User-Agent. Se abre al pulsar la tarjeta | Hecho |
+| 3 | Capas: zonas, líneas y puntos con el color de su capa; leyenda bajo el mapa | Hecho |
+| 4 | Marcadores: iconos (depósito, entrega, recogida, entrega y recogida, incidencia, agrupado, PUDO, alerta) y paradas numeradas según su estado | Pendiente |
+| 5 | Rutas reales: las líneas pasan por `/directionsForMap2-todas-las-rutas` del back (OSRM), con caché en memoria y la línea recta si falla, como la web | Pendiente |
+| 6 | Vista previa en la tarjeta (ver D8): captura de un mapa oculto | Pendiente, al final del plan |
+
+**Detalles:**
+- **Datos (`chat/mapas.ts`):**
+  - `aMapa()` lee lo que manda el back (`_payload_mapa`: `titulo`, `centro`, `bounds`, `num_puntos`, `num_poligonos`, `truncado`, `capas`). Descarta las capas sin elementos y el mapa si no queda ninguna, como la web.
+  - Une al leerlo las capas con nombre equivalente ("VALÈNCIA"/"VALENCIA"), con el color de la primera.
+  - Ojo: `centro` y `bounds` llegan en `[lat, lon]` y el GeoJSON en `[lon, lat]`, que es lo que usa MapLibre.
+  - El nombre de las capas lo pone el back. Las de puntos sin ruta ni categoría se llaman como su marcador (`depot`, `pudo`…); traducirlas a "Depósito", etc. queda pendiente de decidir (en el back o en la app).
+- **Tarjeta (`TarjetaMapa`):** icono, título, "N puntos · N zonas" ("(recortado)" si el back truncó) y leyenda (`LeyendaMapa`): cuadrado translúcido para zonas, círculo para puntos; sin los recorridos y solo con dos capas o más, como la web. Va tras las gráficas en la respuesta.
+- **Pantalla completa (`MapaScreen`, pantalla `Mapa` del stack raíz):**
+  - Cabecera con título y cerrar; sin giro ni inclinación (siempre con el norte arriba, sin brújula).
+  - Encuadre (`vistaInicial`): `bounds` con 40 px de margen; si son un solo punto, su centro con zoom 15; sin `bounds`, `centro` con zoom 13; sin nada, Madrid con zoom 12, como la web.
+  - Atribución propia abajo a la derecha, con colores fijos (el mapa es siempre claro): "© OpenStreetMap contributors", con "OpenStreetMap" como enlace. Logo y botón (i) de MapLibre desactivados.
+  - User-Agent con `TransformRequestManager.addHeader`, registrado al cargar el módulo para que esté antes de la primera petición. Solo afecta a las peticiones de MapLibre (su propio cliente OkHttp en Android).
+- **Capas:** `elementosPorTipo()` junta los elementos de todas las capas en tres fuentes (zonas, líneas, puntos), cada uno con el color de su capa, para que se pinten siempre en ese orden. Descarta los puntos en (0, 0) o sin coordenadas, como la web. El estilo está en `CAPAS_ELEMENTOS` (estilo estándar de MapLibre, reutilizable en la vista previa): zonas al 25 % con borde de 2 px, líneas de 3 px y puntos de radio 6 con borde blanco.
+- **Números de orden (bloque 4):** el texto en MapLibre necesita *glyphs* (fuentes) y el estilo raster de OSM no los trae. Propuesta: dibujar cada número como icono, como hace la web con sus SVG, en lugar de meter un servicio de fuentes.
+- **Vista previa (bloque 6), caso grande (20 mapas de 2000 puntos):** cola de una captura a la vez, priorizando las tarjetas visibles (la lista invertida monta primero las recientes); cancelar al desmontar la tarjeta; pausar la cola mientras se arrastra la lista (crear la vista nativa puede costar uno o dos fotogramas); capturar a densidad 2; caché en disco con clave `runId` + posición del mapa (el back no manda id); tiempo máximo, y si salta, la tarjeta queda sin imagen pero se puede abrir.
 
 ### Fase 0 en detalle (Back-Govoy)
 
@@ -568,7 +648,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
    - Cuenta EAS: ¿la misma que AppGovoy (`sanchez_andres`) o una de organización?
 9. ~~**Entornos**~~ → **Decidido (D6):** el mismo backend que el resto de repositorios. Pendiente: ¿se mantiene el selector de backend en una pantalla de depuración como en AppGovoy?
 10. ~~**Diseño**~~ → **Decidido (D7):** parecido al chat web, con modo oscuro desde el inicio.
-10b. **Mapas (D8):** teselas de OSM, como en el chat web (decidido). **En espera:** la elección entre MapLibre y Leaflet en WebView. No bloquea, porque los mapas van en la fase 3.
+10b. ~~**Mapas (D8)**~~ → **Decidido:** MapLibre con teselas de OSM, como en el chat web.
 
 ### C. Se pueden decidir más adelante
 
@@ -629,3 +709,11 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-06 | Documentos: siempre por `fileId` (sin el enlace del stream); en Android con `react-native-blob-util` y el `DownloadManager`, en iOS se mantiene el navegador (menú de compartir descartado) |
 | 2026-10-06 | Fase 2: borrar conversación; "Archivos generados" solo de la conversación abierta y sin borrar (como capa, no `Modal`); tipos del chat en `src/types/Chat.ts` |
 | 2026-10-06 | Fase 2 cerrada en la app (probada en Android); falta probar en iOS |
+| 2026-10-06 | Fase 3: valoración de respuestas como la web (pulgares y hoja con motivo y nota) |
+| 2026-10-07 | Fase 3: gráficas en nativo con `react-native-gifted-charts` (no ApexCharts en WebView), barras en filas en el chat y ampliada en horizontal |
+| 2026-10-07 | Reanimated: `FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS` desactivada (el menú lateral se quedaba abierto) |
+| 2026-10-07 | Chat sin sangría bajo las cabeceras; tablas con sombra en el lado que se desplaza y barra nativa siempre visible |
+| 2026-10-07 | D8: MapLibre 11.5.0. En el chat solo tarjeta (y vista previa en imagen); el mapa interactivo a pantalla completa al pulsarla, uno a la vez |
+| 2026-10-07 | D8: teselas de `tile.openstreetmap.org` sin subdominios, URL en `TILE_URL` (`Constants.ts`); User-Agent `CheluGovoy (com.govoy.chelu)`; atribución propia visible con enlace |
+| 2026-10-07 | D8: vista previa por captura de un mapa oculto (idéntica a la pantalla completa), al final del plan de mapas |
+| 2026-10-07 | Fase 3, mapas: bloques 1 a 3 hechos (datos y tarjeta, pantalla completa, capas y leyenda) |

@@ -4,7 +4,8 @@ import ReactNativeBlobUtil from 'react-native-blob-util';
 
 import { authFetch } from '@/auth/authManager';
 import { API_URL } from '@/auth/Constants';
-import type { Chat, Documento, Grafica, Mensaje, ResumenChat, Voto } from '@/types/Chat';
+import { aMapa } from '@/chat/mapas';
+import type { Chat, Documento, Grafica, Mapa, Mensaje, ResumenChat, Voto } from '@/types/Chat';
 
 // El enlace que trae el back caduca; se descarga siempre pidiendo uno nuevo con el fileId.
 const aDocumento = (d: any): Documento => ({
@@ -54,8 +55,9 @@ export async function obtenerChat(id: string): Promise<Chat> {
             if (m.role !== 'assistant') return [];
             const documentos = Array.isArray(m.docs) ? m.docs.filter((d: any) => d?.file_id).map(aDocumento) : [];
             const graficas = Array.isArray(m.charts) ? m.charts.map(aGrafica) : [];
+            const mapas = Array.isArray(m.maps) ? m.maps.map(aMapa).filter((mapa: Mapa | null) => mapa !== null) : [];
             // Una respuesta sin texto pero con tarjetas (p. ej. solo una gráfica) sí se muestra, como en la web.
-            if (!texto && !documentos.length && !graficas.length) return [];
+            if (!texto && !documentos.length && !graficas.length && !mapas.length) return [];
             return [{
                 id: m.run_id ?? String(i),
                 rol: 'chelu',
@@ -64,6 +66,7 @@ export async function obtenerChat(id: string): Promise<Chat> {
                 sugerencias: Array.isArray(m.suggestions) ? m.suggestions : [],
                 documentos,
                 graficas,
+                mapas,
                 voto: m.feedback ?? null,
             }];
         }),
@@ -160,10 +163,11 @@ export type EventoChat =
     | { tipo: 'sugerencias'; preguntas: string[] }
     | { tipo: 'documento'; documento: Documento }
     | { tipo: 'grafica'; grafica: Grafica }
+    | { tipo: 'mapa'; mapa: Mapa }
     | { tipo: 'done'; run_id?: string }
     | { tipo: 'error'; detail?: string };
 
-// 'documento' y 'grafica' se tratan aparte: se convierten antes de pasarlos.
+// 'documento', 'grafica' y 'mapa' se tratan aparte: se convierten antes de pasarlos.
 const TIPOS = ['session', 'delta', 'tool', 'sugerencias', 'done', 'error'];
 
 /**
@@ -214,6 +218,9 @@ export async function enviarMensaje({ pregunta, sessionId, signal, onEvento }: {
                     if (evento.file_id) onEvento({ tipo: 'documento', documento: aDocumento(evento) });
                 } else if (evento?.tipo === 'grafica') {
                     onEvento({ tipo: 'grafica', grafica: aGrafica(evento) });
+                } else if (evento?.tipo === 'mapa') {
+                    const mapa = aMapa(evento);
+                    if (mapa) onEvento({ tipo: 'mapa', mapa });
                 } else if (TIPOS.includes(evento?.tipo)) {
                     onEvento(evento);
                 }

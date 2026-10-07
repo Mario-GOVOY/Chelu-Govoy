@@ -4,6 +4,7 @@ import { DrawerScreenProps } from '@react-navigation/drawer';
 import { CompositeScreenProps } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BarChart3, FileText, Menu, RefreshCw, TrendingUp, TriangleAlert, Truck } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { duplicarChat } from '@/chat/chatApi';
 import { useChat } from '@/chat/useChat';
@@ -38,6 +39,7 @@ const EJEMPLOS = [
 
 export default function ChatScreen({ navigation, route }: Props) {
     const colores = useColores();
+    const insets = useSafeAreaInsets();
     const { sesion } = useSesionActiva();
     const chatId = route.params?.chatId;
     // Al crearse la conversación se pone su id en la ruta, para que el menú la marque como activa.
@@ -88,8 +90,11 @@ export default function ChatScreen({ navigation, route }: Props) {
     const cabecera = chatId ? titulo ?? '' : 'Nueva conversación';
 
     return (
-        <Pantalla margenInferior={false}>
-            <View className="h-14 flex-row items-center gap-2 border-b border-borde bg-superficie px-2">
+        <Pantalla margenInferior={false} margenSuperior={false}>
+            <View
+                className="flex-row items-center gap-2 border-b border-borde bg-superficie px-2"
+                style={{ paddingTop: insets.top, height: insets.top + 56 }}
+            >
                 <Pressable
                     onPress={() => navigation.openDrawer()}
                     hitSlop={8}
@@ -198,6 +203,7 @@ export default function ChatScreen({ navigation, route }: Props) {
                                     ? (valoracion) => setValorando({ runId: item.runId!, valoracion, anterior: item.voto ?? null })
                                     : undefined}
                                 onAmpliarGrafica={(grafica) => navigation.navigate('Grafica', { grafica })}
+                                onAbrirMapa={(mapa) => navigation.navigate('Mapa', { mapa })}
                             />
                         )}
                     />

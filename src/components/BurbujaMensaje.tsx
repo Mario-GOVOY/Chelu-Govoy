@@ -1,11 +1,12 @@
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { createLucideIcon, ThumbsDown, ThumbsUp } from 'lucide-react-native';
 
-import type { Grafica, Mensaje } from '@/types/Chat';
+import type { Grafica, Mapa, Mensaje } from '@/types/Chat';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { PuntosEscribiendo } from '@/components/PuntosEscribiendo';
 import { TarjetaDocumento } from '@/components/TarjetaDocumento';
 import { TarjetaGrafica } from '@/components/TarjetaGrafica';
+import { TarjetaMapa } from '@/components/TarjetaMapa';
 import { TarjetasHerramientas } from '@/components/TarjetasHerramientas';
 import { TextoMarkdown } from '@/components/TextoMarkdown';
 import { useSesionActiva } from '@/context/SesionContext';
@@ -18,9 +19,10 @@ const GitBranch = createLucideIcon('git-branch-web', [
     ['circle', { cx: '6', cy: '18', r: '3', key: 'fqmcym' }],
 ]);
 
-export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar, onValorar, onAmpliarGrafica }: {
+export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar, onValorar, onAmpliarGrafica, onAbrirMapa }: {
     mensaje: Mensaje;
     onAmpliarGrafica?: (grafica: Grafica) => void;
+    onAbrirMapa?: (mapa: Mapa) => void;
     onDuplicarDesde?: () => void;
     duplicando?: boolean;
     // Envía una pregunta sugerida. Sin él no se pintan las sugerencias.
@@ -65,6 +67,9 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
                 {!!mensaje.texto && <TextoMarkdown texto={mensaje.texto} />}
                 {mensaje.graficas?.map((g, i) => (
                     <TarjetaGrafica key={i} grafica={g} onAmpliar={onAmpliarGrafica && (() => onAmpliarGrafica(g))} />
+                ))}
+                {mensaje.mapas?.map((mapa, i) => (
+                    <TarjetaMapa key={i} mapa={mapa} onAbrir={onAbrirMapa && (() => onAbrirMapa(mapa))} />
                 ))}
                 {mensaje.documentos?.map((d) => <TarjetaDocumento key={d.fileId} documento={d} />)}
                 {/* También tras el texto: si Chelu está llamando a una herramienta, pasan segundos sin texto nuevo. */}
