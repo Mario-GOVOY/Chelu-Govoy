@@ -1,3 +1,5 @@
+const dayMonthFormat = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short' });
+
 // Igual que fechaRel del chat web.
 export function fechaRelativa(ms: number): string {
     const d = Date.now() - ms;
@@ -8,5 +10,5 @@ export function fechaRelativa(ms: number): string {
     if (d < h) return `hace ${Math.floor(d / min)} min`;
     if (d < dia) return `hace ${Math.floor(d / h)} h`;
     if (d < 7 * dia) return `hace ${Math.floor(d / dia)} d`;
-    return new Date(ms).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+    return dayMonthFormat.format(ms);
 }

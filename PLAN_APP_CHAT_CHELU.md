@@ -208,6 +208,7 @@ Consecuencias:
 | **`react-native-marked`** | 8.3.2 | **OK, elegida (fase 2)** | JS puro, con tablas. Depende de `marked` 18 y `react-native-reanimated-table`; pide `react-native-svg` y RN ≥0.76 |
 | `jwt-decode` | 4.0.0 | No hace falta por ahora | La respuesta del login ya trae todos los datos de la sesión |
 | `lucide-react-native` | 1.52 | OK | Admite React 19 y `react-native-svg` 12–15 (el SDK fija la 15.15) |
+| `@shopify/flash-list` | 2.0.2 (la que fija el SDK) | OK, instalada | Licencia MIT. Solo JS (sin código nativo, no hace falta recompilar); la v2 necesita la nueva arquitectura, la única en RN 0.86. Se usa en la lista de conversaciones |
 
 ### D6. Mismo backend que el resto de repositorios
 
@@ -438,7 +439,7 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
 | # | Bloque | Estado |
 |---|---|---|
 | 1 | Navegación de la app: menú lateral (Drawer de React Navigation) con una sola pantalla `Chat` (parámetro `chatId`), sustituyendo a la pantalla de inicio provisional. En el menú: Chelu y empresa, "Nueva conversación", lista, datos del usuario, tema, salir de suplantación y cerrar sesión | Hecho |
-| 2 | Lista de conversaciones (`get_chats`, `useConversaciones`, `ListaConversaciones`) con fecha relativa. Se recarga al abrir el menú y con un botón junto a "Conversaciones" (se quitó deslizar para recargar porque a veces impedía cerrar el menú) | Hecho |
+| 2 | Lista de conversaciones (`get_chats`, `useConversaciones`, `ListaConversaciones`) con fecha relativa. Se carga al arrancar y se recarga con un botón junto a "Conversaciones" (se quitó deslizar para recargar porque a veces impedía cerrar el menú); ya no al abrir el menú, ver "Rendimiento del menú lateral" en la fase 3 | Hecho |
 | 3 | Abrir una conversación (`get_chat`, `useChat`): mensajes en una `FlatList` invertida para empezar abajo, markdown, cabeceras de emisor y conversación activa resaltada en el menú | Hecho |
 | 4 | Enviar mensajes: (1) caja de texto ✔, (2) streaming con `expo/fetch` ✔, (3) conectar el envío (mensaje optimista, texto en directo, tarjetas de herramientas, puntos de "escribiendo", botón de parar, `session_id` nuevo) ✔, (4) preguntas sugeridas (píldoras en la última respuesta, ejemplos en la bienvenida) ✔ | Hecho |
 | 5 | Borrar conversación ✔ y documentos (tarjeta en la respuesta y descarga) ✔ | Hecho |
@@ -500,7 +501,7 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
 |---|---|
 | Gráficas | Hecho |
 | Valoración de respuestas | Hecho |
-| Mapas | Bloques 1 a 5 hechos; queda la vista previa (al final del plan) |
+| Mapas | Bloques 1 a 5 hechos; la vista previa queda aparcada hasta nuevo aviso |
 | Notas de voz (`expo-audio`, m4a a `/transcribir`) | Pendiente |
 
 #### Gráficas
@@ -536,6 +537,21 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
 - **Causa:** en Reanimated 4.5.1 la opción estática `FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS` (activa por defecto) pasa a React cada 500 ms los valores de las animaciones que han terminado, y el lado nativo los borra a los 2 s. Si el JS no llega a tiempo (app en segundo plano, recarga en desarrollo, JS ocupado), React se queda con el menú "abierto", lo vuelve a abrir en el siguiente render y no se puede cerrar porque Reanimated cree que ya está cerrado.
 - **Arreglo:** desactivada en `package.json` (`reanimated.staticFeatureFlags`). Es una opción nativa: cambiarla exige recompilar.
 
+#### Rendimiento del menú lateral
+
+- **Síntoma:** con un cliente con muchos chats, al abrir el menú y cargarse la lista, la app iba lenta.
+- **Causas:**
+  - `get_chats` devuelve todas las conversaciones de golpe (sin paginar) y la lista se recargaba cada vez que se abría el menú.
+  - Cada recarga crea objetos nuevos y las filas no estaban memorizadas: se repintaban todas las montadas.
+  - La `FlatList` mantenía montadas unas 21 pantallas de filas, cada una con 3 iconos SVG.
+  - `fechaRelativa` llamaba a `toLocaleDateString` en cada fila de más de 7 días, que en Hermes crea un formateador cada vez.
+- **Arreglos:**
+  - **Recarga:** al arrancar, con el botón, al borrar, y al abrir el menú solo si el chat abierto no está en la lista (recién creado o duplicado). El id de un chat nuevo llega al empezar la respuesta, antes de que el back lo guarde, por eso se comprueba al abrir el menú y no al cambiar de chat. El efecto depende solo de que el menú se abra, para no recargar en bucle si el back no devuelve ese chat. El título o la fecha de un chat que ya está en la lista no se actualizan solos (para eso, el botón).
+  - **Filas memorizadas:** `ConversationRow` con `memo`, recibiendo los campos sueltos del chat (no el objeto, que cambia en cada recarga). `abrirChat`, `duplicar` y `borrar` con `useCallback` en `MenuLateral`. Las fechas relativas solo se actualizan al repintar la fila.
+  - **`FlashList`** en lugar de `FlatList`: reutiliza las filas que salen de pantalla. Con scroll muy rápido aún se ven huecos en blanco un instante (`drawDistance` a 600 y 1000 no cambió nada, se quitó). No hay forma limpia de poner un skeleton en esos huecos.
+  - **Fechas:** un único `Intl.DateTimeFormat` creado al cargar el módulo.
+- **Para más adelante:** paginar `get_chats` en el back. El chat sigue con `FlatList` invertida: pasarlo a `FlashList` obliga a rehacer el scroll (la v2 no usa `inverted`), revisar el estado interno de los mensajes (se reutiliza al reciclar) y separar tipos de mensaje; solo si algún chat largo va lento.
+
 #### Mapas
 
 Decisión de librería y planteamiento en D8. Se trabaja en bloques, revisando cada uno antes de seguir.
@@ -547,7 +563,7 @@ Decisión de librería y planteamiento en D8. Se trabaja en bloques, revisando c
 | 3 | Capas: zonas, líneas y puntos con el color de su capa; leyenda bajo el mapa | Hecho |
 | 4 | Marcadores: iconos (depósito, entrega, recogida, entrega y recogida, incidencia, agrupado, PUDO, alerta), paradas numeradas según su estado y pantalla de carga | Hecho |
 | 5 | Rutas reales: las líneas pasan por `/directionsForMap2-todas-las-rutas` del back (OSRM), con caché en memoria; si una ruta falla no se dibuja | Hecho |
-| 6 | Vista previa en la tarjeta (ver D8): captura de un mapa oculto | Pendiente, al final del plan |
+| 6 | Vista previa en la tarjeta (ver D8): captura de un mapa oculto | Aparcado hasta nuevo aviso |
 
 **Detalles:**
 - **Datos (`chat/mapas.ts`):**
@@ -566,10 +582,12 @@ Decisión de librería y planteamiento en D8. Se trabaja en bloques, revisando c
   - Todos los puntos son iconos en la capa `puntos`: `icon-image` = propiedad `icono` del punto, `icon-size` 0,8, todos visibles aunque se solapen y los posteriores encima (`symbol-z-order: 'source'`). Así una parada tapa entera a la de debajo.
   - Qué icono lleva cada punto (`getPointIcon` / `getMarkerIcon`): `marker` → círculo con el número de orden (relleno: color de la ruta si está completada, rojo si tiene incidencia, blanco si no); `number` → solo el número; `depot` y pines (`entrega`, `recogida`, `entregaRecogida`, `incidencia`, `agrupado`) → PNG copiados de la web en `assets/mapa/` (pines `@1.5x`, se ven de 17×28; depósito reducido a 90 px `@3x`, se ve de 30); `alert`, `pudo` y el resto → iconos generados (alerta, paquete, círculo del color de la capa). `entregaRecogida` sale con su pin, no como en la web, que por un fallo lo pinta como círculo.
   - Números como icono, no como texto: el texto en MapLibre necesita *glyphs* (fuentes) que el estilo de OSM no trae, y además se pintaría por encima de todos los iconos de la capa.
-  - **Generación (`IconosMapa.tsx`, `GeneradorIconos`):** se dibujan con `react-native-svg` (`SvgIcono`, SVG de 1×1 px montados debajo del mapa) y se pasan a PNG con `toDataURL` a la densidad de la pantalla (`PixelRatio.get()`), en tandas de 10. Caché en RAM de los PNG (data URI) con un tope de 3000, borrando los menos usados. El id de cada icono son sus datos en JSON, así que los iguales se generan una vez. Los PNG fijos y los generados se registran con `<Images>`.
+  - **Generación (`IconosMapa.tsx`, `GeneradorIconos`):** se dibujan con `react-native-svg` (`SvgIcono`, SVG de 1×1 px montados debajo del mapa) y se pasan a PNG con `toDataURL` a la densidad de la pantalla (`PixelRatio.get()`), en tandas de 100. Las imágenes de cada tanda se pasan al mapa al terminarla. Caché en RAM de los PNG (data URI) con un tope de 3000, borrando los menos usados. El id de cada icono son sus datos en JSON, así que los iguales se generan una vez. Los PNG fijos y los generados se registran con `<Images>`.
   - La captura ocupa el hilo de UI, por eso la animación de carga es el `ActivityIndicator` nativo (lo anima el sistema en otro hilo). Descartado de momento: módulo nativo para generar en segundo plano y caché en disco.
   - `agrupado` no se puede probar: el back lo acepta pero nunca lo genera ni se lo explica al modelo.
-- **Pantalla de carga (`Spinners/CargaMapa`):** tapa el mapa desde el primer fotograma con el spinner y textos que van pasando cada 3,5 s (se queda en el último). El mapa y el generador se montan al acabar la animación de entrada (`transitionEnd`), porque crearlos durante ella daba tirones. Se quita cuando hay iconos y rutas y el mapa avisa de que ha pintado (`onDidFinishRenderingMapFully`), o a los 3 s si no avisa; tope general de 10 s desde que carga el mapa (`onDidFinishLoadingMap`), y lo que falte se pinta al llegar.
+- **Pantalla de carga (`Spinners/CargaMapa`):** tapa el mapa desde el primer fotograma con el spinner y textos que van pasando cada 3,5 s (se queda en el último). El mapa y el generador se montan al acabar la animación de entrada (`transitionEnd`), porque crearlos durante ella daba tirones. Con iconos y rutas listos (o pasados los 5 s de espera de las rutas), se quita en el segundo aviso de pintado del mapa (`onDidFinishRenderingMapFully`), a los 1,5 s del primero o a los 3 s si no avisa. El primer aviso llega antes de tiempo: MapLibre registra las imágenes al momento con un hueco y las decodifica después, sin avisar al terminar. Tope general de 10 s desde el primer pintado completo del mapa, que se reinicia con cada tanda de iconos; lo que falte se pinta al llegar. Si aun así los iconos salen tarde, la siguiente opción es parchear MapLibre para que avise al cargar las imágenes.
+- **Leyenda:** en pantalla completa va en un `ScrollView` de 144 px de alto como máximo (con `style`: la clase `max-h-36` de NativeWind no se aplicaba); en la tarjeta del chat, 8 capas como mucho y "+N más".
+- **PUDO:** icono de 24×24, dibujado directamente en esas coordenadas.
 - **Rutas (bloque 5, `chat/rutas.ts`):** `getLinesByStreets` manda todas las líneas en un POST a `/directionsForMap2-todas-las-rutas` (sin token, como la web) y cambia la geometría de cada una por el trazado de OSRM. Si una ruta falla no se dibuja (no la recta). Caché en memoria por coordenadas de la línea, solo de las trazadas. La petición sale al abrir la pantalla; si tarda más de 5 s, el mapa se abre sin líneas y se pintan al llegar.
 - **Pendientes de mapas:** revisar la licencia de `leaflet-color-markers` (los pines) para la pantalla de licencias; los pines se ven algo borrosos en pantallas densas (se podrían generar como SVG); el texto "Colocando las paradas…" sale también en mapas sin paradas.
 - **Vista previa (bloque 6), caso grande (20 mapas de 2000 puntos):** cola de una captura a la vez, priorizando las tarjetas visibles (la lista invertida monta primero las recientes); cancelar al desmontar la tarjeta; pausar la cola mientras se arrastra la lista (crear la vista nativa puede costar uno o dos fotogramas); capturar a densidad 2; caché en disco con clave `runId` + posición del mapa (el back no manda id); tiempo máximo, y si salta, la tarjeta queda sin imagen pero se puede abrir.
@@ -730,3 +748,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-07 | Mapas: pantalla de carga con `ActivityIndicator` (el pin animado con Reanimated se paraba al generar iconos en el hilo de UI); mapa montado tras la animación de entrada; topes de 3 s y 10 s |
 | 2026-10-07 | Mapas, bloque 5: rutas por calles con `/directionsForMap2-todas-las-rutas`, grosor 2; si una ruta falla no se dibuja; espera máxima de 5 s |
 | 2026-10-07 | Descartados de momento: módulo nativo para generar iconos fuera del hilo de UI y caché de iconos en disco |
+| 2026-10-08 | Mapas: tandas de iconos de 100, pasadas al mapa al terminar cada una; la carga se quita en el segundo aviso de pintado; tope de 10 s desde el primer pintado completo, reiniciado por tanda |
+| 2026-10-08 | Mapas: leyenda con scroll (máx. 144 px) en pantalla completa y 8 capas como mucho en la tarjeta |
+| 2026-10-08 | Menú lateral: la lista ya no se recarga al abrirlo (solo si falta el chat abierto); filas memorizadas; `@shopify/flash-list` 2.0.2 (MIT) en la lista de conversaciones; un único `Intl.DateTimeFormat` para las fechas |
+| 2026-10-08 | Vista previa de mapas (bloque 6) aparcada hasta nuevo aviso |

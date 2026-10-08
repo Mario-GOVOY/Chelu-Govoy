@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { ActivityIndicator, FlatList, Pressable, Text } from 'react-native';
+import { ActivityIndicator, Pressable, Text } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { CopyPlus, MessageSquare, Trash2 } from 'lucide-react-native';
 
 import type { ResumenChat } from '@/types/Chat';
@@ -97,11 +98,10 @@ export function ListaConversaciones({ chats, error, activoId, onReintentar, onAb
     }
 
     return (
-        <FlatList
+        <FlashList
             data={chats}
             keyExtractor={(c) => c.id}
-            contentContainerClassName="px-3 pb-2"
-            ListEmptyComponent={<Text className="px-2 text-sm text-texto-tenue">Aún no hay conversaciones.</Text>}
+            contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}            ListEmptyComponent={<Text className="px-2 text-sm text-texto-tenue">Aún no hay conversaciones.</Text>}
             renderItem={({ item }) => (
                 <ConversationRow
                     {...item}
