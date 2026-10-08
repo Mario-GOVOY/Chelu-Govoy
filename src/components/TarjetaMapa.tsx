@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
-import { Map as IconoMapa, Maximize2 } from 'lucide-react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
+import { Map as IconoMapa } from 'lucide-react-native';
 
 import { capasLeyenda, IMAGENES_PNG, getMarkerIcon, getLayerMarker, tipoCapa } from '@/chat/mapas';
 import { SvgIcono } from '@/components/IconosMapa';
@@ -67,11 +68,24 @@ export function TarjetaMapa({ mapa, onAbrir }: { mapa: Mapa; onAbrir?: () => voi
     const colores = useColores();
     const leyenda = useMemo(() => capasLeyenda(mapa), [mapa]);
     const cuantos = resumen(mapa);
+    const [isOpening, setIsOpening] = useState(false);
+    const isFocused = useIsFocused();
+
+    // Al pasar al mapa, el chat pierde el foco y el botón vuelve a su estado normal.
+    useEffect(() => {
+        if (!isFocused) setIsOpening(false);
+    }, [isFocused]);
+
+    // Se navega en el siguiente fotograma, con el indicador ya pintado.
+    const openMap = onAbrir && (() => {
+        setIsOpening(true);
+        requestAnimationFrame(onAbrir);
+    });
 
     return (
         <Pressable
-            onPress={onAbrir}
-            disabled={!onAbrir}
+            onPress={openMap}
+            disabled={!openMap || isOpening}
             accessibilityRole="button"
             accessibilityLabel={`Abrir mapa${mapa.titulo ? `: ${mapa.titulo}` : ''}`}
             className="gap-3 rounded-xl border border-borde bg-superficie p-3 active:bg-superficie-alt"
@@ -79,10 +93,18 @@ export function TarjetaMapa({ mapa, onAbrir }: { mapa: Mapa; onAbrir?: () => voi
             <View className="flex-row items-center gap-2">
                 <IconoMapa size={16} color={colores['texto-secundario']} />
                 <Text className="flex-1 text-sm font-semibold text-texto">{mapa.titulo ?? 'Mapa'}</Text>
-                {onAbrir && <Maximize2 size={16} color={colores['texto-tenue']} />}
             </View>
             {cuantos && <Text className="text-xs text-texto-tenue">{cuantos}</Text>}
             <LeyendaMapa capas={leyenda} maxItems={8} />
+            {/* Solo aspecto de botón: el toque es de toda la tarjeta. */}
+            {onAbrir && (
+                <View className="items-center">
+                    <View className="flex-row items-center gap-2 rounded-full bg-primario-suave px-4 py-2">
+                        {isOpening && <ActivityIndicator size={14} color={colores.primario} />}
+                        <Text className="text-sm font-semibold text-primario">Ver mapa</Text>
+                    </View>
+                </View>
+            )}
         </Pressable>
     );
 }
