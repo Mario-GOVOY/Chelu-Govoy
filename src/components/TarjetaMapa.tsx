@@ -41,17 +41,23 @@ function MuestraCapa({ capa }: { capa: CapaMapa }) {
     return <SvgIcono icono={icono.generado} tamano={TAMANO_MUESTRA} />;
 }
 
-/** Color y nombre de cada capa (las de capasLeyenda). Con menos de dos no se pinta. */
-export function LeyendaMapa({ capas }: { capas: CapaMapa[] }) {
+/**
+ * Color y nombre de cada capa (las de capasLeyenda). Con menos de dos no se pinta.
+ * Con `maxItems`, enseña esas y "+N más" por el resto.
+ */
+export function LeyendaMapa({ capas, maxItems }: { capas: CapaMapa[]; maxItems?: number }) {
     if (capas.length < 2) return null;
+    const visibles = maxItems ? capas.slice(0, maxItems) : capas;
+    const hidden = capas.length - visibles.length;
     return (
         <View className="flex-row flex-wrap gap-x-4 gap-y-1.5">
-            {capas.map((capa) => (
+            {visibles.map((capa) => (
                 <View key={capa.nombre} className="flex-row items-center gap-1.5">
                     <MuestraCapa capa={capa} />
                     <Text className="text-xs text-texto-secundario">{capa.nombre}</Text>
                 </View>
             ))}
+            {hidden > 0 && <Text className="text-xs text-texto-tenue">+{hidden} más</Text>}
         </View>
     );
 }
@@ -76,7 +82,7 @@ export function TarjetaMapa({ mapa, onAbrir }: { mapa: Mapa; onAbrir?: () => voi
                 {onAbrir && <Maximize2 size={16} color={colores['texto-tenue']} />}
             </View>
             {cuantos && <Text className="text-xs text-texto-tenue">{cuantos}</Text>}
-            <LeyendaMapa capas={leyenda} />
+            <LeyendaMapa capas={leyenda} maxItems={8} />
         </Pressable>
     );
 }

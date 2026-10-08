@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import {
     Camera,
     GeoJSONSource,
@@ -62,14 +62,27 @@ export default function MapaScreen({ navigation, route }: Props) {
     const leyenda = useMemo(() => capasLeyenda(mapa), [mapa]);
     const conLeyenda = leyenda.length > 1;
     const [entradaTerminada, setEntradaTerminada] = useState(false);
-    const [iconos, setIconos] = useState<Record<string, ImageEntry> | null>(null);
-    const imagenes = useMemo(() => ({ ...IMAGENES_PNG, ...iconos }), [iconos]);
+    const [generatedImages, setGeneratedImages] = useState<Record<string, ImageEntry>>({});
+    const [iconsReady, setIconsReady] = useState(false);
+    const imagenes = useMemo(() => ({ ...IMAGENES_PNG, ...generatedImages }), [generatedImages]);
     const [lineas, setLineas] = useState<FeatureCollection | null>(null);
     const [esperaRutasAgotada, setEsperaRutasAgotada] = useState(false);
     const datos = useMemo(() => ({ ...elementos, lineas: lineas ?? SIN_LINEAS }), [elementos, lineas]);
-    const listo = iconos !== null && (lineas !== null || esperaRutasAgotada);
+    const listo = iconsReady && (lineas !== null || esperaRutasAgotada);
     const [mapaCargado, setMapaCargado] = useState(false);
+    const [rendersAfterReady, setRendersAfterReady] = useState(0);
     const [mapaPintado, setMapaPintado] = useState(false);
+    const [generationProgress, setGenerationProgress] = useState(0);
+
+    const handleGenerationProgress = useCallback((newImages: Record<string, ImageEntry>) => {
+        setGenerationProgress((count) => count + 1);
+        setGeneratedImages((images) => ({ ...images, ...newImages }));
+    }, []);
+
+    const handleIconsReady = useCallback((allImages: Record<string, ImageEntry>) => {
+        setGeneratedImages((images) => ({ ...images, ...allImages }));
+        setIconsReady(true);
+    }, []);
 
     const textosCarga = useMemo(() => {
         const textos = elementos.iconos.length ? [...TEXTOS_CON_PARADAS] : [...TEXTOS_SIN_PARADAS];
@@ -101,19 +114,31 @@ export default function MapaScreen({ navigation, route }: Props) {
         [navigation],
     );
 
-    // La carga se quita cuando el mapa avisa de que ha pintado todo, o a los 3 s si no avisa.
+    // Con todo listo, la carga se quita en el segundo aviso de pintado del mapa (el primero llega antes
+    // de que MapLibre ponga las últimas imágenes), 1,5 s después del primero o a los 3 s si no avisa.
     useEffect(() => {
         if (!listo) return;
         const tope = setTimeout(() => setMapaPintado(true), 3000);
         return () => clearTimeout(tope);
     }, [listo]);
 
-    // A los 10 s de cargar el mapa, la carga se quita aunque falte algo; lo que falte se pinta al llegar.
+    useEffect(() => {
+        if (rendersAfterReady >= 2) {
+            setMapaPintado(true);
+            return;
+        }
+        if (rendersAfterReady === 0) return;
+        const tope = setTimeout(() => setMapaPintado(true), 1500);
+        return () => clearTimeout(tope);
+    }, [rendersAfterReady]);
+
+    // A los 10 s de pintar el mapa con sus capas por primera vez, la carga se quita aunque falte algo;
+    // lo que falte se pinta al llegar. Cada tanda de iconos generada reinicia la cuenta.
     useEffect(() => {
         if (!mapaCargado) return;
         const tope = setTimeout(() => setMapaPintado(true), 10000);
         return () => clearTimeout(tope);
-    }, [mapaCargado]);
+    }, [mapaCargado, generationProgress]);
 
     return (
         <View className="flex-1 bg-fondo">
@@ -138,7 +163,11 @@ export default function MapaScreen({ navigation, route }: Props) {
                 {entradaTerminada && (
                     <>
                         {/* Antes que el mapa para que quede debajo. */}
-                        <GeneradorIconos iconos={elementos.iconos} onListos={setIconos} />
+                        <GeneradorIconos
+                            iconos={elementos.iconos}
+                            onListos={handleIconsReady}
+                            onProgress={handleGenerationProgress}
+                        />
                         {/* Sin giro ni inclinación: siempre con el norte arriba. */}
                         <Map
                             mapStyle={ESTILO_MAPA}
@@ -147,8 +176,10 @@ export default function MapaScreen({ navigation, route }: Props) {
                             compass={false}
                             touchRotate={false}
                             touchPitch={false}
-                            onDidFinishLoadingMap={() => setMapaCargado(true)}
-                            onDidFinishRenderingMapFully={() => listo && setMapaPintado(true)}
+                            onDidFinishRenderingMapFully={() => {
+                                setMapaCargado(true);
+                                if (listo) setRendersAfterReady((count) => count + 1);
+                            }}
                         >
                             <Camera initialViewState={vista} maxZoom={19} />
                             <Images images={imagenes} />
@@ -179,7 +210,9 @@ export default function MapaScreen({ navigation, route }: Props) {
             </View>
             {conLeyenda && (
                 <View className="border-t border-borde bg-superficie px-4 pt-3" style={{ paddingBottom: insets.bottom + 12 }}>
-                    <LeyendaMapa capas={leyenda} />
+                    <ScrollView style={{ maxHeight: 144 }} persistentScrollbar>
+                        <LeyendaMapa capas={leyenda} />
+                    </ScrollView>
                 </View>
             )}
         </View>

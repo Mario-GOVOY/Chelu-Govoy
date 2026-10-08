@@ -9,7 +9,7 @@ import type { IconoGenerado } from '@/chat/mapas';
 const ESCALA = PixelRatio.get();
 
 // Cuántos SVG se montan y capturan a la vez.
-const TAMANO_TANDA = 10;
+const TAMANO_TANDA = 100;
 
 // PNG ya generados (en data URI), por id. Con más de MAX_GENERADOS se borran los que llevan
 // más tiempo sin usarse.
@@ -148,13 +148,15 @@ type Props = {
     iconos: IconoGenerado[];
     // Con las imágenes de todos los iconos, cuando están listas.
     onListos: (imagenes: Record<string, ImageEntry>) => void;
+    // Con las imágenes de cada tanda, al terminarla.
+    onProgress: (imagenes: Record<string, ImageEntry>) => void;
 };
 
 /**
  * Pinta con react-native-svg los iconos que aún no se han generado y los pasa a PNG, por tandas.
  * Los SVG miden 1×1 px y se montan debajo del mapa.
  */
-export function GeneradorIconos({ iconos, onListos }: Props) {
+export function GeneradorIconos({ iconos, onListos, onProgress }: Props) {
     const pendientes = useMemo(() => iconos.filter(({ id }) => !generados.has(id)), [iconos]);
     const [inicioTanda, setInicioTanda] = useState(0);
     const [terminado, setTerminado] = useState(false);
@@ -180,6 +182,7 @@ export function GeneradorIconos({ iconos, onListos }: Props) {
         );
         Promise.all(capturas).then(() => {
             if (cancelado) return;
+            onProgress(getMapImages(tanda));
             if (inicioTanda + TAMANO_TANDA < pendientes.length) {
                 setInicioTanda(inicioTanda + TAMANO_TANDA);
                 return;
@@ -191,7 +194,7 @@ export function GeneradorIconos({ iconos, onListos }: Props) {
         return () => {
             cancelado = true;
         };
-    }, [tanda, inicioTanda, pendientes, iconos, onListos]);
+    }, [tanda, inicioTanda, pendientes, iconos, onListos, onProgress]);
 
     if (terminado || !tanda.length) return null;
     return (
