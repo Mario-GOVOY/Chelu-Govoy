@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import { DrawerContentComponentProps, useDrawerStatus } from '@react-navigation/drawer';
 import { LogOut, Moon, Plus, RefreshCw, Sun, UserRoundX } from 'lucide-react-native';
@@ -48,16 +48,20 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
         if (isMenuOpen && chatActivo && chats && !chats.some((chat) => chat.id === chatActivo)) recargar();
     }, [isMenuOpen]);
 
-    const abrirChat = (chatId?: string) => {
-        navigation.navigate('Chat', { chatId });
-        navigation.closeDrawer();
-    };
+    const abrirChat = useCallback(
+        (chatId?: string) => {
+            navigation.navigate('Chat', { chatId });
+            navigation.closeDrawer();
+        },
+        [navigation],
+    );
+
+    const openChatFromList = useCallback((chat: ResumenChat) => abrirChat(chat.id), [abrirChat]);
 
     // Acción en curso sobre una conversación, para pintar su icono cargando.
     const [ocupado, setOcupado] = useState<{ id: string; accion: 'duplicar' | 'borrar' } | null>(null);
 
-    const duplicar = (chat: ResumenChat) => {
-        if (ocupado) return;
+    const duplicar = useCallback((chat: ResumenChat) => {
         Alert.alert('Duplicar conversación', `Se creará una copia de «${chat.titulo}».`, [
             { text: 'Cancelar', style: 'cancel' },
             {
@@ -74,10 +78,9 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                 },
             },
         ]);
-    };
+    }, [abrirChat]);
 
-    const borrar = (chat: ResumenChat) => {
-        if (ocupado) return;
+    const borrar = useCallback((chat: ResumenChat) => {
         Alert.alert('Borrar conversación', `Se borrará «${chat.titulo}».`, [
             { text: 'Cancelar', style: 'cancel' },
             {
@@ -89,7 +92,7 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                         await borrarChat(chat.id);
                         // Si era la abierta, se pasa a una nueva; el menú sigue abierto.
                         if (chat.id === chatActivo) navigation.navigate('Chat', { chatId: undefined });
-                        await conversaciones.recargar();
+                        await recargar();
                     } catch {
                         Alert.alert('No se pudo borrar la conversación', 'Inténtalo de nuevo.');
                     } finally {
@@ -98,7 +101,7 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                 },
             },
         ]);
-    };
+    }, [chatActivo, navigation, recargar]);
 
     return (
         <View className="flex-1 bg-superficie" style={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 8 }}>
@@ -146,7 +149,7 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                     {...conversaciones}
                     activoId={chatActivo}
                     onReintentar={conversaciones.recargar}
-                    onAbrir={(chat) => abrirChat(chat.id)}
+                    onAbrir={openChatFromList}
                     onDuplicar={duplicar}
                     onBorrar={borrar}
                     ocupado={ocupado}
