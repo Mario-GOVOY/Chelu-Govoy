@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, TextInputProps, View } from 'react-native';
 import { CircleCheck, Mail, Paperclip, Send, TriangleAlert } from 'lucide-react-native';
 
+import { EditorCuerpoCorreo, type EditorCuerpoCorreoHandle } from '@/components/EditorCuerpoCorreo';
 import { MensajeError } from '@/components/ui/MensajeError';
 import { useColores } from '@/theme/ThemeProvider';
 import type { BorradorCorreo, EditedEmail } from '@/types/Chat';
@@ -41,7 +42,9 @@ export function TarjetaBorradorCorreo({ borrador, onSend }: {
     const colores = useColores();
     const [recipientsText, setRecipientsText] = useState(borrador.recipients.join(', '));
     const [subject, setSubject] = useState(borrador.subject);
-    const [body, setBody] = useState(borrador.bodyMarkdown);
+    // Texto del cuerpo sin formato; el markdown se saca del editor al enviar.
+    const [bodyText, setBodyText] = useState(borrador.bodyMarkdown);
+    const bodyEditorRef = useRef<EditorCuerpoCorreoHandle>(null);
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +69,7 @@ export function TarjetaBorradorCorreo({ borrador, onSend }: {
         ? 'Falta el destinatario'
         : !subject.trim()
             ? 'Falta el asunto'
-            : !body.trim()
+            : !bodyText.trim()
                 ? 'Falta el mensaje'
                 : null;
     const canSend = !missing && !warnings.length && !locked;
@@ -75,7 +78,8 @@ export function TarjetaBorradorCorreo({ borrador, onSend }: {
         setError(null);
         setSending(true);
         try {
-            await onSend({ subject: subject.trim(), bodyMarkdown: body, recipients });
+            const bodyMarkdown = await bodyEditorRef.current!.getMarkdown();
+            await onSend({ subject: subject.trim(), bodyMarkdown, recipients });
         } catch (e) {
             setError(e instanceof Error ? e.message : 'No se pudo enviar el correo.');
         } finally {
@@ -131,15 +135,11 @@ export function TarjetaBorradorCorreo({ borrador, onSend }: {
 
             <View className="gap-1">
                 <Text className="text-xs font-semibold text-texto-secundario">Mensaje</Text>
-                <EmailField
-                    label="Mensaje"
-                    value={body}
-                    onChangeText={setBody}
+                <EditorCuerpoCorreo
+                    ref={bodyEditorRef}
+                    initialMarkdown={borrador.bodyMarkdown}
                     editable={!locked}
-                    placeholder="Cuerpo del correo"
-                    multiline
-                    textAlignVertical="top"
-                    style={{ minHeight: 120 }}
+                    onChangeText={setBodyText}
                 />
             </View>
 

@@ -604,7 +604,7 @@ Todo lo que en el chat pide algo al usuario o le enseña un formulario. Se hace 
 |---|---|---|
 | 1 | Datos: tipos, los cinco eventos del stream (`correo_borrador`, `formulario_sectores`, `sectores`, `comparativa`, `progreso`), lectura en `get_chat` y aviso de progreso | Hecho |
 | 2 | Tarjetas de resultado (`SectorsResultCard`) y comparativa (`ComparisonCard`), solo lectura, con nota "desde la web" | Hecho, falta probar en el móvil |
-| 3 | Borrador de correo, en sub-bloques: 3a envío y registro de "ya enviado"; 3b tarjeta (Para, Asunto, adjuntos, avisos, botón y bloqueo) con el cuerpo en un `TextInput`; 3c editor del cuerpo con `react-native-enriched-html` | 3a hecho; librería instalada (1.1.1); 3b siguiente |
+| 3 | Borrador de correo, en sub-bloques: 3a envío y registro de "ya enviado"; 3b tarjeta (Para, Asunto, adjuntos, avisos, botón y bloqueo) con el cuerpo en un `TextInput`; 3c editor del cuerpo con `react-native-enriched-html` | Hecho (3a, 3b y 3c), falta probar en el móvil |
 | 4 | Formulario de sectores, en sub-bloques: 4a solo lectura y lanzar sin cambios; 4b mapa, zona y fechas; 4c demanda, carga mínima y modo; 4d editor de flota y escenarios; 4e cuadro "¿Algo que afinar?" (revisión con texto) | Pendiente |
 
 **Decisiones**
@@ -626,6 +626,22 @@ Todo lo que en el chat pide algo al usuario o le enseña un formulario. Se hace 
 - `chatApi.sendEmail(sessionId, borrador, editado)`: `POST /chat-cex/correo/enviar` con lo editado y los `fileId` de los adjuntos del borrador. Si falla, lanza el `detail` del back (o un texto para 429, 502 y el resto). Si va bien, apunta el envío y devuelve el `message_id` ("enviado" si no llega).
 - `chat/correosEnviados.ts`: registro en AsyncStorage (`chelu_correos_enviados`, la misma clave y huella que la web: sesión + djb2 del asunto y cuerpo originales), con los 200 más recientes. `getSentMessageId` para saber al pintar la tarjeta si ya se envió.
 - `react-native-enriched-html` instalada (1.1.1). Los avisos de `ERESOLVE` y las ~20 vulnerabilidades nuevas de `npm audit` son de sus dependencias de web (`@tiptap/*`, `dompurify`), que no entran en la app.
+
+**Hecho en el bloque 3b**
+- Al recargar, la tarjeta enviada muestra el borrador original de Chelu (lo único que devuelve `get_chat`) y no lo editado, igual que la web. Se probó guardar lo enviado en el registro local y se descartó: queda para la propuesta del back.
+- "Ya enviado" va en el propio borrador (`sentMessageId`): `obtenerChat` lo rellena con el registro y `useChat.sendEmail` lo pone al enviar. Así no se pierde si la lista desmonta la tarjeta. Lo editado sin enviar sí se pierde en ese caso (estado de la tarjeta).
+- `TarjetaBorradorCorreo`, tras los documentos y antes de los resultados de sectores: cabecera (borrador / enviado con su ID), "Para" (rojo y "obligatorio" si está vacío, teclado de correo), "Asunto" con contador /200, "Mensaje" en un `TextInput` multilínea (provisional hasta el 3c), adjuntos de solo lectura con tamaño, avisos con los topes del back, error del back y botón Enviar / Enviando… / Enviado. Enviando o enviado, los campos no se editan.
+- Sin foco automático en "Para" al llegar el borrador (en el móvil abriría el teclado).
+- `formatBytes` pasa a `utils/numbers.ts` (lo usan esta tarjeta y `TarjetaDocumento`). `EditedEmail` en `types/Chat.ts`.
+- Por probar: que el teclado no tape los campos de la tarjeta dentro de la lista invertida.
+- Varios borradores en una misma respuesta (p. ej. el modelo corrige uno tras las `advertencias`): se pinta una tarjeta por borrador, como la web, aunque la descripción de `preparar_correo` le dice al modelo que cada uno reemplaza al anterior.
+
+**Hecho en el bloque 3c**
+- `EditorCuerpoCorreo`: `EnrichedTextInput` con barra debajo del texto (el menú de copiar y pegar la tapaba arriba): negrita, cursiva, subrayado y lista con viñetas, cada botón marcado según el cursor (`onChangeState`). Sin barra cuando no se puede editar. Crece con el texto (`scrollEnabled={false}`). "- " al principio de línea empieza una lista; sin enlaces (`linkRegex={null}`).
+- **Ojo, también en la web:** el back (`cuerpo_a_html`, `correo.py:93`) solo convierte negrita, viñetas y párrafos. La cursiva llega con los asteriscos y el subrayado con las etiquetas `<u>` visibles (escapa el texto antes). Se dejan los botones como en la web; queda para el equipo que el back los convierta.
+- Se probó añadir los formatos al menú que sale al seleccionar texto (`contextMenuItems`) y se quitó: al pulsar "Negrita" desde ahí la app se cerraba en Android (sin investigar la causa).
+- El editor no es controlado: la tarjeta guarda solo el texto plano (para "Falta el mensaje") y al enviar pide el HTML (`getHTML`) y lo pasa a markdown.
+- `chat/cuerpoCorreo.ts`: `markdownToEditorHtml` (un `<p>` por línea, líneas vacías como `<br>`, líneas seguidas con `- ` o `* ` como `<ul>`, `**`→`<b>`, `*`→`<i>`, `<u>` se mantiene; se escapa antes) y `editorHtmlToMarkdown` (al revés; listas y títulos pegados salen como texto, el resto de etiquetas se quitan y se decodifican las entidades, también `&#225;`). Probado de ida y vuelta con el HTML que genera Android. El de iOS no se ha visto.
 
 **Cómo funciona en la web y el back (revisado el 2026-10-08)**
 
@@ -662,6 +678,16 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
 - **Progreso (`progreso`):** `{tool, mensaje}` ("Optimización en proceso. Esto puede tardar algunos minutos..."). No se guarda.
 - **Resultado (`sectores`):** `{optimizacion_id, resumen}`; resumen con `grupo`, `celdas_pedidas/asignadas/sin_asignar`, `vehiculos_aportados/usados`, `vehiculos_sin_usar`, `percentil_final`, tiempos y distancias totales y medias, `rutas[]`, `diagnostico_sin_asignar` y `fragmentacion` (B `opti.py:514-609`). La web solo pinta grupo, vehículos y celdas.
 - **Comparativa (`comparativa`):** `{escenarios: [{nombre, optimizacion_id, resumen} | {nombre, error}]}`; los escenarios se calculan en paralelo, 4 como mucho (`limites.max_escenarios`).
+
+**Pendiente de hablar con el equipo: "ya enviado" entre dispositivos**
+- **Problema:** el registro de enviados es de cada dispositivo (AsyncStorage en el móvil, `localStorage` en la web). Un correo enviado desde el móvil sigue saliendo como enviable en la web, y al revés. Pasa también en la web entre navegadores.
+- **Por qué:** el back ya guarda un turno de confirmación al enviar (`_persistir_correo_enviado`, `endpoint_chat.py:1439`), pero no dice qué borrador fue.
+- **Propuesta (back, luego web y app):**
+  1. `/correo/enviar` recibe también el borrador original (asunto y cuerpo sin editar). Con eso calcula una huella y la guarda en los metadatos del turno de confirmación, con el `message_id` y lo enviado (destinatarios, asunto y cuerpo editados).
+  2. `get_chat` calcula la huella de cada borrador y, si hay un turno de confirmación con ella, le añade `enviado_message_id` y lo enviado, para que la tarjeta muestre lo que salió y no el borrador original.
+  3. Si llega un envío de un borrador ya confirmado, 409 "Este correo ya se envió" (evita reenviar desde otra pestaña o dispositivo con la tarjeta abierta).
+  4. Web y app mandan el borrador original, leen `enviado_message_id` y lo enviado de `get_chat` y quitan el registro local. (Hoy web y app, al recargar, enseñan el borrador original como enviado.)
+- Por huella y no por `run_id` + posición: el borrador llega antes de que acabe la respuesta, cuando aún no hay `run_id`. No hace falta tabla nueva.
 
 **Licencias para la pantalla de licencias (pendiente antes de publicar)**
 - Ya en la app: `@shopify/flash-list` (MIT); MapLibre y compañía (ver D8); falta revisar `leaflet-color-markers`.
@@ -767,6 +793,8 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 16. **Extras:** ¿desbloqueo con huella o Face ID al abrir la app? ¿Idiomas además del español?
 17. **Origen del chat:** ¿se marca en el back si una conversación se creó desde el móvil o desde la web? (Útil para métricas y feedback.)
 18. **Rol en el back (aplazado, ver D9):** que `/chat-cex/*` compruebe que el rol es `administrador` o `jefeDeOperaciones`.
+19. **Correos ya enviados entre dispositivos:** que el back marque qué borrador se envió, para que web y app lo vean igual y no se pueda reenviar. Propuesta en el progreso de la fase 4.
+20. **Formato del cuerpo del correo:** que `cuerpo_a_html` del back convierta cursiva y subrayado, que hoy llegan con los símbolos visibles (web y app los ofrecen).
 
 ---
 
@@ -833,3 +861,5 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-08 | Fase 4: formulario de sectores con tarjeta en el chat y edición en pantalla completa; correo con `react-native-enriched-html` 1.1.1 (MIT); "ya enviado" en AsyncStorage; resultado y comparativa sin botón de abrir, con nota "desde la web"; comparativa en tarjetas |
 | 2026-10-08 | Fase 4: bloques 1 (datos y eventos) y 2 (tarjetas de resultado y comparativa) hechos |
 | 2026-10-08 | Fase 4: `EmailDraft` renombrado a `BorradorCorreo`; bloque 3 dividido en 3a/3b/3c; 3a (envío y registro de enviados) hecho; `react-native-enriched-html` 1.1.1 instalada |
+| 2026-10-08 | Fase 4: bloque 3 hecho (tarjeta del borrador y editor con formato); una tarjeta por borrador, como la web; "ya enviado" entre dispositivos queda como propuesta para el equipo (back) |
+| 2026-10-08 | Chelu: el SVG se sustituye por el PNG de referencia (`assets/chelu.png`); flotar del login con `withRepeat` en sentido inverso (daba un salto al repetir) |
