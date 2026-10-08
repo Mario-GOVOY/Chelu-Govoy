@@ -1,11 +1,12 @@
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { createLucideIcon, ThumbsDown, ThumbsUp } from 'lucide-react-native';
 
-import type { Grafica, Mapa, Mensaje } from '@/types/Chat';
+import type { BorradorCorreo, EditedEmail, Grafica, Mapa, Mensaje } from '@/types/Chat';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { ComparisonCard } from '@/components/ComparisonCard';
 import { PuntosEscribiendo } from '@/components/PuntosEscribiendo';
 import { SectorsResultCard } from '@/components/SectorsResultCard';
+import { TarjetaBorradorCorreo } from '@/components/TarjetaBorradorCorreo';
 import { TarjetaDocumento } from '@/components/TarjetaDocumento';
 import { TarjetaGrafica } from '@/components/TarjetaGrafica';
 import { TarjetaMapa } from '@/components/TarjetaMapa';
@@ -21,8 +22,9 @@ const GitBranch = createLucideIcon('git-branch-web', [
     ['circle', { cx: '6', cy: '18', r: '3', key: 'fqmcym' }],
 ]);
 
-export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar, onValorar, onAmpliarGrafica, onAbrirMapa }: {
+export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar, onValorar, onAmpliarGrafica, onAbrirMapa, onSendEmail }: {
     mensaje: Mensaje;
+    onSendEmail: (borrador: BorradorCorreo, edited: EditedEmail) => Promise<void>;
     onAmpliarGrafica?: (grafica: Grafica) => void;
     onAbrirMapa?: (mapa: Mapa) => void;
     onDuplicarDesde?: () => void;
@@ -80,6 +82,9 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
                     <TarjetaMapa key={i} mapa={mapa} onAbrir={onAbrirMapa && (() => onAbrirMapa(mapa))} />
                 ))}
                 {mensaje.documentos?.map((d) => <TarjetaDocumento key={d.fileId} documento={d} />)}
+                {mensaje.borradoresCorreo?.map((borrador, i) => (
+                    <TarjetaBorradorCorreo key={i} borrador={borrador} onSend={(edited) => onSendEmail(borrador, edited)} />
+                ))}
                 {mensaje.sectorsResults?.map((result) => (
                     <SectorsResultCard key={result.optimizationId} result={result} />
                 ))}

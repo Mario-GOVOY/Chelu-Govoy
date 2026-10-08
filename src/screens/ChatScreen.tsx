@@ -44,7 +44,7 @@ export default function ChatScreen({ navigation, route }: Props) {
     const chatId = route.params?.chatId;
     // Al crearse la conversación se pone su id en la ruta, para que el menú la marque como activa.
     const alCrearse = useCallback((id: string) => navigation.setParams({ chatId: id }), [navigation]);
-    const { mensajes, titulo, cargando, error, recargar, enviar, parar, respondiendo, votar } = useChat(chatId, alCrearse);
+    const { mensajes, titulo, cargando, error, recargar, enviar, parar, respondiendo, votar, sendEmail } = useChat(chatId, alCrearse);
     const puedeValorar = validatorUserHasOption(HAS_FEEDBACK_CHAT_CHELU, sesion.empresaId, esSesionMaster(sesion));
     // Respuesta que se está valorando (su runId y el pulgar pulsado); null con la hoja cerrada.
     const [valorando, setValorando] = useState<(Valorando & { runId: string }) | null>(null);
@@ -204,6 +204,7 @@ export default function ChatScreen({ navigation, route }: Props) {
                                     : undefined}
                                 onAmpliarGrafica={(grafica) => navigation.navigate('Grafica', { grafica })}
                                 onAbrirMapa={(mapa) => navigation.navigate('Mapa', { mapa })}
+                                onSendEmail={sendEmail}
                             />
                         )}
                     />

@@ -28,7 +28,7 @@ export type Mensaje = {
     documentos?: Documento[];
     graficas?: Grafica[];
     mapas?: Mapa[];
-    emailDrafts?: EmailDraft[];
+    borradoresCorreo?: BorradorCorreo[];
     sectorsForms?: SectorsForm[];
     sectorsResults?: SectorsResult[];
     comparisons?: ScenarioComparison[];
@@ -38,11 +38,19 @@ export type Mensaje = {
 };
 
 // Correo que redacta Chelu; se envía aparte, tras editarlo.
-export type EmailDraft = {
+export type BorradorCorreo = {
     subject: string;
     bodyMarkdown: string;
     recipients: string[];
     attachments: Documento[];
+    sentMessageId?: string;
+};
+
+// Lo que se envía de un borrador tras editarlo en su tarjeta.
+export type EditedEmail = {
+    subject: string;
+    bodyMarkdown: string;
+    recipients: string[];
 };
 
 export type SectorsSummary = {

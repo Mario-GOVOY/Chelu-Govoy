@@ -4,11 +4,13 @@ import ReactNativeBlobUtil from 'react-native-blob-util';
 
 import { authFetch } from '@/auth/authManager';
 import { API_URL } from '@/auth/Constants';
+import { getSentMessageId, markEmailSent, readSentEmails } from '@/chat/correosEnviados';
 import { aMapa } from '@/chat/mapas';
 import type {
+    BorradorCorreo,
     Chat,
     Documento,
-    EmailDraft,
+    EditedEmail,
     Grafica,
     Mapa,
     Mensaje,
@@ -36,7 +38,7 @@ const aGrafica = (g: any): Grafica => ({
 });
 
 // Las advertencias del back son para el modelo, no para el usuario.
-const toEmailDraft = (c: any): EmailDraft | null =>
+const toBorradorCorreo = (c: any): BorradorCorreo | null =>
     c.asunto || c.cuerpo_markdown
         ? {
             subject: c.asunto || '',
@@ -95,6 +97,7 @@ export async function obtenerChat(id: string): Promise<Chat> {
     const json = await respuesta.json();
     const chat = json?.chat;
     const mensajes: any[] = Array.isArray(chat?.messages) ? chat.messages : [];
+    const sentEmails = await readSentEmails();
     return {
         id,
         titulo: chat?.title || 'Conversación',
@@ -105,8 +108,14 @@ export async function obtenerChat(id: string): Promise<Chat> {
             const documentos = Array.isArray(m.docs) ? m.docs.filter((d: any) => d?.file_id).map(aDocumento) : [];
             const graficas = Array.isArray(m.charts) ? m.charts.map(aGrafica) : [];
             const mapas = Array.isArray(m.maps) ? m.maps.map(aMapa).filter((mapa: Mapa | null) => mapa !== null) : [];
-            const emailDrafts = Array.isArray(m.correos)
-                ? m.correos.map(toEmailDraft).filter((draft: EmailDraft | null) => draft !== null)
+            const borradoresCorreo = Array.isArray(m.correos)
+                ? m.correos
+                    .map(toBorradorCorreo)
+                    .filter((borrador: BorradorCorreo | null) => borrador !== null)
+                    .map((borrador: BorradorCorreo) => ({
+                        ...borrador,
+                        sentMessageId: getSentMessageId(sentEmails, id, borrador),
+                    }))
                 : [];
             const sectorsForms = Array.isArray(m.formularios)
                 ? m.formularios
@@ -120,7 +129,7 @@ export async function obtenerChat(id: string): Promise<Chat> {
             const comparisons = Array.isArray(m.comparativas)
                 ? m.comparativas.map(toComparison).filter((comparison: ScenarioComparison | null) => comparison !== null)
                 : [];
-            const cards = [documentos, graficas, mapas, emailDrafts, sectorsForms, sectorsResults, comparisons];
+            const cards = [documentos, graficas, mapas, borradoresCorreo, sectorsForms, sectorsResults, comparisons];
             // Una respuesta sin texto pero con tarjetas (p. ej. solo una gráfica) sí se muestra, como en la web.
             if (!texto && cards.every((list) => !list.length)) return [];
             return [{
@@ -132,7 +141,7 @@ export async function obtenerChat(id: string): Promise<Chat> {
                 documentos,
                 graficas,
                 mapas,
-                emailDrafts,
+                borradoresCorreo,
                 sectorsForms,
                 sectorsResults,
                 comparisons,
@@ -221,6 +230,42 @@ export async function duplicarChat(sessionId: string, hastaRunId?: string): Prom
     return json.session_id;
 }
 
+/**
+ * Envía un borrador con lo editado en la tarjeta y lo apunta como enviado. Devuelve el messageId del envío.
+ * Los adjuntos son los del borrador; de ellos solo viaja el fileId.
+ */
+export async function sendEmail(
+    sessionId: string,
+    borrador: BorradorCorreo,
+    edited: EditedEmail,
+): Promise<string> {
+    const respuesta = await authFetch(`${API_URL}chat-cex/correo/enviar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            asunto: edited.subject,
+            cuerpo_markdown: edited.bodyMarkdown,
+            destinatarios: edited.recipients,
+            adjuntos: borrador.attachments.map((adjunto) => adjunto.fileId),
+            session_id: sessionId,
+        }),
+    });
+    const json = await respuesta.json().catch(() => null);
+    if (!respuesta.ok) {
+        throw new Error(
+            json?.detail ||
+            (respuesta.status === 429
+                ? 'Has llegado al límite de correos por hora. Inténtalo más tarde.'
+                : respuesta.status === 502
+                    ? 'El servicio de correo rechazó el envío. Inténtalo de nuevo.'
+                    : `No se pudo enviar el correo (error ${respuesta.status}).`),
+        );
+    }
+    const messageId: string = json?.message_id || 'enviado';
+    await markEmailSent(sessionId, borrador, messageId);
+    return messageId;
+}
+
 // Como la web. Más adelante, guardado en AsyncStorage y con selector para master.
 const MODELO = 'deepseek-v4-flash';
 
@@ -233,7 +278,7 @@ export type EventoChat =
     | { tipo: 'documento'; documento: Documento }
     | { tipo: 'grafica'; grafica: Grafica }
     | { tipo: 'mapa'; mapa: Mapa }
-    | { tipo: 'correo_borrador'; emailDraft: EmailDraft }
+    | { tipo: 'correo_borrador'; borradorCorreo: BorradorCorreo }
     | { tipo: 'formulario_sectores'; sectorsForm: SectorsForm }
     | { tipo: 'sectores'; sectorsResult: SectorsResult }
     | { tipo: 'comparativa'; comparison: ScenarioComparison }
@@ -260,8 +305,8 @@ const toEvent = (evento: any): EventoChat | null => {
             return mapa && { tipo: 'mapa', mapa };
         }
         case 'correo_borrador': {
-            const emailDraft = toEmailDraft(evento);
-            return emailDraft && { tipo: 'correo_borrador', emailDraft };
+            const borradorCorreo = toBorradorCorreo(evento);
+            return borradorCorreo && { tipo: 'correo_borrador', borradorCorreo };
         }
         case 'formulario_sectores': {
             const sectorsForm = toSectorsForm(evento);

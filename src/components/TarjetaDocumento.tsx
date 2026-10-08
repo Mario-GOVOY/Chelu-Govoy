@@ -6,6 +6,7 @@ import { descargarDocumento } from '@/chat/chatApi';
 import type { NombreColor } from '@/theme/palette';
 import { useColores } from '@/theme/ThemeProvider';
 import type { Documento } from '@/types/Chat';
+import { formatBytes } from '@/utils/numbers';
 
 // Como la web (fileMeta.ts): icono y color según el formato.
 // Los colores van por nombre y se pintan con style: las clases elegidas al vuelo no siempre las genera NativeWind.
@@ -24,22 +25,12 @@ function tipo(formato: string): { Icono: typeof FileText; etiqueta: string; colo
     }
 }
 
-// Como formatBytes de la web.
-function tamanoLegible(bytes?: number): string {
-    if (bytes == null || !Number.isFinite(bytes)) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    const kb = bytes / 1024;
-    if (kb < 1024) return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)} KB`;
-    const mb = kb / 1024;
-    return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
-}
-
 export function TarjetaDocumento({ documento }: { documento: Documento }) {
     const colores = useColores();
     const [descargando, setDescargando] = useState(false);
     const [fallo, setFallo] = useState(false);
     const { Icono, etiqueta, color, fondo } = tipo(documento.formato);
-    const tamano = tamanoLegible(documento.tamano);
+    const tamano = formatBytes(documento.tamano);
 
     const descargar = async () => {
         if (descargando) return;

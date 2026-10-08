@@ -21,6 +21,7 @@
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-blob-util": "^0.25.1",
+    "react-native-enriched-html": "^1.1.1",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-gifted-charts": "^1.4.81",
     "react-native-marked": "^8.3.2",

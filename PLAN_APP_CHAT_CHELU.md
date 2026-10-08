@@ -32,7 +32,7 @@ Eventos del stream: `session, delta, tool, progreso, sugerencias, done, error, d
 - **Fases 2–3:** `session`, `delta`, `tool`/`progreso`, `sugerencias`, `done`, `error`, `documento`, `grafica`, `mapa`.
 - **Fase 4:** `correo_borrador`, `sectores`, `comparativa`, `formulario_sectores`.
 - **No aplican:** los eventos del panel de simulación (`acciones_editor`, `carga_simulacion`, `orden_optimizacion`) y `contexto_pantalla`.
-- **Optimización de sectores desde el chat (fase 4):** en la web, Chelu puede abrir un formulario de optimización de sectores en la conversación (mapa, zona, rango, demanda, flota, vehículos, capacidad…), lanzarla con "Optimizar" y luego mostrar el resultado con su valoración y una tarjeta con "Abrir en SmartZone". En la app **sí** se quiere el formulario (revisarlo, ajustarlo y lanzar la optimización) y ver el resultado en el chat, pero **no** abrir la optimización en sí: sin "Abrir en SmartZone" ni el editor, que se quedan en la web. Revisar en la web cómo se pinta (`useChatChelu.ts`, `AsstBubble.tsx`) y qué endpoints usa el formulario antes de empezar.
+- **Optimización de sectores desde el chat (fase 4):** en la web, Chelu puede abrir un formulario de optimización de sectores en la conversación (mapa, zona, rango, demanda, flota, vehículos, capacidad…), lanzarla con "Optimizar" y luego mostrar el resultado con su valoración y una tarjeta con "Abrir en SmartZone". En la app **sí** se quiere el formulario (revisarlo, ajustarlo y lanzar la optimización) y ver el resultado en el chat, pero **no** abrir la optimización en sí: sin "Abrir en SmartZone" ni el editor, que se quedan en la web. Ya revisado cómo lo hace la web y qué endpoints usa: ver "Progreso de la fase 4".
 - **Regla general: en la app no se "abre" nada en otras herramientas de GOVOY.** En el chat web solo hay dos sitios, y los dos acaban en `abrirEnSmartZone` (borrador en el editor):
   - `SectoresCard`: "Abrir en SmartZone" en el resultado de una optimización.
   - `ComparativaTable`: "Abrir" en cada escenario de una comparativa.
@@ -209,6 +209,7 @@ Consecuencias:
 | `jwt-decode` | 4.0.0 | No hace falta por ahora | La respuesta del login ya trae todos los datos de la sesión |
 | `lucide-react-native` | 1.52 | OK | Admite React 19 y `react-native-svg` 12–15 (el SDK fija la 15.15) |
 | `@shopify/flash-list` | 2.0.2 (la que fija el SDK) | OK, instalada | Licencia MIT. Solo JS (sin código nativo, no hace falta recompilar); la v2 necesita la nueva arquitectura, la única en RN 0.86. Se usa en la lista de conversaciones |
+| **`react-native-enriched-html`** (fase 4, elegida) | 1.1.1 | OK, **sin instalar todavía** (bloque 3) | Software Mansion, MIT. Editor de texto enriquecido nativo, solo nueva arquitectura; el paquete se desarrolla contra RN 0.86.0. Antes se llamaba `react-native-enriched` (ese ya no se actualiza). Necesita recompilar, sin plugin de Expo. Ver "Progreso de la fase 4" para licencias de lo que lleva dentro |
 
 ### D6. Mismo backend que el resto de repositorios
 
@@ -375,7 +376,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 | **1. Base** | Proyecto Expo, entornos con `EXPO_PUBLIC_API_URL`, login y tokens (copiados de AppGovoy), `ControlOpcionesUsuarios.ts` (D3), navegación, tema, perfiles EAS y EAS Update |
 | **2. Versión mínima** | Chat con streaming, markdown, sugerencias, botón de parar, lista de conversaciones (nueva, duplicar y borrar) y descarga de documentos |
 | **3. Contenido enriquecido** | Gráficas, mapas, valoración y notas de voz |
-| **4. Más adelante** | Borradores de correo, optimización de sectores y push |
+| **4. Interactivos** | Lo que en el chat pide algo al usuario: borradores de correo, formulario de optimización de sectores, su resultado y la comparativa de escenarios (ver "Progreso de la fase 4"). Push, más adelante |
 
 **Fuera de alcance:** el panel de simulación.
 
@@ -458,7 +459,7 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
   - Sin sangría bajo la cabecera (se quitó en la fase 3, para que gráficas y tablas tengan todo el ancho); la fila de avatar y nombre sobresale 8 px hacia el borde.
 - **Caja de texto (`CajaMensaje`):** campo multilínea (hasta ~5 líneas) y botón con el icono `Send` de lucide, como la web; gris y desactivado si está vacío.
 - **Teclado:** `KeyboardAvoidingView` con `behavior="padding"`, como en el login. `Pantalla` tiene `margenInferior={false}` para que el margen inferior lo ponga la caja de texto, que lo quita con el teclado abierto (`useTecladoVisible`). `react-native-keyboard-controller` no se ha instalado; se valorará si en iOS hace falta.
-- **Robot de Chelu (`CheluAvatar`):** rehecho a partir de la imagen de referencia (robot azul en 3/4 saludando). **Pendiente de retocar**, todavía no queda bien.
+- **Robot de Chelu (`CheluAvatar`):** desde el 2026-10-08 es la imagen de referencia en PNG (`assets/chelu.png`, 1242×1266 con transparencia, ~1 MB) con `resizeMode="contain"`, en lugar del SVG dibujado a mano.
 - **Gráficas y mapas:** se hicieron en la fase 3.
 - **Tablas del markdown:** `react-native-marked` da a la cabecera el mismo estilo que a las filas, así que `TextoMarkdown` sustituye la tabla con un `Renderer` propio (`RendererChelu.table`): cabecera oscura (`cabecera-tabla` / `sobre-cabecera-tabla`), filas alternas, columnas de 140 px como mínimo y scroll horizontal. Se probó justificar el texto y no tuvo efecto; se descartó. Retoques de la fase 3 para que se note que se desplaza:
   - El redondeo va en el marco y no en el contenido, así que el lado del corte también tiene esquinas.
@@ -502,7 +503,7 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
 | Gráficas | Hecho |
 | Valoración de respuestas | Hecho |
 | Mapas | Bloques 1 a 5 hechos; la vista previa queda aparcada hasta nuevo aviso |
-| Notas de voz (`expo-audio`, m4a a `/transcribir`) | Pendiente |
+| Notas de voz (`expo-audio`, m4a a `/transcribir`) | Aparcado de momento |
 
 #### Gráficas
 
@@ -592,6 +593,80 @@ Decisión de librería y planteamiento en D8. Se trabaja en bloques, revisando c
 - **Rutas (bloque 5, `chat/rutas.ts`):** `getLinesByStreets` manda todas las líneas en un POST a `/directionsForMap2-todas-las-rutas` (sin token, como la web) y cambia la geometría de cada una por el trazado de OSRM. Si una ruta falla no se dibuja (no la recta). Caché en memoria por coordenadas de la línea, solo de las trazadas. La petición sale al abrir la pantalla; si tarda más de 5 s, el mapa se abre sin líneas y se pintan al llegar.
 - **Pendientes de mapas:** revisar la licencia de `leaflet-color-markers` (los pines) para la pantalla de licencias; los pines se ven algo borrosos en pantallas densas (se podrían generar como SVG); el texto "Colocando las paradas…" sale también en mapas sin paradas.
 - **Vista previa (bloque 6), caso grande (20 mapas de 2000 puntos):** cola de una captura a la vez, priorizando las tarjetas visibles (la lista invertida monta primero las recientes); cancelar al desmontar la tarjeta; pausar la cola mientras se arrastra la lista (crear la vista nativa puede costar uno o dos fotogramas); capturar a densidad 2; caché en disco con clave `runId` + posición del mapa (el back no manda id); tiempo máximo, y si salta, la tarjeta queda sin imagen pero se puede abrir.
+
+### Progreso de la fase 4
+
+Todo lo que en el chat pide algo al usuario o le enseña un formulario. Se hace parecido a la web (Chat Chelu a pantalla completa, `src/routes/ChatChelu.tsx`).
+
+**Fuera de alcance:** las tarjetas del chat lateral de la pantalla de simulación (`ChatCheluPanel`): `acciones_editor`, `carga_simulacion` y `orden_optimizacion` actúan sobre la simulación abierta ("Aplicar"/"Descartar"). La página del chat completo de la web también las ignora. Nada se abre en SmartZone (ver la regla general de la sección 1).
+
+| Bloque | Contenido | Estado |
+|---|---|---|
+| 1 | Datos: tipos, los cinco eventos del stream (`correo_borrador`, `formulario_sectores`, `sectores`, `comparativa`, `progreso`), lectura en `get_chat` y aviso de progreso | Hecho |
+| 2 | Tarjetas de resultado (`SectorsResultCard`) y comparativa (`ComparisonCard`), solo lectura, con nota "desde la web" | Hecho, falta probar en el móvil |
+| 3 | Borrador de correo, en sub-bloques: 3a envío y registro de "ya enviado"; 3b tarjeta (Para, Asunto, adjuntos, avisos, botón y bloqueo) con el cuerpo en un `TextInput`; 3c editor del cuerpo con `react-native-enriched-html` | 3a hecho; librería instalada (1.1.1); 3b siguiente |
+| 4 | Formulario de sectores, en sub-bloques: 4a solo lectura y lanzar sin cambios; 4b mapa, zona y fechas; 4c demanda, carga mínima y modo; 4d editor de flota y escenarios; 4e cuadro "¿Algo que afinar?" (revisión con texto) | Pendiente |
+
+**Decisiones**
+- **Formulario de sectores:** en el chat, una tarjeta con el resumen y los botones "Optimizar" y "Editar"; "Editar" abre el formulario en una pantalla completa (como los mapas). En la web va entero dentro de la burbuja, pero en el móvil serían varias pantallas de scroll dentro del chat.
+- **Cuerpo del correo:** editor nativo de texto enriquecido con `react-native-enriched-html` (negrita, cursiva y subrayado, botones activos según el cursor), para verse como la web. Se descartó un `TextInput` con símbolos markdown (el usuario vería los `**`), `@expensify/react-native-live-markdown` (0.1.x, pide `expensify-common`, sin subrayado) y los editores con WebView (pesados, problemas de teclado y scroll en la lista del chat).
+- **Correo ya enviado:** se recuerda en el móvil con AsyncStorage, como la web con `localStorage` (el back no lo guarda).
+- **Resultado y comparativa sin botón "Abrir":** ni desactivado ni con aviso al pulsar; una nota pequeña "Puedes abrirla en SmartZone desde la web" (en la comparativa, una sola al pie).
+- **Comparativa en tarjetas, no en tabla:** seis columnas no caben en el móvil; un bloque por escenario.
+
+**Hecho en los bloques 1 y 2**
+- `types/SectorsForm.ts`: el formulario con los nombres de campo del back (`mapas_disponibles`, `cps_seleccionados`…), porque se edita y se devuelve tal cual en el campo `formulario` del stream. `readOnly` en los que vienen de `get_chat`.
+- `types/Chat.ts`: `BorradorCorreo` (los adjuntos son `Documento`), `SectorsSummary` (solo lo que se pinta), `SectorsResult`, `ScenarioComparison` (cada escenario es "con resumen" o "con error", lo decide la conversión). En `Mensaje`: `borradoresCorreo`, `sectorsForms`, `sectorsResults`, `comparisons` y `progress`. ("Borrador" en español: "draft" se descartó por raro.)
+- `chatApi.ts`: conversiones `toBorradorCorreo`, `toSectorsResult`, `toComparison`, `toSectorsForm` (descartan lo que no trae nada, como la web) y un único `toEvent` con `switch` para todos los eventos del stream. `obtenerChat` lee `correos`, `formularios`, `sectores` y `comparativas`; una respuesta solo con tarjetas también se muestra. El filtro de "Optimizar sectores —" ya existía.
+- `useChat.ts`: acumula las tarjetas; `progress` se pone con `progreso` y se quita con `sectores`, `comparativa`, al acabar, con error o al detener.
+- Aviso de progreso en `BurbujaMensaje` tras las herramientas: spinner y mensaje del back sobre `primario-suave`.
+- Tiempo y distancia de la comparativa: `tiempo_total_min` y `distancia_total_km` del back (misma suma de rutas que hace la web, redondeada a un decimal); "—" si faltan. Números con `utils/numbers.ts` (`Intl.NumberFormat` creado una vez). En es-ES los números de cuatro cifras no llevan punto de miles.
+
+**Hecho en el bloque 3a**
+- `chatApi.sendEmail(sessionId, borrador, editado)`: `POST /chat-cex/correo/enviar` con lo editado y los `fileId` de los adjuntos del borrador. Si falla, lanza el `detail` del back (o un texto para 429, 502 y el resto). Si va bien, apunta el envío y devuelve el `message_id` ("enviado" si no llega).
+- `chat/correosEnviados.ts`: registro en AsyncStorage (`chelu_correos_enviados`, la misma clave y huella que la web: sesión + djb2 del asunto y cuerpo originales), con los 200 más recientes. `getSentMessageId` para saber al pintar la tarjeta si ya se envió.
+- `react-native-enriched-html` instalada (1.1.1). Los avisos de `ERESOLVE` y las ~20 vulnerabilidades nuevas de `npm audit` son de sus dependencias de web (`@tiptap/*`, `dompurify`), que no entran en la app.
+
+**Cómo funciona en la web y el back (revisado el 2026-10-08)**
+
+Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `Back-Govoy/agentes/chat_CEX/`.
+
+- **Comunes:** el back usa la misma tabla (`_ARTEFACTOS`, B `endpoint_chat.py:1172-1186`) para el stream y para `get_chat`, así que el formato es el mismo en los dos. En la web: eventos en `useChatChelu.ts:898-1041`, tarjetas en `AsstBubble.tsx:146-176` (orden: correos, formularios, sectores, comparativas), recarga en `chatHistoryApi.ts:65-142`.
+- **Correo (`correo_borrador`)**
+  - Lo genera la herramienta `preparar_correo` (B `tools_chat/correo.py`); no envía nada. Límites: asunto 200 caracteres, 10 destinatarios, 3 adjuntos, 8 MB en total.
+  - Datos: `asunto`, `cuerpo_markdown`, `destinatarios` (casi siempre vacío: el modelo no inventa direcciones), `adjuntos` (`file_id`, `nombre`, `tamano_bytes`, `formato`), `advertencias` (para el modelo, se ignoran). En `get_chat`: `correos`.
+  - Tarjeta web (F `CorreoCard.tsx` + `CuerpoCorreoEditor.tsx`): "Para" (separado por `,` `;` o salto de línea, validado con `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`, rojo si está vacío y con foco al llegar sin destinatarios), "Asunto" con contador /200, "Mensaje" con negrita, cursiva y subrayado (el subrayado viaja como `<u>…</u>` dentro del markdown; pegar es solo texto), adjuntos de solo lectura. Avisos de validación con los mismos límites (`constants.ts:29-32`).
+  - Botón: "Enviar" / "Enviando…" / "Enviado" (verde, con "ID del envío"). Desactivado si falta algo o hay avisos. Si falla, se ve el `detail` del back y se puede reintentar sin perder lo editado.
+  - Envío: `POST /chat-cex/correo/enviar` con `{asunto, cuerpo_markdown, destinatarios[], adjuntos: [file_id…], session_id}` → `{success, message_id, destinatarios}`. El back revalida, baja los adjuntos de S3 (400 si caducó), limita a 10 por hora y usuario (429) y envía por SES desde `chelu@govoy.es` con Reply-To del usuario (502 si SES falla).
+  - Tras enviar, el back guarda un turno "Correo enviado a X con el asunto «Y»." que solo aparece al recargar. El bloqueo de "ya enviado" es de la web (`localStorage['chelu_correos_enviados']`, clave sesión + hash djb2 del asunto y cuerpo originales, F `helpers.ts:189-228`).
+  - La web añade cada borrador como tarjeta nueva (no sustituye el anterior).
+- **Formulario de sectores (`formulario_sectores`)**
+  - Lo generan `preparar_optimizacion_sectores` y, al revisar con texto, `ajustar_formulario_sectores` (B `tools_chat/preparar_opti.py`). Solo perfiles con SmartZone (clientes 92 y 101).
+  - Datos: `mapa`, `mapas_disponibles`, `zona`, `rango_estudio`, `demanda`, `flota`, `carga_minima`, `modo`, `limites`, `avisos` (tipos en `types/SectorsForm.ts`). Sin mapa elegido, `mapa` es null. En `get_chat`: `formularios`; al lanzar, el back guarda además el formulario enviado (con `lanzado: true` y listas vaciadas), así que al recargar sale una tarjeta más que en directo. La web marca todos los recargados como solo lectura, con "Volver a cargar" (pide `op=formulario` y lo vuelve editable).
+  - Consultas sin gastar turno: `GET /chat-cex/formulario-sectores?op=…` con `id_cell_group`, `nombre_mapa`, `cps` (B `endpoint_chat.py:2097-2158`, F `formularioSectoresApi.ts`). `op`: `formulario` (todo), `mapas`, `zona`, `flota` (sin `tipo`), `proveedores` (lento). Errores 400/404 con `detail`.
+  - Formulario web (F `FormularioSectoresCard.tsx` ~770 líneas + `FlotaEditor.tsx` ~245): no tiene mapa, solo selectores, chips, fechas, horas, números y casillas.
+    - Mapa: selector (los "PRUEBAS GOVOY" solo para master) y fechas del mapa. Al cambiarlo, `op=formulario`, conservando el modo si se puede.
+    - Zona: "Mapa entero / Por CP / Por proveedor". Por CP: filtro y chips (24 y "+N"); cada cambio espera 400 ms y pide `op=zona` y luego `op=flota`, conservando el tipo de flota elegido y cancelando lo anterior. Por proveedor: se cargan al pedirlos y al elegir uno se marcan sus CP. Los CP no encontrados se avisan.
+    - Rango (plegable): dos fechas dentro de las del mapa y días L–D (los 7 = `null`, 0 = lunes).
+    - Demanda: chips de nivel y número 1–99 (al escribirlo pasa a `personalizado`).
+    - Flota: "Recomendada" y "Múltiples escenarios" ("Personalizada" solo si ya venía). Vehículos (plegable): incluir, ruta, unidades, desde/hasta, paradas, borrar y "Añadir un tipo de vehículo" (08:00–18:00); aviso de descartados y total. En escenarios, pestañas Ajustado (uno menos) / Recomendada / Holgado (uno más), F `helpers.ts:274-344`; tocar una pestaña la guarda en `flota.escenarios_editados` ("Volver a calcularlo" lo deshace).
+    - Carga mínima (plegable): 1–100 %, 75 por defecto. Modo: chips de `modo.opciones` y "Asignación múltiple" solo en fragmentado.
+    - Línea resumen y cuadro "¿Algo que afinar?" (obligatorio con flota personalizada). Botón "Optimizar" si está vacío, "Revisar optimización" si tiene texto.
+    - Bloqueos: sin mapa; por CP o proveedor sin ninguno; sin vehículos marcados; personalizada sin texto (los dos últimos no bloquean si hay texto). Los `avisos` del back se ven hasta que se edita.
+    - Estados: lanzado ("Optimización lanzada con estos valores"), en revisión ("Mandado a revisar…") y solo lectura: resumen sin edición.
+    - Las ediciones se guardan fuera del componente para que no se pierdan al pasar de "respuesta en curso" a "guardada" (en la app el mensaje es el mismo objeto, no debería hacer falta).
+  - Lanzar: el formulario va en `formulario` del `POST /chat-cex/stream`.
+    - Sin texto (ruta rápida): `pregunta: ""`, no se pinta mensaje del usuario y el título es el resumen (F `helpers.ts:373-402` `resumenFormulario`, que debe coincidir con `describir_formulario` del back). El back valida, manda `progreso`, optimiza sin el modelo, manda `sectores` o `comparativa` (escenarios → `comparar_escenarios_sectores`, si no `optimizar_sectores`; personalizada se rechaza) y luego el modelo comenta el resultado.
+    - Con texto: `pregunta` es el texto y sale como mensaje normal; el modelo llama a `ajustar_formulario_sectores` y llega otra tarjeta de formulario, sin lanzar nada.
+    - Si el chat está ocupado no se lanza y la tarjeta sigue editable.
+- **Progreso (`progreso`):** `{tool, mensaje}` ("Optimización en proceso. Esto puede tardar algunos minutos..."). No se guarda.
+- **Resultado (`sectores`):** `{optimizacion_id, resumen}`; resumen con `grupo`, `celdas_pedidas/asignadas/sin_asignar`, `vehiculos_aportados/usados`, `vehiculos_sin_usar`, `percentil_final`, tiempos y distancias totales y medias, `rutas[]`, `diagnostico_sin_asignar` y `fragmentacion` (B `opti.py:514-609`). La web solo pinta grupo, vehículos y celdas.
+- **Comparativa (`comparativa`):** `{escenarios: [{nombre, optimizacion_id, resumen} | {nombre, error}]}`; los escenarios se calculan en paralelo, 4 como mucho (`limites.max_escenarios`).
+
+**Licencias para la pantalla de licencias (pendiente antes de publicar)**
+- Ya en la app: `@shopify/flash-list` (MIT); MapLibre y compañía (ver D8); falta revisar `leaflet-color-markers`.
+- Con el bloque 3, lo que entra en la app de `react-native-enriched-html`: la propia librería (MIT, Software Mansion), **Gumbo** (analizador de HTML de Google, Apache-2.0, en Android e iOS) y **TagSoup** 1.2.1 (Apache-2.0, solo Android). Comprobado en el paquete: `index.native.js` solo importa la parte nativa.
+- Sus dependencias de web (TipTap, ProseMirror, `linkifyjs`, `fast-equals`, `use-sync-external-store`: MIT; `dompurify`: MPL-2.0 o Apache-2.0 a elegir) se instalan en `node_modules` pero no entran en la app; no van en la pantalla. No se pueden quitar de forma limpia (son `dependencies` del paquete) y no hace falta.
 
 ### Fase 0 en detalle (Back-Govoy)
 
@@ -754,3 +829,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-08 | Menú lateral: la lista ya no se recarga al abrirlo (solo si falta el chat abierto); filas memorizadas; `@shopify/flash-list` 2.0.2 (MIT) en la lista de conversaciones; un único `Intl.DateTimeFormat` para las fechas |
 | 2026-10-08 | Vista previa de mapas (bloque 6) aparcada hasta nuevo aviso |
 | 2026-10-08 | Tarjeta de mapa: botón "Ver mapa" centrado en lugar del icono de expandir, con indicador de carga al abrir (navegación en el siguiente fotograma) |
+| 2026-10-08 | Fase 4: todo lo interactivo del chat completo (correo, formulario de sectores, resultado, comparativa); fuera el chat lateral de simulación. Notas de voz aparcadas |
+| 2026-10-08 | Fase 4: formulario de sectores con tarjeta en el chat y edición en pantalla completa; correo con `react-native-enriched-html` 1.1.1 (MIT); "ya enviado" en AsyncStorage; resultado y comparativa sin botón de abrir, con nota "desde la web"; comparativa en tarjetas |
+| 2026-10-08 | Fase 4: bloques 1 (datos y eventos) y 2 (tarjetas de resultado y comparativa) hechos |
+| 2026-10-08 | Fase 4: `EmailDraft` renombrado a `BorradorCorreo`; bloque 3 dividido en 3a/3b/3c; 3a (envío y registro de enviados) hecho; `react-native-enriched-html` 1.1.1 instalada |

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { enviarMensaje, EventoChat, obtenerChat, votarRespuesta } from '@/chat/chatApi';
+import { enviarMensaje, EventoChat, obtenerChat, sendEmail as sendEmailApi, votarRespuesta } from '@/chat/chatApi';
 import type {
+    BorradorCorreo,
     Documento,
-    EmailDraft,
+    EditedEmail,
     Grafica,
     Herramienta,
     Mapa,
@@ -89,7 +90,7 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
             const documentos: Documento[] = [];
             const graficas: Grafica[] = [];
             const mapas: Mapa[] = [];
-            const emailDrafts: EmailDraft[] = [];
+            const borradoresCorreo: BorradorCorreo[] = [];
             const sectorsForms: SectorsForm[] = [];
             const sectorsResults: SectorsResult[] = [];
             const comparisons: ScenarioComparison[] = [];
@@ -148,8 +149,8 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
                             mapas.push(evento.mapa);
                             actualizar({ mapas: [...mapas] });
                         } else if (evento.tipo === 'correo_borrador') {
-                            emailDrafts.push(evento.emailDraft);
-                            actualizar({ emailDrafts: [...emailDrafts] });
+                            borradoresCorreo.push(evento.borradorCorreo);
+                            actualizar({ borradoresCorreo: [...borradoresCorreo] });
                         } else if (evento.tipo === 'formulario_sectores') {
                             sectorsForms.push(evento.sectorsForm);
                             actualizar({ sectorsForms: [...sectorsForms] });
@@ -203,5 +204,23 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
         [chatId],
     );
 
-    return { mensajes, titulo, cargando, error, recargar, enviar, parar, respondiendo, votar };
+    /**
+     * Envía un borrador con lo editado y lo marca como enviado en su mensaje.
+     * Si el back falla, se relanza el error para que lo enseñe la tarjeta.
+     */
+    const sendEmail = useCallback(
+        async (borrador: BorradorCorreo, edited: EditedEmail) => {
+            if (!chatId) throw new Error('La conversación aún no se ha guardado.');
+            const sentMessageId = await sendEmailApi(chatId, borrador, edited);
+            setMensajes((prev) => prev.map((mensaje) => mensaje.borradoresCorreo?.includes(borrador)
+                ? {
+                    ...mensaje,
+                    borradoresCorreo: mensaje.borradoresCorreo.map((item) => (item === borrador ? { ...item, sentMessageId } : item)),
+                }
+                : mensaje));
+        },
+        [chatId],
+    );
+
+    return { mensajes, titulo, cargando, error, recargar, enviar, parar, respondiendo, votar, sendEmail };
 }

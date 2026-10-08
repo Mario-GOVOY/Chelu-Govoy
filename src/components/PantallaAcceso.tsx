@@ -5,7 +5,6 @@ import Animated, {
     useAnimatedStyle,
     useSharedValue,
     withRepeat,
-    withSequence,
     withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,13 +22,8 @@ function CheluFlotante({ compacto }: { compacto: boolean }) {
     const tamano = useSharedValue(TAMANO_AVATAR);
 
     useEffect(() => {
-        flotar.value = withRepeat(
-            withSequence(
-                withTiming(-8, { duration: 2500, easing: Easing.inOut(Easing.ease) }),
-                withTiming(0, { duration: 2500, easing: Easing.inOut(Easing.ease) }),
-            ),
-            -1,
-        );
+        // Sube y baja sin fin.
+        flotar.value = withRepeat(withTiming(-8, { duration: 2500, easing: Easing.inOut(Easing.ease) }), -1, true);
     }, [flotar]);
 
     useEffect(() => {
@@ -73,7 +67,7 @@ export function PantallaAcceso({ titulo, subtitulo, children }: Props) {
                     showsVerticalScrollIndicator={false}
                 >
                     {/* La zona de Chelu ocupa el espacio que sobra; la hoja mide lo que su contenido. */}
-                    <View className="flex-1 items-center justify-center pb-8" style={{ paddingTop: insets.top + 24 }}>
+                    <View className="flex-1 items-center justify-center pb-4" style={{ paddingTop: insets.top + 24 }}>
                         <CheluFlotante compacto={teclado} />
                     </View>
 
