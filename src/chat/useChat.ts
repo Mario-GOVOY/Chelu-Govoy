@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { enviarMensaje, EventoChat, obtenerChat, votarRespuesta } from '@/chat/chatApi';
-import type { Documento, Grafica, Herramienta, Mapa, Mensaje, Voto } from '@/types/Chat';
+import type {
+    Documento,
+    EmailDraft,
+    Grafica,
+    Herramienta,
+    Mapa,
+    Mensaje,
+    ScenarioComparison,
+    SectorsResult,
+    Voto,
+} from '@/types/Chat';
+import type { SectorsForm } from '@/types/SectorsForm';
 import { etiquetaHerramienta } from '@/chat/herramientas';
 
 /**
@@ -78,6 +89,10 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
             const documentos: Documento[] = [];
             const graficas: Grafica[] = [];
             const mapas: Mapa[] = [];
+            const emailDrafts: EmailDraft[] = [];
+            const sectorsForms: SectorsForm[] = [];
+            const sectorsResults: SectorsResult[] = [];
+            const comparisons: ScenarioComparison[] = [];
 
             // El 'fin' de una herramienta no dice cuál de sus llamadas acaba: se toma la última abierta con ese nombre.
             const herramientas = new Map<string, Herramienta>();
@@ -132,6 +147,20 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
                         } else if (evento.tipo === 'mapa') {
                             mapas.push(evento.mapa);
                             actualizar({ mapas: [...mapas] });
+                        } else if (evento.tipo === 'correo_borrador') {
+                            emailDrafts.push(evento.emailDraft);
+                            actualizar({ emailDrafts: [...emailDrafts] });
+                        } else if (evento.tipo === 'formulario_sectores') {
+                            sectorsForms.push(evento.sectorsForm);
+                            actualizar({ sectorsForms: [...sectorsForms] });
+                        } else if (evento.tipo === 'sectores') {
+                            sectorsResults.push(evento.sectorsResult);
+                            actualizar({ sectorsResults: [...sectorsResults], progress: undefined });
+                        } else if (evento.tipo === 'comparativa') {
+                            comparisons.push(evento.comparison);
+                            actualizar({ comparisons: [...comparisons], progress: undefined });
+                        } else if (evento.tipo === 'progreso') {
+                            actualizar({ progress: evento.mensaje });
                         } else if (evento.tipo === 'done') {
                             runId = evento.run_id;
                         } else if (evento.tipo === 'error') {
@@ -140,9 +169,9 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
                     },
                 });
                 // Las sugerencias se muestran al acabar, no según llegan.
-                actualizar({ texto, runId, sugerencias, estado: fallo ? 'error' : undefined });
+                actualizar({ texto, runId, sugerencias, progress: undefined, estado: fallo ? 'error' : undefined });
             } catch {
-                actualizar({ texto, estado: controlador.signal.aborted ? 'detenida' : 'error' });
+                actualizar({ texto, progress: undefined, estado: controlador.signal.aborted ? 'detenida' : 'error' });
             } finally {
                 if (abortRef.current === controlador) abortRef.current = null;
                 setRespondiendo(false);

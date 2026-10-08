@@ -3,7 +3,9 @@ import { createLucideIcon, ThumbsDown, ThumbsUp } from 'lucide-react-native';
 
 import type { Grafica, Mapa, Mensaje } from '@/types/Chat';
 import { CheluAvatar } from '@/components/CheluAvatar';
+import { ComparisonCard } from '@/components/ComparisonCard';
 import { PuntosEscribiendo } from '@/components/PuntosEscribiendo';
+import { SectorsResultCard } from '@/components/SectorsResultCard';
 import { TarjetaDocumento } from '@/components/TarjetaDocumento';
 import { TarjetaGrafica } from '@/components/TarjetaGrafica';
 import { TarjetaMapa } from '@/components/TarjetaMapa';
@@ -64,6 +66,12 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
             </View>
             <View className="gap-2">
                 {!!mensaje.herramientas?.length && <TarjetasHerramientas herramientas={mensaje.herramientas} />}
+                {mensaje.progress && (
+                    <View className="flex-row items-center gap-2 self-start rounded-xl bg-primario-suave px-3 py-2">
+                        <ActivityIndicator size={15} color={colores.primario} />
+                        <Text className="shrink text-[13px] font-medium text-primario">{mensaje.progress}</Text>
+                    </View>
+                )}
                 {!!mensaje.texto && <TextoMarkdown texto={mensaje.texto} />}
                 {mensaje.graficas?.map((g, i) => (
                     <TarjetaGrafica key={i} grafica={g} onAmpliar={onAmpliarGrafica && (() => onAmpliarGrafica(g))} />
@@ -72,6 +80,10 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
                     <TarjetaMapa key={i} mapa={mapa} onAbrir={onAbrirMapa && (() => onAbrirMapa(mapa))} />
                 ))}
                 {mensaje.documentos?.map((d) => <TarjetaDocumento key={d.fileId} documento={d} />)}
+                {mensaje.sectorsResults?.map((result) => (
+                    <SectorsResultCard key={result.optimizationId} result={result} />
+                ))}
+                {mensaje.comparisons?.map((comparison, i) => <ComparisonCard key={i} comparison={comparison} />)}
                 {/* También tras el texto: si Chelu está llamando a una herramienta, pasan segundos sin texto nuevo. */}
                 {mensaje.estado === 'escribiendo' && <PuntosEscribiendo />}
                 {mensaje.estado === 'detenida' && (

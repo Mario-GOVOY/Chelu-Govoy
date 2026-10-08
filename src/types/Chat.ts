@@ -1,5 +1,7 @@
 import type { FeatureCollection, Geometry } from 'geojson';
 
+import type { SectorsForm } from '@/types/SectorsForm';
+
 export type ResumenChat = {
     id: string;
     titulo: string;
@@ -26,7 +28,40 @@ export type Mensaje = {
     documentos?: Documento[];
     graficas?: Grafica[];
     mapas?: Mapa[];
+    emailDrafts?: EmailDraft[];
+    sectorsForms?: SectorsForm[];
+    sectorsResults?: SectorsResult[];
+    comparisons?: ScenarioComparison[];
+    // Aviso mientras corre una optimización de sectores.
+    progress?: string;
     voto?: Voto | null;
+};
+
+// Correo que redacta Chelu; se envía aparte, tras editarlo.
+export type EmailDraft = {
+    subject: string;
+    bodyMarkdown: string;
+    recipients: string[];
+    attachments: Documento[];
+};
+
+export type SectorsSummary = {
+    group?: string;
+    assignedCells?: number;
+    unassignedCells?: number;
+    usedVehicles?: number;
+    totalTimeMin?: number;
+    totalDistanceKm?: number;
+};
+
+export type SectorsResult = {
+    optimizationId: string;
+    summary: SectorsSummary;
+};
+
+// Un escenario sale con su resumen o con el error que dio.
+export type ScenarioComparison = {
+    scenarios: ({ name: string; summary: SectorsSummary } | { name: string; error: string })[];
 };
 
 // Gráfica de ApexCharts tal como la manda el back.

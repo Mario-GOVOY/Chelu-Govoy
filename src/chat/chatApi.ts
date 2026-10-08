@@ -5,7 +5,20 @@ import ReactNativeBlobUtil from 'react-native-blob-util';
 import { authFetch } from '@/auth/authManager';
 import { API_URL } from '@/auth/Constants';
 import { aMapa } from '@/chat/mapas';
-import type { Chat, Documento, Grafica, Mapa, Mensaje, ResumenChat, Voto } from '@/types/Chat';
+import type {
+    Chat,
+    Documento,
+    EmailDraft,
+    Grafica,
+    Mapa,
+    Mensaje,
+    ResumenChat,
+    ScenarioComparison,
+    SectorsResult,
+    SectorsSummary,
+    Voto,
+} from '@/types/Chat';
+import type { SectorsForm } from '@/types/SectorsForm';
 
 // El enlace que trae el back caduca; se descarga siempre pidiendo uno nuevo con el fileId.
 const aDocumento = (d: any): Documento => ({
@@ -22,6 +35,42 @@ const aGrafica = (g: any): Grafica => ({
     options: g.options ?? undefined,
 });
 
+// Las advertencias del back son para el modelo, no para el usuario.
+const toEmailDraft = (c: any): EmailDraft | null =>
+    c.asunto || c.cuerpo_markdown
+        ? {
+            subject: c.asunto || '',
+            bodyMarkdown: c.cuerpo_markdown || '',
+            recipients: Array.isArray(c.destinatarios) ? c.destinatarios : [],
+            attachments: Array.isArray(c.adjuntos) ? c.adjuntos.filter((a: any) => a?.file_id).map(aDocumento) : [],
+        }
+        : null;
+
+const toSectorsSummary = (r: any): SectorsSummary => ({
+    group: r?.grupo ?? undefined,
+    assignedCells: r?.celdas_asignadas ?? undefined,
+    unassignedCells: r?.celdas_sin_asignar ?? undefined,
+    usedVehicles: r?.vehiculos_usados ?? undefined,
+    totalTimeMin: r?.tiempo_total_min ?? undefined,
+    totalDistanceKm: r?.distancia_total_km ?? undefined,
+});
+
+const toSectorsResult = (s: any): SectorsResult | null =>
+    s.optimizacion_id ? { optimizationId: s.optimizacion_id, summary: toSectorsSummary(s.resumen) } : null;
+
+const toComparison = (c: any): ScenarioComparison | null =>
+    Array.isArray(c.escenarios) && c.escenarios.length
+        ? {
+            scenarios: c.escenarios.map((e: any) => {
+                const name = e.nombre || 'Escenario';
+                return e.resumen && !e.error
+                    ? { name, summary: toSectorsSummary(e.resumen) }
+                    : { name, error: e.error || 'Escenario no disponible' };
+            }),
+        }
+        : null;
+
+const toSectorsForm = ({ tipo, ...form }: any): SectorsForm | null => (form.zona || form.flota ? form : null);
 // El back manda los tiempos en segundos.
 const aMs = (ts?: number | null) => (ts == null ? Date.now() : ts < 1e12 ? ts * 1000 : ts);
 
@@ -56,8 +105,24 @@ export async function obtenerChat(id: string): Promise<Chat> {
             const documentos = Array.isArray(m.docs) ? m.docs.filter((d: any) => d?.file_id).map(aDocumento) : [];
             const graficas = Array.isArray(m.charts) ? m.charts.map(aGrafica) : [];
             const mapas = Array.isArray(m.maps) ? m.maps.map(aMapa).filter((mapa: Mapa | null) => mapa !== null) : [];
+            const emailDrafts = Array.isArray(m.correos)
+                ? m.correos.map(toEmailDraft).filter((draft: EmailDraft | null) => draft !== null)
+                : [];
+            const sectorsForms = Array.isArray(m.formularios)
+                ? m.formularios
+                    .map(toSectorsForm)
+                    .filter((form: SectorsForm | null) => form !== null)
+                    .map((form: SectorsForm) => ({ ...form, readOnly: true }))
+                : [];
+            const sectorsResults = Array.isArray(m.sectores)
+                ? m.sectores.map(toSectorsResult).filter((result: SectorsResult | null) => result !== null)
+                : [];
+            const comparisons = Array.isArray(m.comparativas)
+                ? m.comparativas.map(toComparison).filter((comparison: ScenarioComparison | null) => comparison !== null)
+                : [];
+            const cards = [documentos, graficas, mapas, emailDrafts, sectorsForms, sectorsResults, comparisons];
             // Una respuesta sin texto pero con tarjetas (p. ej. solo una gráfica) sí se muestra, como en la web.
-            if (!texto && !documentos.length && !graficas.length && !mapas.length) return [];
+            if (!texto && cards.every((list) => !list.length)) return [];
             return [{
                 id: m.run_id ?? String(i),
                 rol: 'chelu',
@@ -67,6 +132,10 @@ export async function obtenerChat(id: string): Promise<Chat> {
                 documentos,
                 graficas,
                 mapas,
+                emailDrafts,
+                sectorsForms,
+                sectorsResults,
+                comparisons,
                 voto: m.feedback ?? null,
             }];
         }),
@@ -164,11 +233,54 @@ export type EventoChat =
     | { tipo: 'documento'; documento: Documento }
     | { tipo: 'grafica'; grafica: Grafica }
     | { tipo: 'mapa'; mapa: Mapa }
+    | { tipo: 'correo_borrador'; emailDraft: EmailDraft }
+    | { tipo: 'formulario_sectores'; sectorsForm: SectorsForm }
+    | { tipo: 'sectores'; sectorsResult: SectorsResult }
+    | { tipo: 'comparativa'; comparison: ScenarioComparison }
+    | { tipo: 'progreso'; mensaje: string }
     | { tipo: 'done'; run_id?: string }
     | { tipo: 'error'; detail?: string };
 
-// 'documento', 'grafica' y 'mapa' se tratan aparte: se convierten antes de pasarlos.
-const TIPOS = ['session', 'delta', 'tool', 'sugerencias', 'done', 'error'];
+// Los que traen tarjetas se convierten antes de pasarlos; se descartan si no traen nada que pintar.
+const toEvent = (evento: any): EventoChat | null => {
+    switch (evento?.tipo) {
+        case 'session':
+        case 'delta':
+        case 'tool':
+        case 'sugerencias':
+        case 'done':
+        case 'error':
+            return evento;
+        case 'documento':
+            return evento.file_id ? { tipo: 'documento', documento: aDocumento(evento) } : null;
+        case 'grafica':
+            return { tipo: 'grafica', grafica: aGrafica(evento) };
+        case 'mapa': {
+            const mapa = aMapa(evento);
+            return mapa && { tipo: 'mapa', mapa };
+        }
+        case 'correo_borrador': {
+            const emailDraft = toEmailDraft(evento);
+            return emailDraft && { tipo: 'correo_borrador', emailDraft };
+        }
+        case 'formulario_sectores': {
+            const sectorsForm = toSectorsForm(evento);
+            return sectorsForm && { tipo: 'formulario_sectores', sectorsForm };
+        }
+        case 'sectores': {
+            const sectorsResult = toSectorsResult(evento);
+            return sectorsResult && { tipo: 'sectores', sectorsResult };
+        }
+        case 'comparativa': {
+            const comparison = toComparison(evento);
+            return comparison && { tipo: 'comparativa', comparison };
+        }
+        case 'progreso':
+            return { tipo: 'progreso', mensaje: evento.mensaje || 'Optimizando…' };
+        default:
+            return null;
+    }
+};
 
 /**
  * Manda una pregunta y va pasando a onEvento cada evento según llega.
@@ -213,17 +325,8 @@ export async function enviarMensaje({ pregunta, sessionId, signal, onEvento }: {
             const linea = bloque.split('\n').find((l) => l.startsWith('data:'));
             if (!linea) continue;
             try {
-                const evento = JSON.parse(linea.slice(5));
-                if (evento?.tipo === 'documento') {
-                    if (evento.file_id) onEvento({ tipo: 'documento', documento: aDocumento(evento) });
-                } else if (evento?.tipo === 'grafica') {
-                    onEvento({ tipo: 'grafica', grafica: aGrafica(evento) });
-                } else if (evento?.tipo === 'mapa') {
-                    const mapa = aMapa(evento);
-                    if (mapa) onEvento({ tipo: 'mapa', mapa });
-                } else if (TIPOS.includes(evento?.tipo)) {
-                    onEvento(evento);
-                }
+                const evento = toEvent(JSON.parse(linea.slice(5)));
+                if (evento) onEvento(evento);
             } catch {
                 // Línea mal formada: se salta, como en la web.
             }

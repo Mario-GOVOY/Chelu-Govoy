@@ -572,6 +572,7 @@ Decisión de librería y planteamiento en D8. Se trabaja en bloques, revisando c
   - Ojo: `centro` y `bounds` llegan en `[lat, lon]` y el GeoJSON en `[lon, lat]`, que es lo que usa MapLibre.
   - El nombre de las capas lo pone el back. Las de puntos sin ruta ni categoría se llaman como su marcador (`depot`, `pudo`…); traducirlas a "Depósito", etc. queda pendiente de decidir (en el back o en la app).
 - **Tarjeta (`TarjetaMapa`):** icono, título, "N puntos · N zonas" ("(recortado)" si el back truncó) y leyenda (`LeyendaMapa`): cuadrado translúcido para zonas y, para puntos, el icono real de su marcador a 16 (`getLayerMarker` + `getMarkerIcon`; las capas de paradas, un círculo de su color). Sin los recorridos y solo con dos capas o más, como la web. Va tras las gráficas en la respuesta.
+  - Abajo, un botón "Ver mapa" centrado, que solo es visual: el toque sigue siendo de toda la tarjeta. Al pulsarla sale un `ActivityIndicator` en el botón y la tarjeta se desactiva. La navegación espera al siguiente fotograma (`requestAnimationFrame`) para que el indicador se pinte antes del render pesado del mapa. Vuelve a su estado normal cuando el chat pierde el foco (`useIsFocused`).
 - **Pantalla completa (`MapaScreen`, pantalla `Mapa` del stack raíz):**
   - Cabecera con título y cerrar; sin giro ni inclinación (siempre con el norte arriba, sin brújula).
   - Encuadre (`vistaInicial`): `bounds` con 40 px de margen; si son un solo punto, su centro con zoom 15; sin `bounds`, `centro` con zoom 13; sin nada, Madrid con zoom 12, como la web.
@@ -752,3 +753,4 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-08 | Mapas: leyenda con scroll (máx. 144 px) en pantalla completa y 8 capas como mucho en la tarjeta |
 | 2026-10-08 | Menú lateral: la lista ya no se recarga al abrirlo (solo si falta el chat abierto); filas memorizadas; `@shopify/flash-list` 2.0.2 (MIT) en la lista de conversaciones; un único `Intl.DateTimeFormat` para las fechas |
 | 2026-10-08 | Vista previa de mapas (bloque 6) aparcada hasta nuevo aviso |
+| 2026-10-08 | Tarjeta de mapa: botón "Ver mapa" centrado en lugar del icono de expandir, con indicador de carga al abrir (navegación en el siguiente fotograma) |
