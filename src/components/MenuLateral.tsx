@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import { DrawerContentComponentProps, useDrawerStatus } from '@react-navigation/drawer';
 import { LogOut, Moon, Plus, RefreshCw, Sun, UserRoundX } from 'lucide-react-native';
@@ -39,8 +39,14 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
     const { esquema, setEsquema } = useTema();
     const { salirDeSuplantacion, cerrarSesion } = useSesion();
     const { sesion, staff } = useSesionActiva();
-    const conversaciones = useConversaciones(useDrawerStatus() === 'open');
+    const isMenuOpen = useDrawerStatus() === 'open';
+    const conversaciones = useConversaciones();
+    const { chats, recargar } = conversaciones;
     const chatActivo = (state.routes[state.index].params as AppDrawerParamList['Chat'])?.chatId;
+
+    useEffect(() => {
+        if (isMenuOpen && chatActivo && chats && !chats.some((chat) => chat.id === chatActivo)) recargar();
+    }, [isMenuOpen]);
 
     const abrirChat = (chatId?: string) => {
         navigation.navigate('Chat', { chatId });

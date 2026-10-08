@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { obtenerChats } from '@/chat/chatApi';
 import type { ResumenChat } from '@/types/Chat';
 
-export function useConversaciones(activo: boolean) {
+export function useConversaciones() {
     const [chats, setChats] = useState<ResumenChat[] | null>(null);
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState(false);
@@ -20,10 +20,9 @@ export function useConversaciones(activo: boolean) {
         }
     }, []);
 
-    // Se recarga cada vez que se abre el menú, para ver las conversaciones nuevas.
     useEffect(() => {
-        if (activo) recargar();
-    }, [activo, recargar]);
+        recargar();
+    }, [recargar]);
 
     return { chats, cargando, error, recargar };
 }
