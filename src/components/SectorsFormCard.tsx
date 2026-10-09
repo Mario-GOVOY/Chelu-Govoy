@@ -1,6 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { CircleCheck, Play, RotateCw, SlidersHorizontal, TriangleAlert } from 'lucide-react-native';
+import { CircleCheck, Pencil, Play, RotateCw, SlidersHorizontal, TriangleAlert } from 'lucide-react-native';
 
 import {
     capitalize,
@@ -16,7 +16,7 @@ import {
 import { Selector } from '@/components/ui/Selector';
 import { useSesionActiva } from '@/context/SesionContext';
 import { useColores } from '@/theme/ThemeProvider';
-import type { SectorsForm } from '@/types/SectorsForm';
+import type { FormMap, SectorsForm } from '@/types/SectorsForm';
 import { esSesionMaster } from '@/utils/ControlOpcionesUsuarios';
 import { formatInteger } from '@/utils/numbers';
 
@@ -34,13 +34,15 @@ function SummaryRow({ label, children }: { label: string; children: ReactNode })
 // Mapas internos de pruebas de GOVOY: solo se ofrecen en sesiones master.
 const INTERNAL_MAP_REGEX = /PRUEBAS? GOVOY/i;
 
-/** Resumen del formulario de sectores con el mapa a elegir y el botón para lanzar la optimización. */
-export function SectorsFormCard({ form, onLaunch, onChangeMap }: {
+/** Resumen del formulario de sectores con el mapa a elegir y los botones para editarlo y lanzar la optimización. */
+export function SectorsFormCard({ form, onLaunch, onChangeMap, onEdit }: {
     form: SectorsForm;
     // Sin él (Chelu está respondiendo), el botón sale desactivado.
     onLaunch?: () => void;
     // Carga el formulario del mapa; si falla, lanza el error que se enseña en la tarjeta.
     onChangeMap: (mapId: number) => Promise<void>;
+    // Abre la pantalla de edición con el mapa elegido.
+    onEdit: (map: FormMap) => void;
 }) {
     const colores = useColores();
     const { sesion } = useSesionActiva();
@@ -193,19 +195,35 @@ export function SectorsFormCard({ form, onLaunch, onChangeMap }: {
                     </View>
                 )
             ) : (
-                <View className="flex-row items-center justify-end gap-3">
-                    {blocker && <Text className="shrink text-xs font-semibold text-peligro">{blocker}</Text>}
-                    <Pressable
-                        onPress={onLaunch}
-                        disabled={!canLaunch}
-                        accessibilityRole="button"
-                        accessibilityLabel="Optimizar"
-                        accessibilityState={{ disabled: !canLaunch }}
-                        className={`flex-row items-center gap-1.5 rounded-full bg-primario px-3 py-1.5 active:bg-primario-presionado ${canLaunch ? '' : 'opacity-60'}`}
-                    >
-                        <Play size={14} color={colores['sobre-primario']} />
-                        <Text className="text-[13px] font-semibold text-sobre-primario">Optimizar</Text>
-                    </Pressable>
+                <View className="gap-2">
+                    {blocker && <Text className="text-right text-xs font-semibold text-peligro">{blocker}</Text>}
+                    <View className="flex-row items-center justify-end gap-2">
+                        {/* La zona y la flota dependen del mapa: sin él no hay nada que editar. */}
+                        {mapa && (
+                            <Pressable
+                                onPress={() => onEdit(mapa)}
+                                disabled={loadingMap}
+                                accessibilityRole="button"
+                                accessibilityLabel="Editar"
+                                accessibilityState={{ disabled: loadingMap }}
+                                className={`flex-row items-center gap-1.5 rounded-full border border-borde-medio px-3 py-1.5 active:bg-primario-suave ${loadingMap ? 'opacity-60' : ''}`}
+                            >
+                                <Pencil size={14} color={colores.primario} />
+                                <Text className="text-[13px] font-semibold text-primario">Editar</Text>
+                            </Pressable>
+                        )}
+                        <Pressable
+                            onPress={onLaunch}
+                            disabled={!canLaunch}
+                            accessibilityRole="button"
+                            accessibilityLabel="Optimizar"
+                            accessibilityState={{ disabled: !canLaunch }}
+                            className={`flex-row items-center gap-1.5 rounded-full bg-primario px-3 py-1.5 active:bg-primario-presionado ${canLaunch ? '' : 'opacity-60'}`}
+                        >
+                            <Play size={14} color={colores['sobre-primario']} />
+                            <Text className="text-[13px] font-semibold text-sobre-primario">Optimizar</Text>
+                        </Pressable>
+                    </View>
                 </View>
             )}
         </View>

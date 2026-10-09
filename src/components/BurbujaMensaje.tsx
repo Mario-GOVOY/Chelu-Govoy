@@ -2,7 +2,7 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { createLucideIcon, ThumbsDown, ThumbsUp } from 'lucide-react-native';
 
 import type { BorradorCorreo, EditedEmail, Grafica, Mapa, Mensaje } from '@/types/Chat';
-import type { SectorsForm } from '@/types/SectorsForm';
+import type { FormMap, SectorsForm } from '@/types/SectorsForm';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { ComparisonCard } from '@/components/ComparisonCard';
 import { PuntosEscribiendo } from '@/components/PuntosEscribiendo';
@@ -24,11 +24,12 @@ const GitBranch = createLucideIcon('git-branch-web', [
     ['circle', { cx: '6', cy: '18', r: '3', key: 'fqmcym' }],
 ]);
 
-export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar, onValorar, onAmpliarGrafica, onAbrirMapa, onSendEmail, onLaunchSectorsForm, onChangeSectorsFormMap }: {
+export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar, onValorar, onAmpliarGrafica, onAbrirMapa, onSendEmail, onLaunchSectorsForm, onChangeSectorsFormMap, onEditSectorsForm }: {
     mensaje: Mensaje;
     onSendEmail: (borrador: BorradorCorreo, edited: EditedEmail) => Promise<void>;
     onLaunchSectorsForm?: (form: SectorsForm) => void;
     onChangeSectorsFormMap: (form: SectorsForm, mapId: number) => Promise<void>;
+    onEditSectorsForm: (form: SectorsForm, map: FormMap) => void;
     onAmpliarGrafica?: (grafica: Grafica) => void;
     onAbrirMapa?: (mapa: Mapa) => void;
     onDuplicarDesde?: () => void;
@@ -95,6 +96,7 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
                         form={form}
                         onLaunch={onLaunchSectorsForm && (() => onLaunchSectorsForm(form))}
                         onChangeMap={(mapId) => onChangeSectorsFormMap(form, mapId)}
+                        onEdit={(map) => onEditSectorsForm(form, map)}
                     />
                 ))}
                 {mensaje.sectorsResults?.map((result) => (

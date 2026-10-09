@@ -13,9 +13,11 @@ export type FormMap = {
 
 export type FormPostcode = { cp: string; num_celdas: number };
 
+export type ZoneMode = 'mapa_entero' | 'cps' | 'proveedor';
+
 export type FormZone = {
-    // 'mapa_entero', 'cps' o 'proveedor'.
-    modo: string;
+    // El back lo deduce de los CP;
+    modo: ZoneMode;
     cps_disponibles: FormPostcode[];
     cps_seleccionados: string[];
     cps_no_encontrados: string[];

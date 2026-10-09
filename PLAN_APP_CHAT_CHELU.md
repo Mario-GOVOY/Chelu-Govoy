@@ -1,7 +1,7 @@
 # App móvil Chat Chelu — Definición del proyecto
 
 > Documento vivo: se actualiza a medida que se toman decisiones.
-> Última actualización: 2026-10-05
+> Última actualización: 2026-10-09
 
 ## Objetivo
 
@@ -494,6 +494,7 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
 - **Tipos:** los del dominio del chat (`ResumenChat`, `Chat`, `Mensaje`, `Herramienta`, `Documento`) están en `src/types/Chat.ts`, como `Sesion.ts`. `EventoChat` se queda en `chatApi.ts`.
 - **NativeWind, trampas conocidas:**
   - En `Animated.View` de Reanimated las clases no se aplican: se usa `style` (o un `View` con clases dentro).
+  - En un `Pressable` con clases, el fondo de un `style` en forma de función (`({ pressed }) => …`) no se aplicaba (chips seleccionados en blanco): los colores van en un `View` interior con `style` fijo, usando `pressed` desde la función hija.
   - Las clases que se eligen en tiempo de ejecución (p. ej. un fondo según el formato) a veces no se generan: el color va en `style` con `useColores()`.
   - Tras cambiar `tailwind.config.js` hay que reiniciar Metro con caché limpia (`npx expo start -c`). Algunos fallos de clases en `Pressable` (el botón de parar gris, la píldora invisible) se debían a no haber recargado; el de parar sigue con el color en `style`.
 
@@ -606,7 +607,7 @@ Todo lo que en el chat pide algo al usuario o le enseña un formulario. Se hace 
 | 1 | Datos: tipos, los cinco eventos del stream (`correo_borrador`, `formulario_sectores`, `sectores`, `comparativa`, `progreso`), lectura en `get_chat` y aviso de progreso | Hecho |
 | 2 | Tarjetas de resultado (`SectorsResultCard`) y comparativa (`ComparisonCard`), solo lectura, con nota "desde la web" | Hecho, falta probar en el móvil |
 | 3 | Borrador de correo, en sub-bloques: 3a envío y registro de "ya enviado"; 3b tarjeta (Para, Asunto, adjuntos, avisos, botón y bloqueo) con el cuerpo en un `TextInput`; 3c editor del cuerpo con `react-native-enriched-html` | Hecho (3a, 3b y 3c), falta probar en el móvil |
-| 4 | Formulario de sectores, en sub-bloques: 4a solo lectura y lanzar sin cambios; 4b mapa, zona y fechas; 4c demanda, carga mínima y modo; 4d editor de flota y escenarios; 4e cuadro "¿Algo que afinar?" (revisión con texto) | 4a y 4b-1 (elegir mapa) hechos, falta probar en el móvil |
+| 4 | Formulario de sectores, en sub-bloques: 4a solo lectura y lanzar sin cambios; 4b mapa, zona y fechas; 4c demanda, carga mínima y modo; 4d editor de flota y escenarios; 4e cuadro "¿Algo que afinar?" (revisión con texto) | 4a, 4b-1 (elegir mapa) y 4b-2 (pantalla de edición y zona por CP) hechos, falta probar en el móvil. Siguiente: 4b-3, zona por proveedor |
 
 **Decisiones**
 - **Formulario de sectores:** en el chat, una tarjeta con el resumen y los botones "Optimizar" y "Editar"; "Editar" abre el formulario en una pantalla completa (como los mapas). En la web va entero dentro de la burbuja, pero en el móvil serían varias pantallas de scroll dentro del chat.
@@ -694,6 +695,17 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
 - Los del historial tienen "Volver a cargar": pide el formulario del mismo mapa con los datos de hoy y lo deja editable.
 - Hasta pulsarlo, la tarjeta se ve desactivada: avisos y resumen al 50 % de opacidad (en `style`, porque NativeWind puede no repintar al cambiar la clase), el mapa como texto en vez de selector y el subtítulo "De una conversación anterior. Vuelve a cargarlo para editarlo". La cabecera y el botón quedan con su color. "Cargando el mapa…" y el error van en la fila del mapa, así que también salen atenuados.
 - `mapas_disponibles` siempre llega como lista: en los del historial, el back la vacía (`_formulario_para_historial`, `endpoint_chat.py:1384`), no la quita. Por eso se añade el mapa actual a la lista.
+
+**Hecho en el bloque 4b-2 (pantalla de edición y zona)**
+- **Pantalla de edición (`SectorsFormEditor`):** capa a pantalla completa dentro de `ChatScreen` (como "Archivos generados"), no pantalla del stack: así el formulario va y vuelve sin pasar por la navegación. Sube desde abajo; cabecera con cerrar, "Editar optimización", mapa y depósito, y "Guardar".
+  - Trabaja sobre una copia; "Guardar" la pasa al mensaje (`useChat.saveSectorsForm`). Cerrar (o el botón atrás) con cambios pide confirmar que se descartan.
+  - "Guardar" desactivado mientras se recalcula.
+- **Tarjeta:** botón "Editar" junto a "Optimizar" (solo con mapa elegido y sin estar cargando el mapa); el motivo de bloqueo pasa a una línea encima de los botones. El selector de mapa sigue en la tarjeta.
+- **Zona (`SectorsZoneSection`):** chips "Mapa entero" / "Por CP" (`ui/Chip`). Por CP: filtro numérico, 24 CP y "+N", y aviso de CP ignorados. Abajo, "N de M celdas · N vehículos" o "Recalculando la zona/flota…".
+  - Cada toque de CP cancela la petición en curso al momento (si no, su respuesta quitaría los CP tocados después) y recalcula a los 400 ms: `op=zona` y luego `op=flota` (`chatApi.fetchSectorsZone` / `fetchSectorsFleet`, con `AbortController`). La flota se mezcla para no perder el tipo elegido, como la web. Pasar a "Mapa entero" quita los CP y recalcula.
+  - El modo elegido se guarda en `zona.modo` (tipo `ZoneMode`): el back lo deduce de los CP y al lanzar solo lee `cps_seleccionados`. Así la tarjeta bloquea "Por CP" sin ninguno marcado.
+  - Al recalcular se vacían los `avisos` del back (eran del formulario tal como llegó), en lugar del indicador "tocado" de la web.
+- `fetchSectorsForm` comparte la llamada con las nuevas; su error genérico pasa a "No se pudo cargar el formulario".
 
 **Pendiente de hablar con el equipo: optimizaciones en segundo plano y aviso al terminar**
 - **Problema hoy (web y app):** cambiar de chat, salir de la pantalla o dejar la app en segundo plano corta el stream. En la ruta rápida del formulario, el solver sigue en su hilo (`asyncio.to_thread`, `endpoint_chat.py:1654`) pero el resultado se descarta y no se guarda nada en el historial: ese corte queda fuera del `except CancelledError` (`:1835`). Si la lanza el modelo, el turno se guarda como interrumpido pero sin el resultado. Se decide no poner un parche en la app (confirmar antes de cambiar de chat) a la espera de esto.
@@ -890,4 +902,5 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-08 | Fase 4: bloque 3 hecho (tarjeta del borrador y editor con formato); una tarjeta por borrador, como la web; "ya enviado" entre dispositivos queda como propuesta para el equipo (back) |
 | 2026-10-08 | Chelu: el SVG se sustituye por el PNG de referencia (`assets/chelu.png`); flotar del login con `withRepeat` en sentido inverso (daba un salto al repetir) |
 | 2026-10-09 | Fase 4, bloque 4b-1: formularios del historial atenuados y sin selector de mapa hasta "Volver a cargar" |
+| 2026-10-09 | Fase 4, bloque 4b-2: edición del formulario como capa a pantalla completa en `ChatScreen` (no pantalla del stack); el selector de mapa se queda en la tarjeta; zona "Mapa entero" / "Por CP" con recálculo de zona y flota |
 | 2026-10-09 | Estilo: legibilidad primero; `async`/`await` con `try`/`catch` en lugar de `.then().catch()`, cambiando las cadenas existentes al tocar cada archivo |

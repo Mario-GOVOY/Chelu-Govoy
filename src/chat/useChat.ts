@@ -263,6 +263,12 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
         });
     }, []);
 
+    /** Sustituye el formulario por su versión editada en la pantalla de edición. */
+    const saveSectorsForm = useCallback(
+        (form: SectorsForm, editedForm: SectorsForm) => replaceSectorsForm(form, editedForm),
+        [],
+    );
+
     return {
         mensajes,
         titulo,
@@ -276,5 +282,6 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
         sendEmail,
         launchSectorsForm,
         changeSectorsFormMap,
+        saveSectorsForm,
     };
 }

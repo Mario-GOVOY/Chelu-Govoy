@@ -20,7 +20,7 @@ import type {
     SectorsSummary,
     Voto,
 } from '@/types/Chat';
-import type { SectorsForm, SectorsFormPayload } from '@/types/SectorsForm';
+import type { FormFleet, FormZone, SectorsForm, SectorsFormPayload } from '@/types/SectorsForm';
 
 // El enlace que trae el back caduca; se descarga siempre pidiendo uno nuevo con el fileId.
 const aDocumento = (d: any): Documento => ({
@@ -266,13 +266,31 @@ export async function sendEmail(
     return messageId;
 }
 
-/** Formulario de sectores completo de un mapa, con lo recomendado para él. No gasta turno de chat. */
-export async function fetchSectorsForm(mapId: number): Promise<SectorsFormPayload> {
-    const respuesta = await authFetch(`${API_URL}chat-cex/formulario-sectores?op=formulario&id_cell_group=${mapId}`);
+/**
+ * Consulta del formulario de sectores para un mapa (y unos CP; sin ellos, el mapa entero). No gasta turno de chat.
+ * Si el back falla, lanza su detail. Al abortar con signal, lanza un AbortError.
+ */
+async function fetchSectorsFormPart<T>(operation: string, mapId: number, postcodes: string[] = [], signal?: AbortSignal): Promise<T> {
+    const postcodesParam = postcodes.length ? `&cps=${encodeURIComponent(postcodes.join(','))}` : '';
+    const respuesta = await authFetch(
+        `${API_URL}chat-cex/formulario-sectores?op=${operation}&id_cell_group=${mapId}${postcodesParam}`,
+        { signal },
+    );
     const json = await respuesta.json().catch(() => null);
-    if (!respuesta.ok) throw new Error(json?.detail || `No se pudo cargar el mapa (error ${respuesta.status}).`);
+    if (!respuesta.ok) throw new Error(json?.detail || `No se pudo cargar el formulario (error ${respuesta.status}).`);
     return json;
 }
+
+/** Formulario completo del mapa, con lo recomendado para él. */
+export const fetchSectorsForm = (mapId: number) => fetchSectorsFormPart<SectorsFormPayload>('formulario', mapId);
+
+/** Zona recalculada para los CP elegidos. */
+export const fetchSectorsZone = (mapId: number, postcodes: string[], signal: AbortSignal) =>
+    fetchSectorsFormPart<FormZone>('zona', mapId, postcodes, signal);
+
+/** Flota que sirve la zona de esos CP. No trae el tipo de flota, que es elección del usuario. */
+export const fetchSectorsFleet = (mapId: number, postcodes: string[], signal: AbortSignal) =>
+    fetchSectorsFormPart<Omit<FormFleet, 'tipo'>>('flota', mapId, postcodes, signal);
 
 // Como la web. Más adelante, guardado en AsyncStorage y con selector para master.
 const MODELO = 'deepseek-v4-flash';

@@ -13,6 +13,7 @@ import { BurbujaMensaje } from '@/components/BurbujaMensaje';
 import { CajaMensaje } from '@/components/CajaMensaje';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { HojaValoracion, type Valorando } from '@/components/HojaValoracion';
+import { SectorsFormEditor, type SectorsFormEditing } from '@/components/SectorsFormEditor';
 import { Boton } from '@/components/ui/Boton';
 import { CapaGiro } from '@/components/ui/CapaGiro';
 import { Pantalla } from '@/components/ui/Pantalla';
@@ -57,7 +58,10 @@ export default function ChatScreen({ navigation, route }: Props) {
         sendEmail,
         launchSectorsForm,
         changeSectorsFormMap,
+        saveSectorsForm,
     } = useChat(chatId, alCrearse);
+    const [editingSectorsForm, setEditingSectorsForm] = useState<SectorsFormEditing | null>(null);
+    const closeSectorsFormEditor = useCallback(() => setEditingSectorsForm(null), []);
     const puedeValorar = validatorUserHasOption(HAS_FEEDBACK_CHAT_CHELU, sesion.empresaId, esSesionMaster(sesion));
     // Respuesta que se está valorando (su runId y el pulgar pulsado); null con la hoja cerrada.
     const [valorando, setValorando] = useState<(Valorando & { runId: string }) | null>(null);
@@ -220,6 +224,7 @@ export default function ChatScreen({ navigation, route }: Props) {
                                 onSendEmail={sendEmail}
                                 onLaunchSectorsForm={respondiendo ? undefined : launchSectorsForm}
                                 onChangeSectorsFormMap={changeSectorsFormMap}
+                                onEditSectorsForm={(form, map) => setEditingSectorsForm({ form, map })}
                             />
                         )}
                     />
@@ -240,6 +245,14 @@ export default function ChatScreen({ navigation, route }: Props) {
                 valorando={valorando}
                 onCerrar={cerrarValoracion}
                 onEnviar={(voto) => votar(valorando!.runId, voto, valorando!.anterior)}
+            />
+            <SectorsFormEditor
+                editing={editingSectorsForm}
+                onSave={(form, editedForm) => {
+                    saveSectorsForm(form, editedForm);
+                    closeSectorsFormEditor();
+                }}
+                onClose={closeSectorsFormEditor}
             />
             <CapaGiro />
         </Pantalla>
