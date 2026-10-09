@@ -8,9 +8,6 @@ import { useColores } from '@/theme/ThemeProvider';
 import type { FormFleet, FormProvider, FormZone, ZoneMode } from '@/types/SectorsForm';
 import { formatInteger } from '@/utils/numbers';
 
-// CP que se enseñan antes de "+N".
-const VISIBLE_POSTCODES = 24;
-
 const ZONE_MODES: { value: ZoneMode; label: string }[] = [
     { value: 'mapa_entero', label: 'Mapa entero' },
     { value: 'cps', label: 'Por CP' },
@@ -45,18 +42,14 @@ export function SectorsZoneSection({
     onToggleProvider: (provider: FormProvider) => void;
 }) {
     const colores = useColores();
+    const { height: windowHeight } = useWindowDimensions();
     const [filter, setFilter] = useState('');
-    const [showAll, setShowAll] = useState(false);
+    const [providerFilter, setProviderFilter] = useState('');
 
     const matchingPostcodes = useMemo(
         () => zone.cps_disponibles.filter((item) => item.cp.includes(filter.trim())),
         [zone.cps_disponibles, filter],
     );
-    const visiblePostcodes = showAll ? matchingPostcodes : matchingPostcodes.slice(0, VISIBLE_POSTCODES);
-    const hiddenCount = matchingPostcodes.length - visiblePostcodes.length;
-
-    const { height: windowHeight } = useWindowDimensions();
-    const [providerFilter, setProviderFilter] = useState('');
     const matchingProviders = useMemo(() => {
         const search = normalizeText(providerFilter.trim());
         return (providers ?? []).filter((provider) => normalizeText(provider.nombre).includes(search));
@@ -88,8 +81,14 @@ export function SectorsZoneSection({
                         accessibilityLabel="Filtrar códigos postales"
                         className="rounded-xl border border-borde-medio bg-superficie px-3 py-2 text-sm text-texto"
                     />
-                    <View className="flex-row flex-wrap gap-2">
-                        {visiblePostcodes.map((item) => (
+                    {/* Scroll propio dentro del de la pantalla. */}
+                    <ScrollView
+                        style={{ maxHeight: windowHeight * 0.5 }}
+                        nestedScrollEnabled
+                        keyboardShouldPersistTaps="handled"
+                        contentContainerClassName="flex-row flex-wrap gap-2"
+                    >
+                        {matchingPostcodes.map((item) => (
                             <Chip
                                 key={item.cp}
                                 label={item.cp}
@@ -97,10 +96,7 @@ export function SectorsZoneSection({
                                 onPress={() => onTogglePostcode(item.cp)}
                             />
                         ))}
-                        {hiddenCount > 0 && (
-                            <Chip label={`+${hiddenCount}`} selected={false} onPress={() => setShowAll(true)} />
-                        )}
-                    </View>
+                    </ScrollView>
                     {matchingPostcodes.length === 0 && (
                         <Text className="text-xs text-texto-tenue">Ningún código postal del mapa coincide.</Text>
                     )}
@@ -125,7 +121,6 @@ export function SectorsZoneSection({
                             accessibilityLabel="Buscar proveedor"
                             className="rounded-xl border border-borde-medio bg-superficie px-3 py-2 text-sm text-texto"
                         />
-                        {/* Scroll propio dentro del de la pantalla: nestedScrollEnabled para Android. */}
                         <ScrollView
                             style={{ maxHeight: windowHeight * 0.5 }}
                             nestedScrollEnabled

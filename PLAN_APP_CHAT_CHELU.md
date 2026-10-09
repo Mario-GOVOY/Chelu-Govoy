@@ -701,7 +701,7 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
   - Trabaja sobre una copia; "Guardar" la pasa al mensaje (`useChat.saveSectorsForm`). Cerrar (o el botón atrás) con cambios pide confirmar que se descartan.
   - "Guardar" desactivado mientras se recalcula.
 - **Tarjeta:** botón "Editar" junto a "Optimizar" (solo con mapa elegido y sin estar cargando el mapa); el motivo de bloqueo pasa a una línea encima de los botones. El selector de mapa sigue en la tarjeta.
-- **Zona (`SectorsZoneSection`):** chips "Mapa entero" / "Por CP" (`ui/Chip`). Por CP: filtro numérico, 24 CP y "+N", y aviso de CP ignorados. Abajo, "N de M celdas · N vehículos" o "Recalculando la zona/flota…".
+- **Zona (`SectorsZoneSection`):** chips "Mapa entero" / "Por CP" (`ui/Chip`). Por CP: filtro numérico, todos los CP en una lista con scroll propio de media pantalla como máximo (como los proveedores; la web enseña 24 y "+N"), y aviso de CP ignorados. Abajo, "N de M celdas · N vehículos" o "Recalculando la zona/flota…".
   - Cada toque de CP cancela la petición en curso al momento (si no, su respuesta quitaría los CP tocados después) y recalcula a los 400 ms: `op=zona` y luego `op=flota` (`chatApi.fetchSectorsZone` / `fetchSectorsFleet`, con `AbortController`). La flota se mezcla para no perder el tipo elegido, como la web. Pasar a "Mapa entero" quita los CP y recalcula.
   - El modo elegido se guarda en `zona.modo` (tipo `ZoneMode`): el back lo deduce de los CP y al lanzar solo lee `cps_seleccionados`. Así la tarjeta bloquea "Por CP" sin ninguno marcado.
   - Al recalcular se vacían los `avisos` del back (eran del formulario tal como llegó), en lugar del indicador "tocado" de la web.
