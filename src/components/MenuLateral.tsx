@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import { DrawerContentComponentProps, useDrawerStatus } from '@react-navigation/drawer';
 import { LogOut, Moon, Plus, RefreshCw, Sun, UserRoundX } from 'lucide-react-native';
@@ -44,8 +44,13 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
     const { chats, recargar } = conversaciones;
     const chatActivo = (state.routes[state.index].params as AppDrawerParamList['Chat'])?.chatId;
 
+    // Último chat por el que se recargó: si el back no lo devuelve, no se vuelve a pedir al abrir el menú.
+    const reloadedForChatRef = useRef<string | null>(null);
     useEffect(() => {
-        if (isMenuOpen && chatActivo && chats && !chats.some((chat) => chat.id === chatActivo)) recargar();
+        if (!isMenuOpen || !chatActivo || !chats || chats.some((chat) => chat.id === chatActivo)) return;
+        if (reloadedForChatRef.current === chatActivo) return;
+        reloadedForChatRef.current = chatActivo;
+        recargar();
     }, [isMenuOpen]);
 
     const abrirChat = useCallback(

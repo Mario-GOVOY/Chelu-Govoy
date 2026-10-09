@@ -1,6 +1,6 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { ActivityIndicator, Pressable, Text } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, FlashListRef } from '@shopify/flash-list';
 import { CopyPlus, MessageSquare, Trash2 } from 'lucide-react-native';
 
 import type { ResumenChat } from '@/types/Chat';
@@ -85,6 +85,19 @@ const ConversationRow = memo(function ConversationRow({
 
 export function ListaConversaciones({ chats, error, activoId, onReintentar, onAbrir, onDuplicar, onBorrar, ocupado }: Props) {
     const colores = useColores();
+    const listRef = useRef<FlashListRef<ResumenChat>>(null);
+    // Ids de la lista anterior, para saber si al recargar ha llegado alguna conversación nueva.
+    const previousIdsRef = useRef<Set<string> | null>(null);
+
+    // Si hay alguna nueva, la lista sube arriba, donde aparecen las más recientes.
+    useEffect(() => {
+        if (!chats) return;
+        const previousIds = previousIdsRef.current;
+        if (previousIds && chats.some((chat) => !previousIds.has(chat.id))) {
+            listRef.current?.scrollToOffset({ offset: 0, animated: true });
+        }
+        previousIdsRef.current = new Set(chats.map((chat) => chat.id));
+    }, [chats]);
 
     if (chats === null) {
         if (error) {
@@ -99,9 +112,13 @@ export function ListaConversaciones({ chats, error, activoId, onReintentar, onAb
 
     return (
         <FlashList
+            ref={listRef}
+            // Sin él, al entrar una conversación arriba la lista se queda donde estaba y la nueva queda oculta encima.
+            maintainVisibleContentPosition={{ disabled: true }}
             data={chats}
             keyExtractor={(c) => c.id}
-            contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}            ListEmptyComponent={<Text className="px-2 text-sm text-texto-tenue">Aún no hay conversaciones.</Text>}
+            contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}
+            ListEmptyComponent={<Text className="px-2 text-sm text-texto-tenue">Aún no hay conversaciones.</Text>}
             renderItem={({ item }) => (
                 <ConversationRow
                     {...item}

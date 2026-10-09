@@ -1,4 +1,4 @@
-﻿import { useCallback, useMemo, useState } from 'react';
+﻿import { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { DrawerScreenProps } from '@react-navigation/drawer';
 import { CompositeScreenProps } from '@react-navigation/native';
@@ -21,7 +21,7 @@ import { AppDrawerParamList } from '@/navigation/AppNavigator';
 import { RootStackParamList } from '@/navigation/RootNavigator';
 import { useColores } from '@/theme/ThemeProvider';
 import { useSesionActiva } from '@/context/SesionContext';
-import type { Documento } from '@/types/Chat';
+import type { Documento, Mensaje } from '@/types/Chat';
 import { esSesionMaster, HAS_FEEDBACK_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
 
 // Del drawer y, por encima, del stack raíz (para abrir la gráfica ampliada).
@@ -60,6 +60,12 @@ export default function ChatScreen({ navigation, route }: Props) {
         changeSectorsFormMap,
         saveSectorsForm,
     } = useChat(chatId, alCrearse);
+    // La lista va invertida: el desplazamiento 0 es el último mensaje.
+    const listRef = useRef<FlatList<Mensaje>>(null);
+    const sendAndScroll = (pregunta: string) => {
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+        enviar(pregunta);
+    };
     const [editingSectorsForm, setEditingSectorsForm] = useState<SectorsFormEditing | null>(null);
     const closeSectorsFormEditor = useCallback(() => setEditingSectorsForm(null), []);
     const puedeValorar = validatorUserHasOption(HAS_FEEDBACK_CHAT_CHELU, sesion.empresaId, esSesionMaster(sesion));
@@ -200,6 +206,7 @@ export default function ChatScreen({ navigation, route }: Props) {
                     </ScrollView>
                 ) : (
                     <FlatList
+                        ref={listRef}
                         inverted
                         data={invertidos}
                         keyExtractor={(m) => m.id}
@@ -209,7 +216,7 @@ export default function ChatScreen({ navigation, route }: Props) {
                             <BurbujaMensaje
                                 mensaje={item}
                                 // Sugerencias solo en la última respuesta (la lista va invertida: es la 0).
-                                onPreguntar={index === 0 && !respondiendo ? enviar : undefined}
+                                onPreguntar={index === 0 && !respondiendo ? sendAndScroll : undefined}
                                 // Solo respuestas guardadas y completas: las detenidas o con error no tienen turno en el back.
                                 onDuplicarDesde={item.runId && !item.estado && !respondiendo
                                     ? () => duplicarDesde(item.runId!)
@@ -230,7 +237,7 @@ export default function ChatScreen({ navigation, route }: Props) {
                     />
                 )}
                 <CajaMensaje
-                    onEnviar={enviar}
+                    onEnviar={sendAndScroll}
                     onParar={parar}
                     respondiendo={respondiendo}
                     desactivada={cargando || error}
