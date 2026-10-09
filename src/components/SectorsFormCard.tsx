@@ -133,7 +133,7 @@ export function SectorsFormCard({ form, onLaunch, onChangeMap, onEdit }: {
                         </Text>
                     </SummaryRow>
                     <SummaryRow label="Rango">
-                        <Text className="text-[13px] text-texto">{getRangeLabel(rango_estudio.etiqueta)}</Text>
+                        <Text className="text-[13px] text-texto">{getRangeLabel(rango_estudio)}</Text>
                     </SummaryRow>
                     <SummaryRow label="Demanda">
                         <Text className="text-[13px] text-texto">

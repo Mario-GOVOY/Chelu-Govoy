@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchSectorsFleet, fetchSectorsProviders, fetchSectorsZone } from '@/chat/chatApi';
 import { isProviderSelected } from '@/chat/sectorsForm';
+import { SectorsRangeSection } from '@/components/SectorsRangeSection';
 import { SectorsZoneSection } from '@/components/SectorsZoneSection';
 import { useColores } from '@/theme/ThemeProvider';
 import type { FormMap, FormProvider, SectorsForm, ZoneMode } from '@/types/SectorsForm';
@@ -211,6 +212,10 @@ function EditorContent({ form, map, onSave, onClose }: {
                         onChangeMode={changeZoneMode}
                         onTogglePostcode={togglePostcode}
                         onToggleProvider={toggleProvider}
+                    />
+                    <SectorsRangeSection
+                        range={borrador.rango_estudio}
+                        onChange={(range) => setBorrador((prev) => ({ ...prev, rango_estudio: range }))}
                     />
                 </ScrollView>
             </KeyboardAvoidingView>

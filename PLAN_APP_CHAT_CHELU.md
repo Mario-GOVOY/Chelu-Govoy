@@ -201,6 +201,7 @@ Consecuencias:
 | `react-native-webview`, `@react-native-community/netinfo`, `@react-native-async-storage/async-storage`, `react-native-safe-area-context`, `react-native-screens`, `react-native-gesture-handler`, `react-native-svg` | Las que fija el SDK | OK | Instalar con `npx expo install` |
 | `react-native-keyboard-controller` | 1.21.9 (la que fija el SDK) | OK | |
 | `@sentry/react-native` | ~7.11 (la que fija el SDK) | OK | |
+| `@react-native-community/datetimepicker` (fase 4) | 9.1.0 (la que fija el SDK) | OK, instalada | Licencia MIT. Selector de fechas nativo (bloque 4b-4). Necesita recompilar. Al instalar salen los avisos `ERESOLVE` de `react-native-enriched-html` (ver bloque 3a), no suyos |
 | `@react-navigation/*` v7 | native 7.5 / native-stack 7.20 / drawer 7.14 | OK | Requieren screens ≥4 y safe-area ≥4 |
 | **NativeWind** | 4.2.7 + `react-native-css-interop` 0.2.7 + `tailwindcss` 3.4.x | **OK con un problema menor** | El PR #1864 (adaptación al SDK 57, RN 0.86 y React 19.2) se fusionó el 14/09 y 4.2.7 salió el 15/09. **Problema abierto #1834:** en RN 0.86 la ventana de errores de desarrollo (LogBox) se ve rota con NativeWind; la app funciona y producción no se ve afectada. Arreglo: un parche con `patch-package`, como en AppGovoy. También hay un problema conocido con `useAnimatedRef` de Reanimated 4 (#1560), que no usaremos al principio. |
 | `@maplibre/maplibre-react-native` (fase 3, elegida) | 11.5.0 | OK, instalada | Pide expo ≥54, RN ≥0.80 y React ≥19.1. Necesita build de desarrollo. Trae plugin de Expo (sin opciones: OpenGL y motor de ubicación propio). `@types/geojson` en `devDependencies` |
@@ -609,7 +610,7 @@ Todo lo que en el chat pide algo al usuario o le enseña un formulario. Se hace 
 | 1 | Datos: tipos, los cinco eventos del stream (`correo_borrador`, `formulario_sectores`, `sectores`, `comparativa`, `progreso`), lectura en `get_chat` y aviso de progreso | Hecho |
 | 2 | Tarjetas de resultado (`SectorsResultCard`) y comparativa (`ComparisonCard`), solo lectura, con nota "desde la web" | Hecho, falta probar en el móvil |
 | 3 | Borrador de correo, en sub-bloques: 3a envío y registro de "ya enviado"; 3b tarjeta (Para, Asunto, adjuntos, avisos, botón y bloqueo) con el cuerpo en un `TextInput`; 3c editor del cuerpo con `react-native-enriched-html` | Hecho (3a, 3b y 3c), falta probar en el móvil |
-| 4 | Formulario de sectores, en sub-bloques: 4a solo lectura y lanzar sin cambios; 4b mapa, zona y fechas; 4c demanda, carga mínima y modo; 4d editor de flota y escenarios; 4e cuadro "¿Algo que afinar?" (revisión con texto) | 4a, 4b-1 (elegir mapa) y 4b-2 (pantalla de edición y zona por CP) y 4b-3 (zona por proveedor) hechos, falta probar en el móvil. Siguiente: 4b-4, rango de estudio |
+| 4 | Formulario de sectores, en sub-bloques: 4a solo lectura y lanzar sin cambios; 4b mapa, zona y fechas; 4c demanda, carga mínima y modo; 4d editor de flota y escenarios; 4e cuadro "¿Algo que afinar?" (revisión con texto) | 4a, 4b-1 (elegir mapa), 4b-2 (pantalla de edición y zona por CP), 4b-3 (zona por proveedor) y 4b-4 (rango de estudio) hechos, falta probar en el móvil. Siguiente: 4c |
 
 **Decisiones**
 - **Formulario de sectores:** en el chat, una tarjeta con el resumen y los botones "Optimizar" y "Editar"; "Editar" abre el formulario en una pantalla completa (como los mapas). En la web va entero dentro de la burbuja, pero en el móvil serían varias pantallas de scroll dentro del chat.
@@ -706,6 +707,7 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
 - **Zona (`SectorsZoneSection`):** chips "Mapa entero" / "Por CP" (`ui/Chip`). Por CP: filtro numérico, todos los CP en una lista con scroll propio de media pantalla como máximo (como los proveedores; la web enseña 24 y "+N"), y aviso de CP ignorados. Abajo, "N de M celdas · N vehículos" o "Recalculando la zona/flota…".
   - Cada toque de CP cancela la petición en curso al momento (si no, su respuesta quitaría los CP tocados después) y recalcula a los 400 ms: `op=zona` y luego `op=flota` (`chatApi.fetchSectorsZone` / `fetchSectorsFleet`, con `AbortController`). La flota se mezcla para no perder el tipo elegido, como la web. Pasar a "Mapa entero" quita los CP y recalcula.
   - El modo elegido se guarda en `zona.modo` (tipo `ZoneMode`): el back lo deduce de los CP y al lanzar solo lee `cps_seleccionados`. Así la tarjeta bloquea "Por CP" sin ninguno marcado.
+  - Comprobado que el back nunca lee `zona.modo` al recibir el formulario (lanzar o revisar con texto): solo `zona.cps_seleccionados` (`preparar_opti.py:911` y `:1015`); los demás `modo` del back son el de SmartZone (`formulario.modo`). La web manda siempre el que puso el back (`"cps"` aunque se elija por proveedor) y la app el elegido (`"proveedor"`); da igual.
   - Al recalcular se vacían los `avisos` del back (eran del formulario tal como llegó), en lugar del indicador "tocado" de la web.
 - `fetchSectorsForm` comparte la llamada con las nuevas; su error genérico pasa a "No se pudo cargar el formulario".
 
@@ -716,6 +718,14 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
   - Buscador por nombre (sin distinguir mayúsculas ni tildes) y lista con scroll propio de media pantalla como máximo (`ScrollView` con `nestedScrollEnabled`, dentro del de la pantalla).
   - Tocar uno sin marcar añade sus CP a los elegidos; tocar uno marcado quita todos los suyos (y desmarca a los que compartan CP con él). Se recalcula con la misma espera de 400 ms que los CP sueltos.
 - En la tarjeta, la zona sigue saliendo como "Por CP: …" (no se guarda qué proveedor se eligió).
+
+**Hecho en el bloque 4b-4 (rango de estudio)**
+- `SectorsRangeSection` en el editor, tras la zona (sin plegar, como el resto de la pantalla): botones "Desde" y "Hasta" con el selector nativo de `@react-native-community/datetimepicker` (diálogo en Android, calendario debajo en iOS; se cierra al elegir), "El mapa va del … al …", "Usar todo el histórico" (quita las fechas) y chips L–D.
+- **Las dos fechas o ninguna:** el back (`_resolver_rango_estudio`, `opti.py:147`) da error con una sola. Al elegir una sin tener la otra, la otra toma el límite del mapa. Cada selector está acotado por las fechas del mapa y por la otra fecha, así que el rango no puede quedar invertido. (La web deja una sola.)
+- **Días:** los 7 van como `null`, como la web. No se puede desmarcar el último: con ninguno el back usaría todos (la web sí lo deja).
+- **Etiqueta del rango en la tarjeta:** se calcula en la app (`getRangeLabel`, "Del dd/mm/aaaa al dd/mm/aaaa · lunes, martes" o "Histórico del mapa · todos los días"), porque la `etiqueta` del back no cambia al editar. El campo se sigue devolviendo tal cual: al lanzar, el back no la lee (solo `fecha_inicio`, `fecha_final` y `dias_semana`, `preparar_opti.py:945-947`) y rehace la suya para el resultado.
+  - **Pendiente para la web:** la tarjeta web pinta la `etiqueta`, así que al editar el rango sigue diciendo "todo el histórico", y lo mismo al abrir en la web un formulario lanzado con fechas (el back guarda la etiqueta que le llega). Arreglo: que la web calcule el texto de las fechas y los días, como la app, en lugar de rehacer la etiqueta al editar.
+- El rango no cambia la zona ni la flota (`op=flota` no lo recibe), así que no se recalcula nada.
 
 **Pendiente de hablar con el equipo: optimizaciones en segundo plano y aviso al terminar**
 - **Problema hoy (web y app):** cambiar de chat, salir de la pantalla o dejar la app en segundo plano corta el stream. En la ruta rápida del formulario, el solver sigue en su hilo (`asyncio.to_thread`, `endpoint_chat.py:1654`) pero el resultado se descarta y no se guarda nada en el historial: ese corte queda fuera del `except CancelledError` (`:1835`). Si la lanza el modelo, el turno se guarda como interrumpido pero sin el resultado. Se decide no poner un parche en la app (confirmar antes de cambiar de chat) a la espera de esto.
@@ -737,7 +747,7 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
 - Por huella y no por `run_id` + posición: el borrador llega antes de que acabe la respuesta, cuando aún no hay `run_id`. No hace falta tabla nueva.
 
 **Licencias para la pantalla de licencias (pendiente antes de publicar)**
-- Ya en la app: `@shopify/flash-list` (MIT); MapLibre y compañía (ver D8); falta revisar `leaflet-color-markers`.
+- Ya en la app: `@shopify/flash-list` (MIT); `@react-native-community/datetimepicker` (MIT); MapLibre y compañía (ver D8); falta revisar `leaflet-color-markers`.
 - Con el bloque 3, lo que entra en la app de `react-native-enriched-html`: la propia librería (MIT, Software Mansion), **Gumbo** (analizador de HTML de Google, Apache-2.0, en Android e iOS) y **TagSoup** 1.2.1 (Apache-2.0, solo Android). Comprobado en el paquete: `index.native.js` solo importa la parte nativa.
 - Sus dependencias de web (TipTap, ProseMirror, `linkifyjs`, `fast-equals`, `use-sync-external-store`: MIT; `dompurify`: MPL-2.0 o Apache-2.0 a elegir) se instalan en `node_modules` pero no entran en la app; no van en la pantalla. No se pueden quitar de forma limpia (son `dependencies` del paquete) y no hace falta.
 
@@ -914,4 +924,9 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-09 | Fase 4, bloque 4b-1: formularios del historial atenuados y sin selector de mapa hasta "Volver a cargar" |
 | 2026-10-09 | Fase 4, bloque 4b-2: edición del formulario como capa a pantalla completa en `ChatScreen` (no pantalla del stack); el selector de mapa se queda en la tarjeta; zona "Mapa entero" / "Por CP" con recálculo de zona y flota |
 | 2026-10-09 | Fase 4: "Volver a cargar" también sin mapa (formulario sin elegir); su carga va en el botón. Bloque 4b-3: zona por proveedor |
+| 2026-10-09 | Zona por proveedor con selección múltiple (marcado deducido de los CP elegidos), buscador y lista con scroll de media pantalla; los CP también con scroll en lugar de 24 y "+N" |
+| 2026-10-09 | `ui/Chip`: colores en un `View` interior (el fondo en `style` función de un `Pressable` con clases no se aplicaba) |
+| 2026-10-09 | Chat: al enviar (caja o sugerencia) la lista baja al último mensaje |
+| 2026-10-09 | Menú lateral: la lista sube arriba si al recargar llega una conversación nueva (`maintainVisibleContentPosition` desactivado; `autoscrollToTopThreshold` de FlashList 2.0.2 está declarado pero no implementado); la recarga al abrir el menú por un chat que falta se hace una sola vez por chat |
+| 2026-10-09 | Fase 4, bloque 4b-4: rango de estudio con `@react-native-community/datetimepicker`; siempre las dos fechas o ninguna y al menos un día; etiqueta del rango calculada en la app |
 | 2026-10-09 | Estilo: legibilidad primero; `async`/`await` con `try`/`catch` en lugar de `.then().catch()`, cambiando las cadenas existentes al tocar cada archivo |

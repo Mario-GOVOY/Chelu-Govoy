@@ -24,7 +24,8 @@
     "plugins": [
       "expo-secure-store",
       "react-native-blob-util",
-      "@maplibre/maplibre-react-native"
+      "@maplibre/maplibre-react-native",
+      "@react-native-community/datetimepicker"
     ]
   }
 }

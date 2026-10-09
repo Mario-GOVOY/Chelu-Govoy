@@ -1,4 +1,4 @@
-import type { FormFleet, FormProvider, FormVehicle, SectorsFormPayload } from '@/types/SectorsForm';
+import type { FormFleet, FormProvider, FormStudyRange, FormVehicle, SectorsFormPayload } from '@/types/SectorsForm';
 
 export const getIncludedVehicles = (vehicles: FormVehicle[]) => vehicles.filter((vehicle) => vehicle.incluido !== false);
 
@@ -86,14 +86,35 @@ export const getModeLabel = (mode: string) =>
 
 export const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-// "Todo el histórico del mapa…" del back se queda en "Histórico del mapa…".
-export const getRangeLabel = (label: string) => capitalize(label.replace(/^todo el histórico/i, 'histórico'));
+const WEEKDAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+
+/** Días elegidos (0 = lunes); null son todos. */
+export const getWeekdaysLabel = (weekdays: number[] | null) =>
+    weekdays ? [...weekdays].sort((a, b) => a - b).map((day) => WEEKDAY_NAMES[day]).join(', ') : 'todos los días';
+
+// Se calcula aquí y no se usa la etiqueta del back, que no cambia al editar el rango.
+export function getRangeLabel(range: FormStudyRange): string {
+    const dates = range.fecha_inicio && range.fecha_final
+        ? `Del ${formatIsoDate(range.fecha_inicio)} al ${formatIsoDate(range.fecha_final)}`
+        : 'Histórico del mapa';
+    return `${dates} · ${getWeekdaysLabel(range.dias_semana)}`;
+}
 
 /** aaaa-mm-dd → dd/mm/aaaa. */
 export function formatIsoDate(iso: string): string {
     const [year, month, day] = iso.split('-');
     return day ? `${day}/${month}/${year}` : iso;
 }
+
+/** aaaa-mm-dd → Date a las 00:00 de la hora local. */
+export function parseIsoDate(iso: string): Date {
+    const [year, month, day] = iso.split('-').map(Number);
+    return new Date(year, month - 1, day);
+}
+
+/** Date → aaaa-mm-dd con la fecha local. */
+export const toIsoDate = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
 /** El proveedor cuenta como elegido si todos sus CP están entre los elegidos. */
 export const isProviderSelected = (provider: FormProvider, selectedPostcodes: string[]) =>
