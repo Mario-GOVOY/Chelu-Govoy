@@ -1,4 +1,4 @@
-import type { FormFleet, FormVehicle, SectorsFormPayload } from '@/types/SectorsForm';
+import type { FormFleet, FormProvider, FormVehicle, SectorsFormPayload } from '@/types/SectorsForm';
 
 export const getIncludedVehicles = (vehicles: FormVehicle[]) => vehicles.filter((vehicle) => vehicle.incluido !== false);
 
@@ -94,6 +94,10 @@ export function formatIsoDate(iso: string): string {
     const [year, month, day] = iso.split('-');
     return day ? `${day}/${month}/${year}` : iso;
 }
+
+/** El proveedor cuenta como elegido si todos sus CP están entre los elegidos. */
+export const isProviderSelected = (provider: FormProvider, selectedPostcodes: string[]) =>
+    provider.cps.length > 0 && provider.cps.every((cp) => selectedPostcodes.includes(cp));
 
 /** Motivo por el que no se puede lanzar tal cual; null si se puede. */
 export function getLaunchBlocker(form: SectorsFormPayload): string | null {

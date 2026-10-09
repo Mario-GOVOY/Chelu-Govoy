@@ -607,7 +607,7 @@ Todo lo que en el chat pide algo al usuario o le enseña un formulario. Se hace 
 | 1 | Datos: tipos, los cinco eventos del stream (`correo_borrador`, `formulario_sectores`, `sectores`, `comparativa`, `progreso`), lectura en `get_chat` y aviso de progreso | Hecho |
 | 2 | Tarjetas de resultado (`SectorsResultCard`) y comparativa (`ComparisonCard`), solo lectura, con nota "desde la web" | Hecho, falta probar en el móvil |
 | 3 | Borrador de correo, en sub-bloques: 3a envío y registro de "ya enviado"; 3b tarjeta (Para, Asunto, adjuntos, avisos, botón y bloqueo) con el cuerpo en un `TextInput`; 3c editor del cuerpo con `react-native-enriched-html` | Hecho (3a, 3b y 3c), falta probar en el móvil |
-| 4 | Formulario de sectores, en sub-bloques: 4a solo lectura y lanzar sin cambios; 4b mapa, zona y fechas; 4c demanda, carga mínima y modo; 4d editor de flota y escenarios; 4e cuadro "¿Algo que afinar?" (revisión con texto) | 4a, 4b-1 (elegir mapa) y 4b-2 (pantalla de edición y zona por CP) hechos, falta probar en el móvil. Siguiente: 4b-3, zona por proveedor |
+| 4 | Formulario de sectores, en sub-bloques: 4a solo lectura y lanzar sin cambios; 4b mapa, zona y fechas; 4c demanda, carga mínima y modo; 4d editor de flota y escenarios; 4e cuadro "¿Algo que afinar?" (revisión con texto) | 4a, 4b-1 (elegir mapa) y 4b-2 (pantalla de edición y zona por CP) y 4b-3 (zona por proveedor) hechos, falta probar en el móvil. Siguiente: 4b-4, rango de estudio |
 
 **Decisiones**
 - **Formulario de sectores:** en el chat, una tarjeta con el resumen y los botones "Optimizar" y "Editar"; "Editar" abre el formulario en una pantalla completa (como los mapas). En la web va entero dentro de la burbuja, pero en el móvil serían varias pantallas de scroll dentro del chat.
@@ -706,6 +706,14 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
   - El modo elegido se guarda en `zona.modo` (tipo `ZoneMode`): el back lo deduce de los CP y al lanzar solo lee `cps_seleccionados`. Así la tarjeta bloquea "Por CP" sin ninguno marcado.
   - Al recalcular se vacían los `avisos` del back (eran del formulario tal como llegó), en lugar del indicador "tocado" de la web.
 - `fetchSectorsForm` comparte la llamada con las nuevas; su error genérico pasa a "No se pudo cargar el formulario".
+
+**Hecho en el bloque 4b-3 (zona por proveedor)**
+- Tercer chip "Por proveedor". Los proveedores (`op=proveedores`, la consulta lenta; `chatApi.fetchSectorsProviders`) se piden la primera vez que se elige ese modo y se guardan mientras el editor está abierto. Mientras tanto, "Cargando proveedores…"; si el mapa no tiene, "Este mapa no tiene proveedores."; si fallan, el error de la sección y se vuelven a pedir al volver a elegir el modo.
+- Un chip por proveedor, "Nombre (N)", con **selección múltiple** (la web solo deja uno: cada toque sustituye los CP por los suyos).
+  - Marcado si todos sus CP están elegidos (`isProviderSelected`), se hayan elegido por proveedor o por CP. Puede haber varios marcados a la vez (p. ej. uno pequeño cuyos CP están dentro de uno grande). No se guarda aparte qué proveedores se tocaron.
+  - Buscador por nombre (sin distinguir mayúsculas ni tildes) y lista con scroll propio de media pantalla como máximo (`ScrollView` con `nestedScrollEnabled`, dentro del de la pantalla).
+  - Tocar uno sin marcar añade sus CP a los elegidos; tocar uno marcado quita todos los suyos (y desmarca a los que compartan CP con él). Se recalcula con la misma espera de 400 ms que los CP sueltos.
+- En la tarjeta, la zona sigue saliendo como "Por CP: …" (no se guarda qué proveedor se eligió).
 
 **Pendiente de hablar con el equipo: optimizaciones en segundo plano y aviso al terminar**
 - **Problema hoy (web y app):** cambiar de chat, salir de la pantalla o dejar la app en segundo plano corta el stream. En la ruta rápida del formulario, el solver sigue en su hilo (`asyncio.to_thread`, `endpoint_chat.py:1654`) pero el resultado se descarta y no se guarda nada en el historial: ese corte queda fuera del `except CancelledError` (`:1835`). Si la lanza el modelo, el turno se guarda como interrumpido pero sin el resultado. Se decide no poner un parche en la app (confirmar antes de cambiar de chat) a la espera de esto.
@@ -903,4 +911,5 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-08 | Chelu: el SVG se sustituye por el PNG de referencia (`assets/chelu.png`); flotar del login con `withRepeat` en sentido inverso (daba un salto al repetir) |
 | 2026-10-09 | Fase 4, bloque 4b-1: formularios del historial atenuados y sin selector de mapa hasta "Volver a cargar" |
 | 2026-10-09 | Fase 4, bloque 4b-2: edición del formulario como capa a pantalla completa en `ChatScreen` (no pantalla del stack); el selector de mapa se queda en la tarjeta; zona "Mapa entero" / "Por CP" con recálculo de zona y flota |
+| 2026-10-09 | Fase 4: "Volver a cargar" también sin mapa (formulario sin elegir); su carga va en el botón. Bloque 4b-3: zona por proveedor |
 | 2026-10-09 | Estilo: legibilidad primero; `async`/`await` con `try`/`catch` en lugar de `.then().catch()`, cambiando las cadenas existentes al tocar cada archivo |

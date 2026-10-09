@@ -4,10 +4,11 @@ import { X } from 'lucide-react-native';
 import Animated, { Easing, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { fetchSectorsFleet, fetchSectorsZone } from '@/chat/chatApi';
+import { fetchSectorsFleet, fetchSectorsProviders, fetchSectorsZone } from '@/chat/chatApi';
+import { isProviderSelected } from '@/chat/sectorsForm';
 import { SectorsZoneSection } from '@/components/SectorsZoneSection';
 import { useColores } from '@/theme/ThemeProvider';
-import type { FormMap, SectorsForm, ZoneMode } from '@/types/SectorsForm';
+import type { FormMap, FormProvider, SectorsForm, ZoneMode } from '@/types/SectorsForm';
 
 // Espera tras tocar un CP antes de recalcular, para no pedir la zona en cada toque.
 const RECALCULATE_DELAY_MS = 400;
@@ -53,6 +54,9 @@ function EditorContent({ form, map, onSave, onClose }: {
     const [borrador, setBorrador] = useState(form);
     const [loading, setLoading] = useState<'zone' | 'fleet' | null>(null);
     const [error, setError] = useState<string | null>(null);
+    // Proveedores del mapa; null hasta que se piden.
+    const [providers, setProviders] = useState<FormProvider[] | null>(null);
+    const [loadingProviders, setLoadingProviders] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const changed = borrador !== form;
@@ -107,16 +111,33 @@ function EditorContent({ form, map, onSave, onClose }: {
         }
     };
 
-    const togglePostcode = (postcode: string) => {
-        const selected = borrador.zona.cps_seleccionados;
-        const postcodes = selected.includes(postcode)
-            ? selected.filter((item) => item !== postcode)
-            : [...selected, postcode];
+    // Cambia los CP elegidos y recalcula tras una espera, para no pedir la zona en cada toque.
+    const changePostcodes = (postcodes: string[]) => {
         setBorrador((prev) => ({ ...prev, zona: { ...prev.zona, cps_seleccionados: postcodes } }));
         // Se cancela ya la petición en curso: su respuesta quitaría los CP tocados después.
         cancelRecalculation();
         setLoading('zone');
         timerRef.current = setTimeout(() => recalculateZone(postcodes), RECALCULATE_DELAY_MS);
+    };
+
+    const togglePostcode = (postcode: string) => {
+        const selected = borrador.zona.cps_seleccionados;
+        changePostcodes(selected.includes(postcode)
+            ? selected.filter((item) => item !== postcode)
+            : [...selected, postcode]);
+    };
+
+    // Se piden la primera vez que se acota por proveedor.
+    const loadProviders = async () => {
+        setError(null);
+        setLoadingProviders(true);
+        try {
+            setProviders(await fetchSectorsProviders(map.id));
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'No se pudieron cargar los proveedores.');
+        } finally {
+            setLoadingProviders(false);
+        }
     };
 
     const changeZoneMode = (mode: ZoneMode) => {
@@ -130,6 +151,15 @@ function EditorContent({ form, map, onSave, onClose }: {
             cancelRecalculation();
             recalculateZone([]);
         }
+        if (mode === 'proveedor' && !providers) loadProviders();
+    };
+
+    // Marcar un proveedor añade sus CP a los elegidos; desmarcarlo quita todos los suyos.
+    const toggleProvider = (provider: FormProvider) => {
+        const selected = borrador.zona.cps_seleccionados;
+        changePostcodes(isProviderSelected(provider, selected)
+            ? selected.filter((cp) => !provider.cps.includes(cp))
+            : [...new Set([...selected, ...provider.cps])]);
     };
 
     return (
@@ -176,8 +206,11 @@ function EditorContent({ form, map, onSave, onClose }: {
                         fleet={borrador.flota}
                         loading={loading}
                         error={error}
+                        providers={providers}
+                        loadingProviders={loadingProviders}
                         onChangeMode={changeZoneMode}
                         onTogglePostcode={togglePostcode}
+                        onToggleProvider={toggleProvider}
                     />
                 </ScrollView>
             </KeyboardAvoidingView>

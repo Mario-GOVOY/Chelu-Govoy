@@ -20,7 +20,7 @@ import type {
     SectorsSummary,
     Voto,
 } from '@/types/Chat';
-import type { FormFleet, FormZone, SectorsForm, SectorsFormPayload } from '@/types/SectorsForm';
+import type { FormFleet, FormProvider, FormZone, SectorsForm, SectorsFormPayload } from '@/types/SectorsForm';
 
 // El enlace que trae el back caduca; se descarga siempre pidiendo uno nuevo con el fileId.
 const aDocumento = (d: any): Documento => ({
@@ -292,6 +292,12 @@ export const fetchSectorsZone = (mapId: number, postcodes: string[], signal: Abo
 /** Flota que sirve la zona de esos CP. No trae el tipo de flota, que es elección del usuario. */
 export const fetchSectorsFleet = (mapId: number, postcodes: string[], signal: AbortSignal) =>
     fetchSectorsFormPart<Omit<FormFleet, 'tipo'>>('flota', mapId, postcodes, signal);
+
+/** Proveedores del mapa con sus CP. Es la consulta lenta: solo se pide al acotar por proveedor. */
+export async function fetchSectorsProviders(mapId: number): Promise<FormProvider[]> {
+    const { proveedores } = await fetchSectorsFormPart<{ proveedores: FormProvider[] }>('proveedores', mapId);
+    return proveedores;
+}
 
 // Como la web. Más adelante, guardado en AsyncStorage y con selector para master.
 const MODELO = 'deepseek-v4-flash';

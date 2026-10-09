@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { TriangleAlert } from 'lucide-react-native';
 
-import { countFleetVehicles } from '@/chat/sectorsForm';
+import { countFleetVehicles, isProviderSelected } from '@/chat/sectorsForm';
 import { Chip } from '@/components/ui/Chip';
 import { useColores } from '@/theme/ThemeProvider';
-import type { FormFleet, FormZone, ZoneMode } from '@/types/SectorsForm';
+import type { FormFleet, FormProvider, FormZone, ZoneMode } from '@/types/SectorsForm';
 import { formatInteger } from '@/utils/numbers';
 
 // CP que se enseñan antes de "+N".
@@ -14,17 +14,35 @@ const VISIBLE_POSTCODES = 24;
 const ZONE_MODES: { value: ZoneMode; label: string }[] = [
     { value: 'mapa_entero', label: 'Mapa entero' },
     { value: 'cps', label: 'Por CP' },
+    { value: 'proveedor', label: 'Por proveedor' },
 ];
 
-/** Zona del formulario: el mapa entero o los CP elegidos, con las celdas y vehículos que salen. */
-export function SectorsZoneSection({ zone, fleet, loading, error, onChangeMode, onTogglePostcode }: {
+// Para buscar sin distinguir mayúsculas ni tildes.
+const normalizeText = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+/** Zona del formulario: el mapa entero, los CP elegidos o los de un proveedor, con las celdas y vehículos que salen. */
+export function SectorsZoneSection({
+    zone,
+    fleet,
+    loading,
+    error,
+    providers,
+    loadingProviders,
+    onChangeMode,
+    onTogglePostcode,
+    onToggleProvider,
+}: {
     zone: FormZone;
     fleet: FormFleet;
     // Lo que se está recalculando; null si nada.
     loading: 'zone' | 'fleet' | null;
     error: string | null;
+    // null hasta que se piden.
+    providers: FormProvider[] | null;
+    loadingProviders: boolean;
     onChangeMode: (mode: ZoneMode) => void;
     onTogglePostcode: (postcode: string) => void;
+    onToggleProvider: (provider: FormProvider) => void;
 }) {
     const colores = useColores();
     const [filter, setFilter] = useState('');
@@ -36,6 +54,13 @@ export function SectorsZoneSection({ zone, fleet, loading, error, onChangeMode, 
     );
     const visiblePostcodes = showAll ? matchingPostcodes : matchingPostcodes.slice(0, VISIBLE_POSTCODES);
     const hiddenCount = matchingPostcodes.length - visiblePostcodes.length;
+
+    const { height: windowHeight } = useWindowDimensions();
+    const [providerFilter, setProviderFilter] = useState('');
+    const matchingProviders = useMemo(() => {
+        const search = normalizeText(providerFilter.trim());
+        return (providers ?? []).filter((provider) => normalizeText(provider.nombre).includes(search));
+    }, [providers, providerFilter]);
 
     return (
         <View className="gap-3 rounded-xl border border-borde bg-superficie p-3">
@@ -80,6 +105,47 @@ export function SectorsZoneSection({ zone, fleet, loading, error, onChangeMode, 
                         <Text className="text-xs text-texto-tenue">Ningún código postal del mapa coincide.</Text>
                     )}
                 </>
+            )}
+
+            {zone.modo === 'proveedor' && (
+                loadingProviders ? (
+                    <View className="flex-row items-center gap-2">
+                        <ActivityIndicator size={14} color={colores.primario} />
+                        <Text className="text-xs text-texto-tenue">Cargando proveedores…</Text>
+                    </View>
+                ) : !providers ? null : providers.length === 0 ? (
+                    <Text className="text-xs text-texto-tenue">Este mapa no tiene proveedores.</Text>
+                ) : (
+                    <>
+                        <TextInput
+                            value={providerFilter}
+                            onChangeText={setProviderFilter}
+                            placeholder="Buscar proveedor…"
+                            placeholderTextColor={colores['texto-tenue']}
+                            accessibilityLabel="Buscar proveedor"
+                            className="rounded-xl border border-borde-medio bg-superficie px-3 py-2 text-sm text-texto"
+                        />
+                        {/* Scroll propio dentro del de la pantalla: nestedScrollEnabled para Android. */}
+                        <ScrollView
+                            style={{ maxHeight: windowHeight * 0.5 }}
+                            nestedScrollEnabled
+                            keyboardShouldPersistTaps="handled"
+                            contentContainerClassName="flex-row flex-wrap gap-2"
+                        >
+                            {matchingProviders.map((provider) => (
+                                <Chip
+                                    key={provider.nombre}
+                                    label={`${provider.nombre} (${provider.num_cps})`}
+                                    selected={isProviderSelected(provider, zone.cps_seleccionados)}
+                                    onPress={() => onToggleProvider(provider)}
+                                />
+                            ))}
+                        </ScrollView>
+                        {matchingProviders.length === 0 && (
+                            <Text className="text-xs text-texto-tenue">Ningún proveedor coincide.</Text>
+                        )}
+                    </>
+                )
             )}
 
             {zone.cps_no_encontrados.length > 0 && (
