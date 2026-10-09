@@ -28,7 +28,7 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
     mensaje: Mensaje;
     onSendEmail: (borrador: BorradorCorreo, edited: EditedEmail) => Promise<void>;
     onLaunchSectorsForm?: (form: SectorsForm) => void;
-    onChangeSectorsFormMap: (form: SectorsForm, mapId: number) => Promise<void>;
+    onChangeSectorsFormMap: (form: SectorsForm, mapId?: number) => Promise<void>;
     onEditSectorsForm: (form: SectorsForm, map: FormMap) => void;
     onAmpliarGrafica?: (grafica: Grafica) => void;
     onAbrirMapa?: (mapa: Mapa) => void;

@@ -39,8 +39,8 @@ export function SectorsFormCard({ form, onLaunch, onChangeMap, onEdit }: {
     form: SectorsForm;
     // Sin él (Chelu está respondiendo), el botón sale desactivado.
     onLaunch?: () => void;
-    // Carga el formulario del mapa; si falla, lanza el error que se enseña en la tarjeta.
-    onChangeMap: (mapId: number) => Promise<void>;
+    // Carga el formulario del mapa (sin mapa, uno sin elegir); si falla, lanza el error que se enseña en la tarjeta.
+    onChangeMap: (mapId?: number) => Promise<void>;
     // Abre la pantalla de edición con el mapa elegido.
     onEdit: (map: FormMap) => void;
 }) {
@@ -60,7 +60,7 @@ export function SectorsFormCard({ form, onLaunch, onChangeMap, onEdit }: {
         .filter((item) => esSesionMaster(sesion) || !INTERNAL_MAP_REGEX.test(item.nombre))
         .map((item) => ({ value: String(item.id), label: `${item.nombre} · ${item.deposito}` }));
 
-    const changeMap = async (mapId: number) => {
+    const changeMap = async (mapId?: number) => {
         setMapError(null);
         setLoadingMap(true);
         try {
@@ -102,7 +102,7 @@ export function SectorsFormCard({ form, onLaunch, onChangeMap, onEdit }: {
                 <View>
                     <SummaryRow label="Mapa">
                         {form.launched || form.readOnly ? (
-                            <Text className="text-[13px] text-texto">{mapa?.nombre}</Text>
+                            <Text className="text-[13px] text-texto">{mapa?.nombre ?? 'Sin elegir'}</Text>
                         ) : (
                             <Selector
                                 opciones={mapOptions}
@@ -117,13 +117,14 @@ export function SectorsFormCard({ form, onLaunch, onChangeMap, onEdit }: {
                                 {formatIsoDate(mapa.fecha_min)} - {formatIsoDate(mapa.fecha_max)}
                             </Text>
                         )}
-                        {loadingMap && (
+                        {/* Al volver a cargar, la carga y el error salen junto a su botón. */}
+                        {loadingMap && !form.readOnly && (
                             <View className="mt-1 flex-row items-center gap-2">
                                 <ActivityIndicator size={14} color={colores.primario} />
                                 <Text className="text-xs text-texto-tenue">Cargando el mapa…</Text>
                             </View>
                         )}
-                        {mapError && <Text className="mt-1 text-xs text-peligro">{mapError}</Text>}
+                        {mapError && !form.readOnly && <Text className="mt-1 text-xs text-peligro">{mapError}</Text>}
                     </SummaryRow>
                     <SummaryRow label="Zona">
                         <Text className="text-[13px] text-texto">
@@ -179,21 +180,27 @@ export function SectorsFormCard({ form, onLaunch, onChangeMap, onEdit }: {
                     <Text className="text-[13px] font-semibold text-exito">Optimización lanzada con estos valores</Text>
                 </View>
             ) : form.readOnly ? (
-                // Vuelve a pedir el formulario del mismo mapa con los datos de hoy, ya editable.
-                mapa && (
+                // Vuelve a pedir el formulario del mismo mapa (o uno sin elegir) con los datos de hoy, ya editable.
+                <View className="gap-2">
+                    {mapError && <Text className="text-right text-xs text-peligro">{mapError}</Text>}
                     <View className="flex-row justify-end">
                         <Pressable
-                            onPress={() => changeMap(mapa.id)}
+                            onPress={() => changeMap(mapa?.id)}
                             disabled={loadingMap}
                             accessibilityRole="button"
                             accessibilityLabel="Volver a cargar"
+                            accessibilityState={{ busy: loadingMap }}
                             className="flex-row items-center gap-1.5 rounded-full border border-borde-medio px-3 py-1.5 active:bg-primario-suave"
                         >
-                            <RotateCw size={14} color={colores.primario} />
-                            <Text className="text-[13px] font-semibold text-primario">Volver a cargar</Text>
+                            {loadingMap
+                                ? <ActivityIndicator size={14} color={colores.primario} />
+                                : <RotateCw size={14} color={colores.primario} />}
+                            <Text className="text-[13px] font-semibold text-primario">
+                                {loadingMap ? 'Cargando…' : 'Volver a cargar'}
+                            </Text>
                         </Pressable>
                     </View>
-                )
+                </View>
             ) : (
                 <View className="gap-2">
                     {blocker && <Text className="text-right text-xs font-semibold text-peligro">{blocker}</Text>}

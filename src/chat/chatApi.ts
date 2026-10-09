@@ -270,10 +270,11 @@ export async function sendEmail(
  * Consulta del formulario de sectores para un mapa (y unos CP; sin ellos, el mapa entero). No gasta turno de chat.
  * Si el back falla, lanza su detail. Al abortar con signal, lanza un AbortError.
  */
-async function fetchSectorsFormPart<T>(operation: string, mapId: number, postcodes: string[] = [], signal?: AbortSignal): Promise<T> {
+async function fetchSectorsFormPart<T>(operation: string, mapId?: number, postcodes: string[] = [], signal?: AbortSignal): Promise<T> {
+    const mapParam = mapId === undefined ? '' : `&id_cell_group=${mapId}`;
     const postcodesParam = postcodes.length ? `&cps=${encodeURIComponent(postcodes.join(','))}` : '';
     const respuesta = await authFetch(
-        `${API_URL}chat-cex/formulario-sectores?op=${operation}&id_cell_group=${mapId}${postcodesParam}`,
+        `${API_URL}chat-cex/formulario-sectores?op=${operation}${mapParam}${postcodesParam}`,
         { signal },
     );
     const json = await respuesta.json().catch(() => null);
@@ -281,8 +282,8 @@ async function fetchSectorsFormPart<T>(operation: string, mapId: number, postcod
     return json;
 }
 
-/** Formulario completo del mapa, con lo recomendado para él. */
-export const fetchSectorsForm = (mapId: number) => fetchSectorsFormPart<SectorsFormPayload>('formulario', mapId);
+/** Formulario completo del mapa, con lo recomendado para él. Sin mapa, sin elegir y con todos los mapas disponibles. */
+export const fetchSectorsForm = (mapId?: number) => fetchSectorsFormPart<SectorsFormPayload>('formulario', mapId);
 
 /** Zona recalculada para los CP elegidos. */
 export const fetchSectorsZone = (mapId: number, postcodes: string[], signal: AbortSignal) =>

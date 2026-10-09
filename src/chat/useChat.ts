@@ -249,10 +249,10 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
     );
 
     /**
-     * Carga el formulario del mapa elegido y sustituye con él al anterior, ya editable.
+     * Carga el formulario del mapa elegido (sin mapa, uno sin elegir) y sustituye con él al anterior, ya editable.
      * Se conserva el tipo de optimización si el mapa nuevo lo admite. Si el back falla, se relanza el error.
      */
-    const changeSectorsFormMap = useCallback(async (form: SectorsForm, mapId: number) => {
+    const changeSectorsFormMap = useCallback(async (form: SectorsForm, mapId?: number) => {
         const newForm = await fetchSectorsForm(mapId);
         const keepsMode = newForm.modo.opciones.includes(form.modo.valor);
         replaceSectorsForm(form, {
