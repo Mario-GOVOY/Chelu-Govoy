@@ -318,6 +318,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 - **Mapas:** MapLibre pintando la geometría GeoJSON que manda el back (ver D8 y el progreso de la fase 3).
 - **Voz:** grabación en m4a con `expo-audio` y envío a `/transcribir`, que ya acepta m4a y mp4.
 - **Documentos (decidido):** `/archivo/{id}` devuelve un enlace temporal de S3 que ya lleva `Content-Disposition: attachment`. En Android se descarga con el `DownloadManager` del sistema (`react-native-blob-util`), a Descargas y sin salir de la app; en iOS con `Linking.openURL`, y Safari lo guarda en Archivos › Descargas. Detalle en el progreso de la fase 2.
+- **Estilo del código:** la legibilidad va primero. Las promesas se escriben con `async`/`await` y `try`/`catch`/`finally`, no con cadenas `.then().catch()` (en un efecto, con una función async dentro). Las cadenas que quedan se cambian al tocar cada archivo; no hay diferencia de rendimiento. Al cambiarlas, lo que iba en paralelo sigue en paralelo (`await Promise.all(...)`, no `await` dentro de un bucle). Excepción: la cola de `tokenStorage.ts` (`cola.then(op, op)`), que encadena a propósito.
 
 ---
 
@@ -605,7 +606,7 @@ Todo lo que en el chat pide algo al usuario o le enseña un formulario. Se hace 
 | 1 | Datos: tipos, los cinco eventos del stream (`correo_borrador`, `formulario_sectores`, `sectores`, `comparativa`, `progreso`), lectura en `get_chat` y aviso de progreso | Hecho |
 | 2 | Tarjetas de resultado (`SectorsResultCard`) y comparativa (`ComparisonCard`), solo lectura, con nota "desde la web" | Hecho, falta probar en el móvil |
 | 3 | Borrador de correo, en sub-bloques: 3a envío y registro de "ya enviado"; 3b tarjeta (Para, Asunto, adjuntos, avisos, botón y bloqueo) con el cuerpo en un `TextInput`; 3c editor del cuerpo con `react-native-enriched-html` | Hecho (3a, 3b y 3c), falta probar en el móvil |
-| 4 | Formulario de sectores, en sub-bloques: 4a solo lectura y lanzar sin cambios; 4b mapa, zona y fechas; 4c demanda, carga mínima y modo; 4d editor de flota y escenarios; 4e cuadro "¿Algo que afinar?" (revisión con texto) | Pendiente |
+| 4 | Formulario de sectores, en sub-bloques: 4a solo lectura y lanzar sin cambios; 4b mapa, zona y fechas; 4c demanda, carga mínima y modo; 4d editor de flota y escenarios; 4e cuadro "¿Algo que afinar?" (revisión con texto) | 4a y 4b-1 (elegir mapa) hechos, falta probar en el móvil |
 
 **Decisiones**
 - **Formulario de sectores:** en el chat, una tarjeta con el resumen y los botones "Optimizar" y "Editar"; "Editar" abre el formulario en una pantalla completa (como los mapas). En la web va entero dentro de la burbuja, pero en el móvil serían varias pantallas de scroll dentro del chat.
@@ -678,6 +679,30 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
 - **Progreso (`progreso`):** `{tool, mensaje}` ("Optimización en proceso. Esto puede tardar algunos minutos..."). No se guarda.
 - **Resultado (`sectores`):** `{optimizacion_id, resumen}`; resumen con `grupo`, `celdas_pedidas/asignadas/sin_asignar`, `vehiculos_aportados/usados`, `vehiculos_sin_usar`, `percentil_final`, tiempos y distancias totales y medias, `rutas[]`, `diagnostico_sin_asignar` y `fragmentacion` (B `opti.py:514-609`). La web solo pinta grupo, vehículos y celdas.
 - **Comparativa (`comparativa`):** `{escenarios: [{nombre, optimizacion_id, resumen} | {nombre, error}]}`; los escenarios se calculan en paralelo, 4 como mucho (`limites.max_escenarios`).
+
+**Hecho en el bloque 4a**
+- `chat/sectorsForm.ts`: cálculos de la flota (vehículos incluidos, unidades, capacidad, los tres escenarios con "uno menos" / "uno más" y los editados a mano), etiquetas (flota, modo, rango, fechas) y `getLaunchBlocker` (sin mapa, por CP sin ninguno, flota personalizada, sin vehículos).
+- `SectorsFormCard`, tras los correos y antes de los resultados: cabecera, avisos del back, filas de resumen (mapa y fechas, zona y celdas, rango, demanda, flota con vehículos y capacidad o los tres escenarios, aprovechamiento mínimo, modo) y botón "Optimizar". Si no se puede lanzar, el motivo junto al botón desactivado; mientras Chelu responde, también desactivado.
+- Lanzar (`useChat.launchSectorsForm`): marca el formulario como `launched` en su mensaje (pie "Optimización lanzada con estos valores") y llama a `enviar('', formulario)`, que manda `formulario` en `/stream` con la pregunta vacía y no pinta mensaje del usuario.
+- Los del historial (`readOnly`) salen con "De una conversación anterior" y sin botón; "Volver a cargar" llega con la edición (4b).
+- Sin la lista de vehículos (chips) en la tarjeta: solo recuentos. La lista irá en la pantalla de edición.
+
+**Hecho en el bloque 4b-1 (elegir mapa)**
+- Al probar el 4a, Chelu mandó el formulario sin mapa (`mapa: null`, zona con 0 celdas) y no había forma de elegirlo: por eso el 4b empieza por aquí.
+- En la tarjeta, la fila "Mapa" es un `Selector` con `mapas_disponibles` (más el actual si no viene en ellos), "nombre · depósito". Los "PRUEBAS GOVOY" solo en sesiones master (`esSesionMaster`). Lanzada, solo el nombre.
+- Al elegir uno, `chatApi.fetchSectorsForm` (`GET /chat-cex/formulario-sectores?op=formulario&id_cell_group=…`) y `useChat.changeSectorsFormMap` sustituye el formulario en su mensaje (ya editable). Se conserva el tipo de optimización si el mapa nuevo lo admite. Mientras carga, "Cargando el mapa…" y "Optimizar" desactivado; si falla, el `detail` del back bajo el mapa.
+- Los del historial tienen "Volver a cargar": pide el formulario del mismo mapa con los datos de hoy y lo deja editable.
+- Hasta pulsarlo, la tarjeta se ve desactivada: avisos y resumen al 50 % de opacidad (en `style`, porque NativeWind puede no repintar al cambiar la clase), el mapa como texto en vez de selector y el subtítulo "De una conversación anterior. Vuelve a cargarlo para editarlo". La cabecera y el botón quedan con su color. "Cargando el mapa…" y el error van en la fila del mapa, así que también salen atenuados.
+- `mapas_disponibles` siempre llega como lista: en los del historial, el back la vacía (`_formulario_para_historial`, `endpoint_chat.py:1384`), no la quita. Por eso se añade el mapa actual a la lista.
+
+**Pendiente de hablar con el equipo: optimizaciones en segundo plano y aviso al terminar**
+- **Problema hoy (web y app):** cambiar de chat, salir de la pantalla o dejar la app en segundo plano corta el stream. En la ruta rápida del formulario, el solver sigue en su hilo (`asyncio.to_thread`, `endpoint_chat.py:1654`) pero el resultado se descarta y no se guarda nada en el historial: ese corte queda fuera del `except CancelledError` (`:1835`). Si la lanza el modelo, el turno se guarda como interrumpido pero sin el resultado. Se decide no poner un parche en la app (confirmar antes de cambiar de chat) a la espera de esto.
+- **Propuesta:**
+  1. **Back, trabajo propio:** la optimización se registra como trabajo (en curso / terminada / error) y se ejecuta aunque se corte la conexión. Al terminar, guarda en el historial la tarjeta (`sectores` o `comparativa`) y el comentario de Chelu. Para sobrevivir a un reinicio o despliegue, el trabajo va en una tabla (o una cola) y se retoma o se marca como fallido.
+  2. **Push:** la app pide permiso con `expo-notifications` y manda su token al back (tabla de tokens por usuario y endpoint nuevos; se puede partir de `utilsNotifications.tsx` de AppGovoy). Al terminar, el back envía la notificación con la API de Expo. Configuración: FCM (Android) y APNs (iOS) con EAS, build nueva. La notificación lleva el `chatId` y al tocarla se abre esa conversación.
+  3. **App:** con la app abierta en otro chat, aviso dentro de la app ("La optimización de X ha terminado · Ver"). Al volver a un chat con una optimización en curso, "Optimización en proceso…" hasta que termine (consultando el estado o con el aviso).
+  4. **Lista de conversaciones:** el chat cuya optimización ha terminado y aún no se ha abierto sale resaltado con un "!" hasta abrirlo. Hace falta saberlo al cargar la lista: un campo en `get_chats` (p. ej. resultado sin ver) o, solo en el móvil, apuntarlo al recibir la notificación.
+- No sirve que la app se avise sola al acabar el stream: en segundo plano Android e iOS cortan la conexión o la app en pocos minutos.
 
 **Pendiente de hablar con el equipo: "ya enviado" entre dispositivos**
 - **Problema:** el registro de enviados es de cada dispositivo (AsyncStorage en el móvil, `localStorage` en la web). Un correo enviado desde el móvil sigue saliendo como enviable en la web, y al revés. Pasa también en la web entre navegadores.
@@ -795,6 +820,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 18. **Rol en el back (aplazado, ver D9):** que `/chat-cex/*` compruebe que el rol es `administrador` o `jefeDeOperaciones`.
 19. **Correos ya enviados entre dispositivos:** que el back marque qué borrador se envió, para que web y app lo vean igual y no se pueda reenviar. Propuesta en el progreso de la fase 4.
 20. **Formato del cuerpo del correo:** que `cuerpo_a_html` del back convierta cursiva y subrayado, que hoy llegan con los símbolos visibles (web y app los ofrecen).
+21. **Optimizaciones en segundo plano y notificación al terminar:** que la optimización siga y se guarde aunque se cambie de chat o se salga de la app, con push al terminar y el chat marcado con "!" en la lista. Propuesta en el progreso de la fase 4.
 
 ---
 
@@ -863,3 +889,5 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-08 | Fase 4: `EmailDraft` renombrado a `BorradorCorreo`; bloque 3 dividido en 3a/3b/3c; 3a (envío y registro de enviados) hecho; `react-native-enriched-html` 1.1.1 instalada |
 | 2026-10-08 | Fase 4: bloque 3 hecho (tarjeta del borrador y editor con formato); una tarjeta por borrador, como la web; "ya enviado" entre dispositivos queda como propuesta para el equipo (back) |
 | 2026-10-08 | Chelu: el SVG se sustituye por el PNG de referencia (`assets/chelu.png`); flotar del login con `withRepeat` en sentido inverso (daba un salto al repetir) |
+| 2026-10-09 | Fase 4, bloque 4b-1: formularios del historial atenuados y sin selector de mapa hasta "Volver a cargar" |
+| 2026-10-09 | Estilo: legibilidad primero; `async`/`await` con `try`/`catch` en lugar de `.then().catch()`, cambiando las cadenas existentes al tocar cada archivo |

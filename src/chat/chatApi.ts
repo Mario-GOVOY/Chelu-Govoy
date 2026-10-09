@@ -20,7 +20,7 @@ import type {
     SectorsSummary,
     Voto,
 } from '@/types/Chat';
-import type { SectorsForm } from '@/types/SectorsForm';
+import type { SectorsForm, SectorsFormPayload } from '@/types/SectorsForm';
 
 // El enlace que trae el back caduca; se descarga siempre pidiendo uno nuevo con el fileId.
 const aDocumento = (d: any): Documento => ({
@@ -266,6 +266,14 @@ export async function sendEmail(
     return messageId;
 }
 
+/** Formulario de sectores completo de un mapa, con lo recomendado para él. No gasta turno de chat. */
+export async function fetchSectorsForm(mapId: number): Promise<SectorsFormPayload> {
+    const respuesta = await authFetch(`${API_URL}chat-cex/formulario-sectores?op=formulario&id_cell_group=${mapId}`);
+    const json = await respuesta.json().catch(() => null);
+    if (!respuesta.ok) throw new Error(json?.detail || `No se pudo cargar el mapa (error ${respuesta.status}).`);
+    return json;
+}
+
 // Como la web. Más adelante, guardado en AsyncStorage y con selector para master.
 const MODELO = 'deepseek-v4-flash';
 
@@ -330,11 +338,13 @@ const toEvent = (evento: any): EventoChat | null => {
 /**
  * Manda una pregunta y va pasando a onEvento cada evento según llega.
  * Sin sessionId, el back crea una conversación nueva y devuelve su id en el evento 'session'.
+ * Con sectorsForm y sin pregunta, el back lanza la optimización de sectores directamente.
  * Al abortar con signal, lanza un AbortError.
  */
-export async function enviarMensaje({ pregunta, sessionId, signal, onEvento }: {
+export async function enviarMensaje({ pregunta, sessionId, sectorsForm, signal, onEvento }: {
     pregunta: string;
     sessionId?: string;
+    sectorsForm?: SectorsFormPayload;
     signal?: AbortSignal;
     onEvento: (evento: EventoChat) => void;
 }): Promise<void> {
@@ -346,6 +356,7 @@ export async function enviarMensaje({ pregunta, sessionId, signal, onEvento }: {
             body: JSON.stringify({
                 pregunta,
                 session_id: sessionId,
+                formulario: sectorsForm,
                 modelo: MODELO,
                 incluir_herramientas: true,
                 incluir_metricas: false,

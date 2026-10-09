@@ -83,4 +83,6 @@ export type SectorsFormPayload = {
 export type SectorsForm = SectorsFormPayload & {
     // Los que vienen del historial no se lanzan tal cual: la flota puede haber cambiado.
     readOnly?: boolean;
+    // Ya se lanzó la optimización con este formulario.
+    launched?: boolean;
 };

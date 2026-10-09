@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { enviarMensaje, EventoChat, obtenerChat, sendEmail as sendEmailApi, votarRespuesta } from '@/chat/chatApi';
+import {
+    enviarMensaje,
+    EventoChat,
+    fetchSectorsForm,
+    obtenerChat,
+    sendEmail as sendEmailApi,
+    votarRespuesta,
+} from '@/chat/chatApi';
 import type {
     BorradorCorreo,
     Documento,
@@ -13,7 +20,7 @@ import type {
     SectorsResult,
     Voto,
 } from '@/types/Chat';
-import type { SectorsForm } from '@/types/SectorsForm';
+import type { SectorsForm, SectorsFormPayload } from '@/types/SectorsForm';
 import { etiquetaHerramienta } from '@/chat/herramientas';
 
 /**
@@ -65,14 +72,16 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
     // Al salir de la pantalla se corta la respuesta en curso.
     useEffect(() => () => abortRef.current?.abort(), []);
 
+    // Con sectorsForm y sin pregunta se lanza la optimización de sectores y no se pinta mensaje del usuario.
     const enviar = useCallback(
-        async (pregunta: string) => {
+        async (pregunta: string, sectorsForm?: SectorsFormPayload) => {
             const controlador = new AbortController();
             abortRef.current = controlador;
             const idChelu = `chelu-${Date.now()}`;
+            const mensajeUsuario: Mensaje[] = pregunta ? [{ id: `usuario-${Date.now()}`, rol: 'usuario', texto: pregunta }] : [];
             setMensajes((prev) => [
                 ...prev,
-                { id: `usuario-${Date.now()}`, rol: 'usuario', texto: pregunta },
+                ...mensajeUsuario,
                 { id: idChelu, rol: 'chelu', texto: '', estado: 'escribiendo' },
             ]);
             setRespondiendo(true);
@@ -120,6 +129,7 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
                 await enviarMensaje({
                     pregunta,
                     sessionId: chatId,
+                    sectorsForm,
                     signal: controlador.signal,
                     onEvento: (evento) => {
                         if (evento.tipo === 'session' && !chatId && !controlador.signal.aborted) {
@@ -222,5 +232,49 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
         [chatId],
     );
 
-    return { mensajes, titulo, cargando, error, recargar, enviar, parar, respondiendo, votar, sendEmail };
+    // Sustituye un formulario de sectores en su mensaje.
+    const replaceSectorsForm = (form: SectorsForm, newForm: SectorsForm) =>
+        setMensajes((prev) => prev.map((mensaje) => mensaje.sectorsForms?.includes(form)
+            ? { ...mensaje, sectorsForms: mensaje.sectorsForms.map((item) => (item === form ? newForm : item)) }
+            : mensaje));
+
+    /** Lanza la optimización con el formulario tal cual y lo marca como lanzado en su mensaje. */
+    const launchSectorsForm = useCallback(
+        (form: SectorsForm) => {
+            replaceSectorsForm(form, { ...form, launched: true });
+            const { readOnly, launched, ...payload } = form;
+            enviar('', payload);
+        },
+        [enviar],
+    );
+
+    /**
+     * Carga el formulario del mapa elegido y sustituye con él al anterior, ya editable.
+     * Se conserva el tipo de optimización si el mapa nuevo lo admite. Si el back falla, se relanza el error.
+     */
+    const changeSectorsFormMap = useCallback(async (form: SectorsForm, mapId: number) => {
+        const newForm = await fetchSectorsForm(mapId);
+        const keepsMode = newForm.modo.opciones.includes(form.modo.valor);
+        replaceSectorsForm(form, {
+            ...newForm,
+            modo: keepsMode
+                ? { ...newForm.modo, valor: form.modo.valor, asignacion_multiple: form.modo.asignacion_multiple }
+                : newForm.modo,
+        });
+    }, []);
+
+    return {
+        mensajes,
+        titulo,
+        cargando,
+        error,
+        recargar,
+        enviar,
+        parar,
+        respondiendo,
+        votar,
+        sendEmail,
+        launchSectorsForm,
+        changeSectorsFormMap,
+    };
 }
