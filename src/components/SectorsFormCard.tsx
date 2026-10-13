@@ -50,10 +50,11 @@ export function SectorsFormCard({ form, onLaunch, onRefine, onChangeMap, onEdit 
     const { sesion } = useSesionActiva();
     const [loadingMap, setLoadingMap] = useState(false);
     const [mapError, setMapError] = useState<string | null>(null);
+    const [openingEditor, setOpeningEditor] = useState(false);
     const { mapa, zona, rango_estudio, demanda, flota, carga_minima, modo } = form;
     const blocker = getLaunchBlocker(form, false);
-    const canLaunch = !blocker && !!onLaunch && !form.readOnly && !form.launched && !loadingMap;
-    const canRefine = !getLaunchBlocker(form, true) && !!onRefine && !loadingMap;
+    const canLaunch = !blocker && !!onLaunch && !form.readOnly && !form.launched && !loadingMap && !openingEditor;
+    const canRefine = !getLaunchBlocker(form, true) && !!onRefine && !loadingMap && !openingEditor;
 
     // El mapa actual siempre en la lista, aunque no venga en los disponibles.
     const maps = mapa && !form.mapas_disponibles.some((item) => item.id === mapa.id)
@@ -62,6 +63,15 @@ export function SectorsFormCard({ form, onLaunch, onRefine, onChangeMap, onEdit 
     const mapOptions = maps
         .filter((item) => esSesionMaster(sesion) || !INTERNAL_MAP_REGEX.test(item.nombre))
         .map((item) => ({ value: String(item.id), label: `${item.nombre} · ${item.deposito}` }));
+
+    // El editor tarda en montarse: se deja un fotograma para que se vea el indicador antes.
+    const openEditor = (map: FormMap) => {
+        setOpeningEditor(true);
+        requestAnimationFrame(() => {
+            onEdit(map);
+            setOpeningEditor(false);
+        });
+    };
 
     const changeMap = async (mapId?: number) => {
         setMapError(null);
@@ -245,14 +255,16 @@ export function SectorsFormCard({ form, onLaunch, onRefine, onChangeMap, onEdit 
                         {/* La zona y la flota dependen del mapa: sin él no hay nada que editar. */}
                         {mapa && (
                             <Pressable
-                                onPress={() => onEdit(mapa)}
-                                disabled={loadingMap}
+                                onPress={() => openEditor(mapa)}
+                                disabled={loadingMap || openingEditor}
                                 accessibilityRole="button"
                                 accessibilityLabel="Editar"
-                                accessibilityState={{ disabled: loadingMap }}
+                                accessibilityState={{ disabled: loadingMap, busy: openingEditor }}
                                 className={`flex-row items-center gap-1.5 rounded-full border border-borde-medio px-3 py-1.5 active:bg-primario-suave ${loadingMap ? 'opacity-60' : ''}`}
                             >
-                                <Pencil size={14} color={colores.primario} />
+                                {openingEditor
+                                    ? <ActivityIndicator size={14} color={colores.primario} />
+                                    : <Pencil size={14} color={colores.primario} />}
                                 <Text className="text-[13px] font-semibold text-primario">Editar</Text>
                             </Pressable>
                         )}
@@ -262,7 +274,7 @@ export function SectorsFormCard({ form, onLaunch, onRefine, onChangeMap, onEdit 
                             accessibilityRole="button"
                             accessibilityLabel="Optimizar"
                             accessibilityState={{ disabled: !canLaunch }}
-                            className={`flex-row items-center gap-1.5 rounded-full bg-primario px-3 py-1.5 active:bg-primario-presionado ${canLaunch ? '' : 'opacity-60'}`}
+                            className={`flex-row items-center gap-1.5 rounded-full border border-primario bg-primario px-3 py-1.5 active:bg-primario-presionado ${canLaunch ? '' : 'opacity-60'}`}
                         >
                             <Play size={14} color={colores['sobre-primario']} />
                             <Text className="text-[13px] font-semibold text-sobre-primario">Optimizar</Text>

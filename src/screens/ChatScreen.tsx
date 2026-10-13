@@ -70,6 +70,9 @@ export default function ChatScreen({ navigation, route }: Props) {
     };
     const [editingSectorsForm, setEditingSectorsForm] = useState<SectorsFormEditing | null>(null);
     const closeSectorsFormEditor = useCallback(() => setEditingSectorsForm(null), []);
+    // Con el editor abierto, los botones de las tarjetas se desactivan: así un toque que se quedó
+    // en cola mientras se montaba el editor no lanza nada al llegar.
+    const sectorsFormBusy = respondiendo || !!editingSectorsForm;
     // Formulario que se manda a revisar con texto; null con la hoja cerrada.
     const [refiningSectorsForm, setRefiningSectorsForm] = useState<SectorsForm | null>(null);
     const closeRefineSheet = useCallback(() => setRefiningSectorsForm(null), []);
@@ -234,8 +237,8 @@ export default function ChatScreen({ navigation, route }: Props) {
                                 onAmpliarGrafica={(grafica) => navigation.navigate('Grafica', { grafica })}
                                 onAbrirMapa={(mapa) => navigation.navigate('Mapa', { mapa })}
                                 onSendEmail={sendEmail}
-                                onLaunchSectorsForm={respondiendo ? undefined : (form) => launchSectorsForm(form, '')}
-                                onRefineSectorsForm={respondiendo ? undefined : setRefiningSectorsForm}
+                                onLaunchSectorsForm={sectorsFormBusy ? undefined : (form) => launchSectorsForm(form, '')}
+                                onRefineSectorsForm={sectorsFormBusy ? undefined : setRefiningSectorsForm}
                                 onChangeSectorsFormMap={changeSectorsFormMap}
                                 onEditSectorsForm={(form, map) => setEditingSectorsForm({ form, map })}
                             />

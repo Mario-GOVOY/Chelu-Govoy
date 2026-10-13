@@ -45,6 +45,17 @@ export function SectorsZoneSection({
     const { height: windowHeight } = useWindowDimensions();
     const [filter, setFilter] = useState('');
     const [providerFilter, setProviderFilter] = useState('');
+    const [switchingMode, setSwitchingMode] = useState<ZoneMode | null>(null);
+
+    // Montar todos los chips de CP o de proveedores tarda: se deja un fotograma para que se vea el indicador.
+    const changeMode = (mode: ZoneMode) => {
+        if (mode === zone.modo) return;
+        setSwitchingMode(mode);
+        requestAnimationFrame(() => {
+            onChangeMode(mode);
+            setSwitchingMode(null);
+        });
+    };
 
     const matchingPostcodes = useMemo(
         () => zone.cps_disponibles.filter((item) => item.cp.includes(filter.trim())),
@@ -65,7 +76,8 @@ export function SectorsZoneSection({
                         key={mode.value}
                         label={mode.label}
                         selected={zone.modo === mode.value}
-                        onPress={() => onChangeMode(mode.value)}
+                        onPress={() => changeMode(mode.value)}
+                        loading={switchingMode === mode.value}
                     />
                 ))}
             </View>
