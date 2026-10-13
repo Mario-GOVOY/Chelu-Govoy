@@ -5,14 +5,20 @@ import Animated, { Easing, SlideInDown, SlideOutDown } from 'react-native-reanim
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchSectorsFleet, fetchSectorsProviders, fetchSectorsZone } from '@/chat/chatApi';
-import { isProviderSelected } from '@/chat/sectorsForm';
+import { changeScenarioVehicles, isProviderSelected } from '@/chat/sectorsForm';
+import { SectorsFleetSection } from '@/components/SectorsFleetSection';
+import { SectorsParamsSection } from '@/components/SectorsParamsSection';
 import { SectorsRangeSection } from '@/components/SectorsRangeSection';
+import { SectorsVehicleSheet, type VehicleEditing } from '@/components/SectorsVehicleSheet';
 import { SectorsZoneSection } from '@/components/SectorsZoneSection';
 import { useColores } from '@/theme/ThemeProvider';
-import type { FormMap, FormProvider, SectorsForm, ZoneMode } from '@/types/SectorsForm';
+import type { FormMap, FormProvider, FormVehicle, SectorsForm, ZoneMode } from '@/types/SectorsForm';
 
 // Espera tras tocar un CP antes de recalcular, para no pedir la zona en cada toque.
 const RECALCULATE_DELAY_MS = 400;
+
+// Sin tope de paradas propio (0): lo marca la capacidad.
+const NEW_VEHICLE: FormVehicle = { nombre: '', capacidad: 0, hora_inicio: '08:00', hora_fin: '18:00', maxdestinos: 0, cantidad: 1 };
 
 export type SectorsFormEditing = { form: SectorsForm; map: FormMap };
 
@@ -58,6 +64,7 @@ function EditorContent({ form, map, onSave, onClose }: {
     // Proveedores del mapa; null hasta que se piden.
     const [providers, setProviders] = useState<FormProvider[] | null>(null);
     const [loadingProviders, setLoadingProviders] = useState(false);
+    const [vehicleEditing, setVehicleEditing] = useState<VehicleEditing | null>(null);
     const abortRef = useRef<AbortController | null>(null);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const changed = borrador !== form;
@@ -102,7 +109,8 @@ function EditorContent({ form, map, onSave, onClose }: {
             setLoading('fleet');
             const fleet = await fetchSectorsFleet(map.id, postcodes, controller.signal);
             // Se mezcla: el back no devuelve el tipo de flota, que es elección del usuario.
-            setBorrador((prev) => ({ ...prev, flota: { ...prev.flota, ...fleet } }));
+            // Los escenarios editados eran de la zona anterior: se vuelven a calcular.
+            setBorrador((prev) => ({ ...prev, flota: { ...prev.flota, ...fleet, escenarios_editados: undefined } }));
             setLoading(null);
         } catch (e) {
             // Cancelada por otra petición o al cerrar: la siguiente pone el estado.
@@ -153,6 +161,25 @@ function EditorContent({ form, map, onSave, onClose }: {
             recalculateZone([]);
         }
         if (mode === 'proveedor' && !providers) loadProviders();
+    };
+
+    // Cambia los vehículos del escenario que se está editando en la hoja.
+    const changeEditingVehicles = (change: (vehicles: FormVehicle[]) => FormVehicle[]) => {
+        if (!vehicleEditing) return;
+        setBorrador((prev) => ({ ...prev, flota: changeScenarioVehicles(prev.flota, vehicleEditing.scenario, change) }));
+        setVehicleEditing(null);
+    };
+
+    const saveVehicle = (vehicle: FormVehicle) => {
+        const index = vehicleEditing?.index ?? null;
+        changeEditingVehicles((vehicles) => (index === null
+            ? [...vehicles, vehicle]
+            : vehicles.map((item, i) => (i === index ? vehicle : item))));
+    };
+
+    const deleteVehicle = () => {
+        const index = vehicleEditing?.index;
+        changeEditingVehicles((vehicles) => vehicles.filter((_, i) => i !== index));
     };
 
     // Marcar un proveedor añade sus CP a los elegidos; desmarcarlo quita todos los suyos.
@@ -213,12 +240,32 @@ function EditorContent({ form, map, onSave, onClose }: {
                         onTogglePostcode={togglePostcode}
                         onToggleProvider={toggleProvider}
                     />
+                    <SectorsFleetSection
+                        fleet={borrador.flota}
+                        recalculating={!!loading}
+                        onChange={(fleet) => setBorrador((prev) => ({ ...prev, flota: fleet }))}
+                        onEditVehicle={setVehicleEditing}
+                        onAddVehicle={(scenario) => setVehicleEditing({ scenario, index: null, vehicle: NEW_VEHICLE })}
+                    />
                     <SectorsRangeSection
                         range={borrador.rango_estudio}
                         onChange={(range) => setBorrador((prev) => ({ ...prev, rango_estudio: range }))}
                     />
+                    <SectorsParamsSection
+                        demand={borrador.demanda}
+                        minimumLoad={borrador.carga_minima.porcentaje}
+                        mode={borrador.modo}
+                        onChange={(changes) => setBorrador((prev) => ({ ...prev, ...changes }))}
+                    />
                 </ScrollView>
             </KeyboardAvoidingView>
+
+            <SectorsVehicleSheet
+                editing={vehicleEditing}
+                onSave={saveVehicle}
+                onDelete={deleteVehicle}
+                onClose={() => setVehicleEditing(null)}
+            />
         </View>
     );
 }

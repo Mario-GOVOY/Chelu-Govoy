@@ -1,6 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { CircleCheck, Pencil, Play, RotateCw, SlidersHorizontal, TriangleAlert } from 'lucide-react-native';
+import { CircleCheck, MessageSquare, Pencil, Play, RotateCw, SlidersHorizontal, TriangleAlert } from 'lucide-react-native';
 
 import {
     capitalize,
@@ -35,10 +35,12 @@ function SummaryRow({ label, children }: { label: string; children: ReactNode })
 const INTERNAL_MAP_REGEX = /PRUEBAS? GOVOY/i;
 
 /** Resumen del formulario de sectores con el mapa a elegir y los botones para editarlo y lanzar la optimización. */
-export function SectorsFormCard({ form, onLaunch, onChangeMap, onEdit }: {
+export function SectorsFormCard({ form, onLaunch, onRefine, onChangeMap, onEdit }: {
     form: SectorsForm;
-    // Sin él (Chelu está respondiendo), el botón sale desactivado.
+    // Sin ellos (Chelu está respondiendo), los botones salen desactivados.
     onLaunch?: () => void;
+    // Abre la hoja para pedirle a Chelu que ajuste el formulario.
+    onRefine?: () => void;
     // Carga el formulario del mapa (sin mapa, uno sin elegir); si falla, lanza el error que se enseña en la tarjeta.
     onChangeMap: (mapId?: number) => Promise<void>;
     // Abre la pantalla de edición con el mapa elegido.
@@ -49,8 +51,9 @@ export function SectorsFormCard({ form, onLaunch, onChangeMap, onEdit }: {
     const [loadingMap, setLoadingMap] = useState(false);
     const [mapError, setMapError] = useState<string | null>(null);
     const { mapa, zona, rango_estudio, demanda, flota, carga_minima, modo } = form;
-    const blocker = getLaunchBlocker(form);
+    const blocker = getLaunchBlocker(form, false);
     const canLaunch = !blocker && !!onLaunch && !form.readOnly && !form.launched && !loadingMap;
+    const canRefine = !getLaunchBlocker(form, true) && !!onRefine && !loadingMap;
 
     // El mapa actual siempre en la lista, aunque no venga en los disponibles.
     const maps = mapa && !form.mapas_disponibles.some((item) => item.id === mapa.id)
@@ -175,10 +178,17 @@ export function SectorsFormCard({ form, onLaunch, onChangeMap, onEdit }: {
             </View>
 
             {form.launched ? (
-                <View className="flex-row items-center justify-end gap-1.5">
-                    <CircleCheck size={14} color={colores.exito} />
-                    <Text className="text-[13px] font-semibold text-exito">Optimización lanzada con estos valores</Text>
-                </View>
+                form.accion === 'revisar' ? (
+                    <View className="flex-row items-center justify-end gap-1.5">
+                        <CircleCheck size={14} color={colores.primario} />
+                        <Text className="text-[13px] font-semibold text-primario">Mandado a revisar a Chelu</Text>
+                    </View>
+                ) : (
+                    <View className="flex-row items-center justify-end gap-1.5">
+                        <CircleCheck size={14} color={colores.exito} />
+                        <Text className="text-[13px] font-semibold text-exito">Optimización lanzada con estos valores</Text>
+                    </View>
+                )
             ) : form.readOnly ? (
                 // Vuelve a pedir el formulario del mismo mapa (o uno sin elegir) con los datos de hoy, ya editable.
                 <View className="gap-2">
@@ -203,6 +213,33 @@ export function SectorsFormCard({ form, onLaunch, onChangeMap, onEdit }: {
                 </View>
             ) : (
                 <View className="gap-2">
+                    {/* Abre la hoja para escribirle a Chelu. Con flota personalizada, el texto es la flota. */}
+                    <Pressable
+                        onPress={onRefine}
+                        disabled={!canRefine}
+                        accessibilityRole="button"
+                        accessibilityLabel="Afinar con Chelu"
+                        accessibilityState={{ disabled: !canRefine }}
+                    >
+                        {/* Colores y opacidad en style: con clases que cambian, NativeWind puede no repintar. */}
+                        {({ pressed }) => (
+                            <View
+                                className="flex-row items-center gap-2 rounded-xl border border-borde-medio px-3 py-2.5"
+                                style={{
+                                    backgroundColor: !canRefine ? colores.fondo : pressed ? colores['primario-suave'] : colores.superficie,
+                                    opacity: canRefine ? 1 : 0.5,
+                                }}
+                            >
+                                <MessageSquare size={16} color={canRefine ? colores.primario : colores['texto-tenue']} />
+                                <Text
+                                    className="flex-1 text-sm"
+                                    style={{ color: canRefine ? colores['texto-secundario'] : colores['texto-tenue'] }}
+                                >
+                                    {flota.tipo === 'personalizada' ? 'Describe la flota a Chelu' : '¿Algo que afinar?'}
+                                </Text>
+                            </View>
+                        )}
+                    </Pressable>
                     {blocker && <Text className="text-right text-xs font-semibold text-peligro">{blocker}</Text>}
                     <View className="flex-row items-center justify-end gap-2">
                         {/* La zona y la flota dependen del mapa: sin él no hay nada que editar. */}

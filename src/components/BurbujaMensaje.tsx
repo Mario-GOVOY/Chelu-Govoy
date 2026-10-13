@@ -24,10 +24,11 @@ const GitBranch = createLucideIcon('git-branch-web', [
     ['circle', { cx: '6', cy: '18', r: '3', key: 'fqmcym' }],
 ]);
 
-export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar, onValorar, onAmpliarGrafica, onAbrirMapa, onSendEmail, onLaunchSectorsForm, onChangeSectorsFormMap, onEditSectorsForm }: {
+export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar, onValorar, onAmpliarGrafica, onAbrirMapa, onSendEmail, onLaunchSectorsForm, onRefineSectorsForm, onChangeSectorsFormMap, onEditSectorsForm }: {
     mensaje: Mensaje;
     onSendEmail: (borrador: BorradorCorreo, edited: EditedEmail) => Promise<void>;
     onLaunchSectorsForm?: (form: SectorsForm) => void;
+    onRefineSectorsForm?: (form: SectorsForm) => void;
     onChangeSectorsFormMap: (form: SectorsForm, mapId?: number) => Promise<void>;
     onEditSectorsForm: (form: SectorsForm, map: FormMap) => void;
     onAmpliarGrafica?: (grafica: Grafica) => void;
@@ -95,6 +96,7 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
                         key={i}
                         form={form}
                         onLaunch={onLaunchSectorsForm && (() => onLaunchSectorsForm(form))}
+                        onRefine={onRefineSectorsForm && (() => onRefineSectorsForm(form))}
                         onChangeMap={(mapId) => onChangeSectorsFormMap(form, mapId)}
                         onEdit={(map) => onEditSectorsForm(form, map)}
                     />

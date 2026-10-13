@@ -78,8 +78,27 @@ export function getFleetScenarios(fleet: FormFleet): FleetScenario[] {
     ];
 }
 
+export type ScenarioKey = FleetScenario['key'];
+
+/** Vehículos que se enseñan de un escenario. En la recomendada, también los quitados, para poder volver a incluirlos. */
+export function getScenarioVehicles(fleet: FormFleet, key: ScenarioKey): FormVehicle[] {
+    if (key === 'recomendada') return fleet.vehiculos;
+    return getFleetScenarios(fleet).find((scenario) => scenario.key === key)?.vehicles ?? [];
+}
+
+/** Cambia los vehículos de un escenario. Ajustado y holgado pasan a ser una flota propia al tocarlos. */
+export function changeScenarioVehicles(
+    fleet: FormFleet,
+    key: ScenarioKey,
+    change: (vehicles: FormVehicle[]) => FormVehicle[],
+): FormFleet {
+    const vehicles = change(getScenarioVehicles(fleet, key));
+    if (key === 'recomendada') return { ...fleet, vehiculos: vehicles };
+    return { ...fleet, escenarios_editados: { ...fleet.escenarios_editados, [key]: vehicles } };
+}
+
 export const getFleetLabel = (type: string) =>
-    type === 'escenarios' ? 'Múltiples escenarios' : type === 'personalizada' ? 'Personalizada' : 'Recomendada';
+    type === 'escenarios' ? 'Mult. Escenarios' : type === 'personalizada' ? 'Personalizada' : 'Recomendada';
 
 export const getModeLabel = (mode: string) =>
     mode === 'fragmentado' ? 'SmartZone Fragmentado' : mode === 'celdas' ? 'SmartZone Celdas' : capitalize(mode);
@@ -116,15 +135,28 @@ export function parseIsoDate(iso: string): Date {
 export const toIsoDate = (date: Date) =>
     `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
+/** HH:MM → Date de hoy a esa hora. */
+export function parseTime(time: string): Date {
+    const [hours, minutes] = time.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours || 0, minutes || 0, 0, 0);
+    return date;
+}
+
+/** Date → HH:MM. */
+export const toTime = (date: Date) =>
+    `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+
 /** El proveedor cuenta como elegido si todos sus CP están entre los elegidos. */
 export const isProviderSelected = (provider: FormProvider, selectedPostcodes: string[]) =>
     provider.cps.length > 0 && provider.cps.every((cp) => selectedPostcodes.includes(cp));
 
-/** Motivo por el que no se puede lanzar tal cual; null si se puede. */
-export function getLaunchBlocker(form: SectorsFormPayload): string | null {
+/** Motivo por el que no se puede mandar; null si se puede. Con texto, Chelu puede arreglar la flota. */
+export function getLaunchBlocker(form: SectorsFormPayload, hasQuestion: boolean): string | null {
     if (!form.mapa) return 'Elige un mapa';
     if (form.zona.modo !== 'mapa_entero' && !form.zona.cps_seleccionados.length) return 'Elige al menos un código postal';
-    if (form.flota.tipo === 'personalizada') return 'Describe la flota en el cuadro de texto';
+    if (hasQuestion) return null;
+    if (form.flota.tipo === 'personalizada') return 'Debe describir la flota';
     if (countFleetVehicles(form.flota) === 0) return 'No queda ningún vehículo marcado';
     return null;
 }

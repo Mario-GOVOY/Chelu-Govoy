@@ -238,12 +238,15 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
             ? { ...mensaje, sectorsForms: mensaje.sectorsForms.map((item) => (item === form ? newForm : item)) }
             : mensaje));
 
-    /** Lanza la optimización con el formulario tal cual y lo marca como lanzado en su mensaje. */
+    /**
+     * Manda el formulario y lo marca como lanzado en su mensaje. Sin texto se optimiza tal cual;
+     * con texto, Chelu lo ajusta y devuelve uno nuevo.
+     */
     const launchSectorsForm = useCallback(
-        (form: SectorsForm) => {
-            replaceSectorsForm(form, { ...form, launched: true });
+        (form: SectorsForm, question: string) => {
+            replaceSectorsForm(form, { ...form, launched: true, accion: question ? 'revisar' : 'optimizar' });
             const { readOnly, launched, ...payload } = form;
-            enviar('', payload);
+            enviar(question, payload);
         },
         [enviar],
     );
@@ -257,6 +260,8 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
         const keepsMode = newForm.modo.opciones.includes(form.modo.valor);
         replaceSectorsForm(form, {
             ...newForm,
+            // El GET no trae id: la tarjeta sigue siendo la misma.
+            id_formulario: form.id_formulario,
             modo: keepsMode
                 ? { ...newForm.modo, valor: form.modo.valor, asignacion_multiple: form.modo.asignacion_multiple }
                 : newForm.modo,

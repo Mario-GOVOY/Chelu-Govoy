@@ -80,10 +80,15 @@ export type SectorsFormPayload = {
     modo: FormMode;
     limites: { max_escenarios: number };
     avisos: string[];
+    // Id de la tarjeta, con el que el back sabe si ya se lanzó. Lo traen los que genera Chelu, no los del GET.
+    id_formulario?: string;
+    // Solo en get_chat: la tarjeta ya se lanzó, y si se optimizó o se mandó a revisar con texto.
+    lanzado?: boolean;
+    accion?: 'optimizar' | 'revisar';
 };
 
 export type SectorsForm = SectorsFormPayload & {
-    // Los que vienen del historial no se lanzan tal cual: la flota puede haber cambiado.
+    // Los del historial sin lanzar no se lanzan tal cual: la flota puede haber cambiado.
     readOnly?: boolean;
     // Ya se lanzó la optimización con este formulario.
     launched?: boolean;

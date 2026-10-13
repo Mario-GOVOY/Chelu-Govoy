@@ -3,7 +3,7 @@ import { Linking, Platform } from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 
 import { authFetch } from '@/auth/authManager';
-import { API_URL } from '@/auth/Constants';
+import { API_URL, API_URL_LOCAL } from '@/auth/Constants';
 import { getSentMessageId, markEmailSent, readSentEmails } from '@/chat/correosEnviados';
 import { aMapa } from '@/chat/mapas';
 import type {
@@ -121,7 +121,8 @@ export async function obtenerChat(id: string): Promise<Chat> {
                 ? m.formularios
                     .map(toSectorsForm)
                     .filter((form: SectorsForm | null) => form !== null)
-                    .map((form: SectorsForm) => ({ ...form, readOnly: true }))
+                    // Los ya lanzados quedan bloqueados; el resto, para volver a cargar.
+                    .map((form: SectorsForm) => (form.lanzado ? { ...form, launched: true } : { ...form, readOnly: true }))
                 : [];
             const sectorsResults = Array.isArray(m.sectores)
                 ? m.sectores.map(toSectorsResult).filter((result: SectorsResult | null) => result !== null)

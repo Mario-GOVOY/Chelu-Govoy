@@ -14,6 +14,7 @@ import { CajaMensaje } from '@/components/CajaMensaje';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { HojaValoracion, type Valorando } from '@/components/HojaValoracion';
 import { SectorsFormEditor, type SectorsFormEditing } from '@/components/SectorsFormEditor';
+import { SectorsRefineSheet } from '@/components/SectorsRefineSheet';
 import { Boton } from '@/components/ui/Boton';
 import { CapaGiro } from '@/components/ui/CapaGiro';
 import { Pantalla } from '@/components/ui/Pantalla';
@@ -22,6 +23,7 @@ import { RootStackParamList } from '@/navigation/RootNavigator';
 import { useColores } from '@/theme/ThemeProvider';
 import { useSesionActiva } from '@/context/SesionContext';
 import type { Documento, Mensaje } from '@/types/Chat';
+import type { SectorsForm } from '@/types/SectorsForm';
 import { esSesionMaster, HAS_FEEDBACK_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
 
 // Del drawer y, por encima, del stack raíz (para abrir la gráfica ampliada).
@@ -68,6 +70,9 @@ export default function ChatScreen({ navigation, route }: Props) {
     };
     const [editingSectorsForm, setEditingSectorsForm] = useState<SectorsFormEditing | null>(null);
     const closeSectorsFormEditor = useCallback(() => setEditingSectorsForm(null), []);
+    // Formulario que se manda a revisar con texto; null con la hoja cerrada.
+    const [refiningSectorsForm, setRefiningSectorsForm] = useState<SectorsForm | null>(null);
+    const closeRefineSheet = useCallback(() => setRefiningSectorsForm(null), []);
     const puedeValorar = validatorUserHasOption(HAS_FEEDBACK_CHAT_CHELU, sesion.empresaId, esSesionMaster(sesion));
     // Respuesta que se está valorando (su runId y el pulgar pulsado); null con la hoja cerrada.
     const [valorando, setValorando] = useState<(Valorando & { runId: string }) | null>(null);
@@ -229,7 +234,8 @@ export default function ChatScreen({ navigation, route }: Props) {
                                 onAmpliarGrafica={(grafica) => navigation.navigate('Grafica', { grafica })}
                                 onAbrirMapa={(mapa) => navigation.navigate('Mapa', { mapa })}
                                 onSendEmail={sendEmail}
-                                onLaunchSectorsForm={respondiendo ? undefined : launchSectorsForm}
+                                onLaunchSectorsForm={respondiendo ? undefined : (form) => launchSectorsForm(form, '')}
+                                onRefineSectorsForm={respondiendo ? undefined : setRefiningSectorsForm}
                                 onChangeSectorsFormMap={changeSectorsFormMap}
                                 onEditSectorsForm={(form, map) => setEditingSectorsForm({ form, map })}
                             />
@@ -260,6 +266,15 @@ export default function ChatScreen({ navigation, route }: Props) {
                     closeSectorsFormEditor();
                 }}
                 onClose={closeSectorsFormEditor}
+            />
+            <SectorsRefineSheet
+                form={refiningSectorsForm}
+                onSend={(form, question) => {
+                    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+                    launchSectorsForm(form, question);
+                    closeRefineSheet();
+                }}
+                onClose={closeRefineSheet}
             />
             <CapaGiro />
         </Pantalla>
