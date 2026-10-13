@@ -50,8 +50,10 @@ export function HojaInferior({ visible, titulo, onCerrar, children }: {
                         className="shrink rounded-t-3xl bg-fondo px-4 pt-4"
                         style={{ paddingBottom: (teclado ? 0 : insets.bottom) + 16 }}
                     >
-                        <View className="mb-3 flex-row items-center justify-between">
-                            <Text className="text-lg font-semibold text-texto">{titulo}</Text>
+                        <View className="mb-3 flex-row items-center justify-between gap-2">
+                            <Text className="flex-1 text-lg font-semibold text-texto" numberOfLines={1}>
+                                {titulo}
+                            </Text>
                             <Pressable
                                 onPress={onCerrar}
                                 hitSlop={8}

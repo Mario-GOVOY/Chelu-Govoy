@@ -1,7 +1,7 @@
 # App móvil Chat Chelu — Definición del proyecto
 
 > Documento vivo: se actualiza a medida que se toman decisiones.
-> Última actualización: 2026-10-09
+> Última actualización: 2026-10-13
 
 ## Objetivo
 
@@ -21,7 +21,10 @@ Crear una app móvil para usar el chatbot **Chat Chelu** (hoy solo en la web, `/
 | DELETE | `/chat-cex/delete_chat` | Sí, borrado lógico |
 | POST | `/chat-cex/duplicate_chat` | Sí, duplicar conversación (entera o hasta una respuesta) |
 | PUT | `/chat-cex/feedback` | Sí (fase 3) |
-| POST | `/chat-cex/transcribir` | Sí, notas de voz (fase 3) |
+| PATCH | `/chat-cex/chat_title` | Sí, renombrar conversación (ver "Funciones nuevas de la web") |
+| GET/POST | `/chat-cex/carpetas` · PATCH/DELETE `/carpetas/{id}` · PUT `/carpetas/mover` | Sí, carpetas (ver "Funciones nuevas de la web") |
+| POST | `/chat-cex/transcribir` | Sí, notas de voz (ver "Funciones nuevas de la web") |
+| GET | `/chat-cex/archivos` · DELETE `/archivos/{id}` · POST `/archivos/migrar` | Por decidir (archivos de todas las conversaciones, ver "Funciones nuevas de la web") |
 | GET | `/chat-cex/archivo/{file_id}` | Sí, descarga de documentos generados |
 | POST | `/chat-cex/correo/enviar` | Fase 4 |
 | GET | `/chat-cex/optimizacion/{id}`, POST `/resumen-optimizacion`, GET `/formulario-sectores` | Fase 4: los que necesite el formulario de sectores (ver abajo); abrir la optimización, no |
@@ -317,7 +320,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 - **Markdown:** `react-native-marked` con el hook `useMarkdown` (decidido en la fase 2, ver su progreso), con las tablas dentro de un scroll horizontal.
 - **Gráficas:** el back envía configuraciones de ApexCharts. Se leen en la app y se pintan en nativo con `react-native-gifted-charts`, sin WebView y sin cambios en el back (ver el progreso de la fase 3).
 - **Mapas:** MapLibre pintando la geometría GeoJSON que manda el back (ver D8 y el progreso de la fase 3).
-- **Voz:** grabación en m4a con `expo-audio` y envío a `/transcribir`, que ya acepta m4a y mp4.
+- **Voz:** grabación en m4a con `expo-audio` y envío a `/transcribir`, que ya acepta m4a y mp4. Detalle en "Funciones nuevas de la web".
 - **Documentos (decidido):** `/archivo/{id}` devuelve un enlace temporal de S3 que ya lleva `Content-Disposition: attachment`. En Android se descarga con el `DownloadManager` del sistema (`react-native-blob-util`), a Descargas y sin salir de la app; en iOS con `Linking.openURL`, y Safari lo guarda en Archivos › Descargas. Detalle en el progreso de la fase 2.
 - **Estilo del código:** la legibilidad va primero. Las promesas se escriben con `async`/`await` y `try`/`catch`/`finally`, no con cadenas `.then().catch()` (en un efecto, con una función async dentro). Las cadenas que quedan se cambian al tocar cada archivo; no hay diferencia de rendimiento. Al cambiarlas, lo que iba en paralelo sigue en paralelo (`await Promise.all(...)`, no `await` dentro de un bucle). Excepción: la cola de `tokenStorage.ts` (`cola.then(op, op)`), que encadena a propósito.
 
@@ -379,6 +382,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 | **2. Versión mínima** | Chat con streaming, markdown, sugerencias, botón de parar, lista de conversaciones (nueva, duplicar y borrar) y descarga de documentos |
 | **3. Contenido enriquecido** | Gráficas, mapas, valoración y notas de voz |
 | **4. Interactivos** | Lo que en el chat pide algo al usuario: borradores de correo, formulario de optimización de sectores, su resultado y la comparativa de escenarios (ver "Progreso de la fase 4"). Push, más adelante |
+| **5. Funciones nuevas de la web** | Renombrar conversación, carpetas ("Guardar en carpeta") y notas de voz (ver "Funciones nuevas de la web") |
 
 **Fuera de alcance:** el panel de simulación.
 
@@ -507,7 +511,7 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
 | Gráficas | Hecho |
 | Valoración de respuestas | Hecho |
 | Mapas | Bloques 1 a 5 hechos; la vista previa queda aparcada hasta nuevo aviso |
-| Notas de voz (`expo-audio`, m4a a `/transcribir`) | Aparcado de momento |
+| Notas de voz (`expo-audio`, m4a a `/transcribir`) | Pasa a la fase 5 (la web ya las tiene) |
 
 #### Gráficas
 
@@ -706,6 +710,7 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
 - **Tarjeta:** botón "Editar" junto a "Optimizar" (solo con mapa elegido y sin estar cargando el mapa); el motivo de bloqueo pasa a una línea encima de los botones. El selector de mapa sigue en la tarjeta.
   - El editor tarda en montarse (todos los CP, la flota…): al pulsar "Editar", el lápiz pasa a un `ActivityIndicator` y el editor se abre en el siguiente fotograma (`requestAnimationFrame`), para que el indicador llegue a verse. Es nativo y sigue girando mientras se monta.
   - Mientras se monta, los toques se quedan en cola y llegan cuando el editor ya está abierto y la tarjeta vuelve a estar activa: desactivarlos solo mientras sale el indicador no basta. `ChatScreen` los desactiva mientras el editor está abierto (`sectorsFormBusy = respondiendo || !!editingSectorsForm`, pasando `undefined` como con `respondiendo`): `disabled` se comprueba al atender el toque, y para entonces el editor ya está abierto.
+  - "Optimizar" lleva `border border-primario` (borde del color del fondo) para medir lo mismo que "Editar", que tiene borde de 1 px.
 - **Zona (`SectorsZoneSection`):** chips "Mapa entero" / "Por CP" (`ui/Chip`). Por CP: filtro numérico, todos los CP en una lista con scroll propio de media pantalla como máximo (como los proveedores; la web enseña 24 y "+N"), y aviso de CP ignorados. Abajo, "N de M celdas · N vehículos" o "Recalculando la zona/flota…".
   - Cada toque de CP cancela la petición en curso al momento (si no, su respuesta quitaría los CP tocados después) y recalcula a los 400 ms: `op=zona` y luego `op=flota` (`chatApi.fetchSectorsZone` / `fetchSectorsFleet`, con `AbortController`). La flota se mezcla para no perder el tipo elegido, como la web. Pasar a "Mapa entero" quita los CP y recalcula.
   - El modo elegido se guarda en `zona.modo` (tipo `ZoneMode`): el back lo deduce de los CP y al lanzar solo lee `cps_seleccionados`. Así la tarjeta bloquea "Por CP" sin ninguno marcado.
@@ -818,6 +823,73 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
 - Con el bloque 3, lo que entra en la app de `react-native-enriched-html`: la propia librería (MIT, Software Mansion), **Gumbo** (analizador de HTML de Google, Apache-2.0, en Android e iOS) y **TagSoup** 1.2.1 (Apache-2.0, solo Android). Comprobado en el paquete: `index.native.js` solo importa la parte nativa.
 - Sus dependencias de web (TipTap, ProseMirror, `linkifyjs`, `fast-equals`, `use-sync-external-store`: MIT; `dompurify`: MPL-2.0 o Apache-2.0 a elegir) se instalan en `node_modules` pero no entran en la app; no van en la pantalla. No se pueden quitar de forma limpia (son `dependencies` del paquete) y no hace falta.
 
+### Funciones nuevas de la web (fase 5)
+
+Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `Back-Govoy/agentes/chat_CEX/endpoint_chat.py`. Commits: carpetas `7074b93` (back) y `920e1113` (web); renombrar y archivos `722f2d5` (back) y `45483034` (web); notas de voz `d5368f2`, `13fa4d7`, `8c2906d` (back) y `a480b7e6` (web).
+
+| Bloque | Contenido | Estado |
+|---|---|---|
+| 1 | Menú de acciones por conversación: un botón "⋯" en cada fila que abre una hoja inferior (Renombrar, Duplicar, Guardar en carpeta, Eliminar), en lugar de los iconos sueltos de duplicar y borrar | Hecho con Duplicar y Eliminar (Renombrar y Guardar en carpeta entran con sus bloques), falta probar en el móvil |
+| 2 | Renombrar conversación | Hecho, falta probar en el móvil |
+| 3 | Carpetas, en sub-bloques: 3a datos y lista agrupada (carpetas plegables arriba, chats sueltos debajo); 3b crear, renombrar y eliminar carpeta; 3c guardar o sacar un chat de una carpeta | Pendiente |
+| 4 | Notas de voz, en sub-bloques: 4a grabar y transcribir (permiso, `expo-audio`, `/transcribir`, texto al campo); 4b barra de grabación con onda, tiempo, descartar y transcribir | Pendiente |
+
+**Cómo funciona en la web y el back**
+
+- **Renombrar (`PATCH /chat-cex/chat_title`, B `:3163`):**
+  - Cuerpo `{ session_id, title }` → `{ status, session_id, title }` con el título ya normalizado: espacios juntados, como mucho 120 caracteres y primera letra en mayúscula (`titulos.py`, `titulo_desde_pregunta`). Vacío → 400.
+  - Guarda en la columna `titulo` de `chat_agno_chelu`. El título automático solo se escribe si está vacío, así que el puesto a mano se conserva aunque la conversación siga.
+  - Solo chats propios (o de desarrollo, en master) → 404 si no. **409 "Este cliente aún no permite renombrar chats."** si el esquema del cliente no tiene las columnas `titulo` y `num_runs`.
+  - Web (F `ConvList.tsx`, `useChatChelu.ts:314`): "Renombrar" en el menú "⋯" de la fila, campo en línea (Enter guarda, Escape cancela, al perder el foco guarda). Optimista: si falla, vuelve el título anterior y sale el `detail`.
+  - **Ojo:** `get_chats` sí devuelve el título puesto a mano, pero **`get_chat` no**: `_chat_summary` (B `:2510`) lo saca de la primera pregunta. La cabecera del chat de la app usa el de `get_chat`, así que tras renombrar seguiría saliendo el original al recargar. Arreglo en el back (una línea: que `_chat_summary` use `chat.titulo` si existe); mientras tanto, la app pone el título nuevo en la cabecera al renombrar y no lo pisa con el de `get_chat` si la lista ya lo tiene.
+- **Carpetas (B `:3344-3700`):**
+  - Un solo nivel. Son **de cada usuario** (también qué chat está en qué carpeta) y van separadas por `is_devs`: las carpetas del staff en suplantación master no se mezclan con las del cliente. Tablas `chat_carpetas_chelu` y `chat_carpeta_rel_chelu`, creadas a mano por cliente en la base del cliente; sin ellas, `get_chats` devuelve `carpetas: []` y el resto responde **409 "Las carpetas no están activas para este cliente."**.
+  - `get_chats` ya trae `carpetas: [{ id, nombre, orden, created_at }]` (ordenadas) y `carpeta_id` en cada chat (null si está suelto). `duplicate_chat` mete la copia en la misma carpeta y devuelve su `carpeta_id`.
+  - `POST /carpetas { nombre }` crea al final (nombre limpio, 120 como mucho). `PATCH /carpetas/{id} { nombre?, orden? }` renombra o reordena (la web no reordena). `PUT /carpetas/mover { session_id, carpeta_id | null }` mete, cambia o saca un chat. `DELETE /carpetas/{id}?con_chats=…`: sin `con_chats` los chats vuelven sueltos; con él se borran también (borrado lógico) y devuelve `borrados` (los `session_id`).
+  - Web (F `ConvList.tsx`, `useChatChelu.ts:379-470`): carpetas arriba, plegables, con el número de chats; una línea las separa de los chats sueltos. "Nueva carpeta" (icono junto a "Conversaciones") con nombre en línea. Renombrar y eliminar con botones al pasar el ratón. Los chats se arrastran a una carpeta (o fuera) y también se mueven desde el menú "⋯" ("Mover a carpeta" con la lista de carpetas y "Sacar de la carpeta"). Al eliminar una carpeta con chats se elige "Solo la carpeta" (por defecto) o "Carpeta y conversaciones" (botón en rojo). Abrir un chat que está en una carpeta plegada la despliega. Qué carpetas están abiertas se guarda en `localStorage`.
+  - Todo optimista salvo borrar con chats (espera al back). Una carpeta recién creada lleva id negativo hasta que llega el real y mientras tanto no admite chats ni se puede tocar.
+- **Notas de voz (`POST /chat-cex/transcribir`, B `:2176`, `transcripcion.py`):**
+  - `multipart/form-data` con `audio` (archivo) y `session_id` opcional (solo para la traza de Langfuse) → `{ texto }`. Tipos admitidos: webm, mp4, m4a (`audio/m4a`, `audio/x-m4a`), mp3, wav, ogg. Errores: 415 formato, 413 más de 10 MB, 400 vacío, 502 si falla el proveedor. El audio no se guarda.
+  - Transcribe con `gpt-4o-mini-transcribe` (por defecto desde el 6-oct) o Whisper local, en español y con el vocabulario del perfil del cliente (`vocabulario_audio`).
+  - El texto **no se envía solo**: se añade al campo de escribir (tras lo que hubiera) para revisarlo, porque un nombre mal transcrito acabaría en una consulta equivocada. Al enviarlo, `/stream` lleva `origen_audio: true` (solo etiqueta la traza); se olvida si se vacía el campo.
+  - Web (F `useNotaVoz.ts`, `BotonNotaVoz.tsx`, `Composer.tsx`): micro junto a enviar (desactivado mientras Chelu responde). Grabando, la barra ocupa el sitio del campo: "Chelu está escuchando tu consulta…", onda con el volumen, tiempo, X (descartar) y ✓ (parar y transcribir). Tope de 2 minutos (para y transcribe sola). Transcribiendo: spinner en el micro y "Transcribiendo…" en el campo. Errores ("No hay permiso para usar el micrófono.", "No se ha entendido nada. Prueba otra vez." o el `detail`) 5 s en un tooltip.
+  - Solo para `HAS_AUDIO_CHAT_CHELU` = `["69-qa", "92", "100", "101"]` en la web. En la app: `['92', '100', '101']` (el `-qa` no se traslada, D3).
+
+**Planteamiento en la app**
+
+- **Menú de acciones (bloque 1):** en el móvil no hay "pasar el ratón" ni arrastrar con comodidad dentro del menú lateral. Cada fila lleva un "⋯" (y mantener pulsado hace lo mismo) que abre una `HojaInferior` con: Renombrar, Duplicar, Guardar en carpeta, Eliminar (en rojo). Se quitan los iconos de duplicar y borrar de la fila, que deja más sitio al título. Duplicar y eliminar mantienen su confirmación.
+- **Renombrar (bloque 2):** hoja con un campo (120 caracteres, el título actual seleccionado) y "Guardar", en lugar de editar en línea en la fila (en la lista del menú el teclado taparía la fila). Optimista como la web; el título nuevo también en la cabecera si es la conversación abierta. Opcional: tocar el título de la cabecera del chat abre la misma hoja.
+- **Carpetas (bloque 3):**
+  - **3a:** `obtenerChats` lee `carpetas` y `carpeta_id`. La `FlashList` del menú pasa a una lista plana de filas de dos tipos (`getItemType`): cabecera de carpeta (chevron, icono, nombre y número) y chat (con sangría si está dentro). Carpetas abiertas en AsyncStorage. Abrir un chat que está en una carpeta plegada la despliega.
+  - **3b:** "Nueva carpeta" con un icono `FolderPlus` junto al de recargar. Crear y renombrar con la misma hoja de nombre que renombrar chat. "⋯" en la cabecera de la carpeta (o mantener pulsado): Renombrar y Eliminar; eliminar con las dos opciones de la web en una hoja.
+  - **3c:** "Guardar en carpeta" en el menú del chat abre una hoja con las carpetas (la actual marcada), "Nueva carpeta…" (la crea y guarda el chat en ella) y "Sacar de la carpeta" si está en una. Sin arrastrar.
+  - Si el cliente no tiene las tablas, el 409 sale como aviso y se deshace lo optimista, como la web. No hay forma de saberlo antes (`carpetas: []` también es "ninguna creada"); ver pregunta 23.
+- **Notas de voz (bloque 4):**
+  - `expo-audio` (va con el SDK, licencia MIT): plugin en `app.json` con el texto del permiso del micrófono (también `NSMicrophoneUsageDescription` en iOS). **Necesita recompilar.**
+  - Grabar con `useAudioRecorder` y el preset de alta calidad (m4a/AAC), `isMeteringEnabled` para la onda (`metering` en dB de `useAudioRecorderState`, pasado a 0-1). Pedir permiso con `requestRecordingPermissionsAsync` y poner el modo de audio (`allowsRecording`) solo mientras se graba.
+  - Envío con `authFetch` y un `FormData` con `{ uri, name: 'pregunta.m4a', type: 'audio/m4a' }`, sin poner `Content-Type` a mano. Borrar el archivo temporal al acabar.
+  - Comportamiento como la web: el texto se añade al campo, `origen_audio` en `/stream`, tope de 2 minutos, mismos mensajes de error (en la app, en línea sobre la caja de texto en vez de tooltip).
+  - Si la app pasa a segundo plano o se sale del chat mientras se graba, se descarta (como al desmontar en la web).
+  - Mantener el micro pulsado para grabar (como WhatsApp) se descarta de momento: se copia la web (tocar para empezar, ✓ para terminar).
+
+**Hecho en el bloque 1**
+- `ListaConversaciones`: cada fila lleva solo el "⋯" (`MoreHorizontal`, como la web); mantener pulsada la fila hace lo mismo. Mientras se duplica o elimina, el "⋯" de esa fila pasa a spinner y los de todas se desactivan (`busyChatId`).
+- `MenuLateral`: `HojaInferior` montada al final del menú (ocupa el ancho del menú, no el de la pantalla), con el título de la conversación y las opciones en una tarjeta. Al elegir, se cierra la hoja y sale la confirmación de siempre.
+- "Borrar" pasa a "Eliminar" (menú, confirmación y error), como la web.
+- `HojaInferior`: el título va en una línea, cortado si es largo.
+
+**Hecho en el bloque 2**
+- `chatApi.renameChat`: `PATCH /chat-cex/chat_title`; devuelve el título que guarda el back y, si falla, lanza su `detail`.
+- **La lista pasa a un contexto** (`context/ConversacionesContext.tsx`, `ConversacionesProvider` en `AppNavigator` por encima del drawer; sustituye a `chat/useConversaciones.ts`), porque la usan el menú y la cabecera del chat. Añade `renameChat`: pinta el título al momento, pone el que devuelve el back y, si falla, vuelve el anterior y relanza el error.
+- **Cabecera del chat:** usa el título de la lista si la conversación está en ella y si no, el de `get_chat` (o la pregunta, en una nueva). Así refleja el nombre puesto a mano aunque `get_chat` no lo devuelva (pregunta 22), y cambia a la vez que la lista al renombrar.
+- `NameSheet`: hoja con un campo (120 caracteres, el texto se selecciona al tocarlo) y "Guardar", desactivado si está vacío o no ha cambiado; también guarda con el botón del teclado. Sin `autoFocus`, por lo visto en el 4e. Se reutilizará para las carpetas.
+- "Renombrar" es la primera opción de la hoja de acciones. Al guardar se cierra la hoja; si el back falla, aviso con su mensaje.
+- **Duplicar tras renombrar:** la copia no estaba en la lista hasta recargarla, así que su cabecera salía con el título de `get_chat` (el antiguo). El back copia también la columna `titulo`, así que `duplicateChat` del contexto (desde el menú y "Duplicar desde aquí") mete la copia arriba de la lista con el título de la original, sin recargar.
+
+**Visto de paso: archivos de todas las conversaciones**
+- En el mismo commit, el back añadió un índice de documentos por usuario (`chat_archivos_chelu`, B `:3703-3887`): `GET /archivos` (todos los del usuario, con el título de su chat), `DELETE /archivos/{id}` (los quita del listado, no de S3 ni del chat) y `POST /archivos/migrar` (rellena los anteriores; la web lo llama una vez por usuario y navegador). Sin la tabla, 409 y la web usa los que tiene en memoria.
+- Es justo lo que faltaba para el "Archivos generados" de la app (fase 2: "listar todas las conversaciones o borrar de verdad necesitaría endpoints nuevos"). No entra en la fase 5 salvo que se decida (pregunta 24).
+
 ### Fase 0 en detalle (Back-Govoy)
 
 Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/endpoint_chat.py` (seguridad del chat).
@@ -920,6 +992,9 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 19. **Correos ya enviados entre dispositivos:** que el back marque qué borrador se envió, para que web y app lo vean igual y no se pueda reenviar. Propuesta en el progreso de la fase 4.
 20. **Formato del cuerpo del correo:** que `cuerpo_a_html` del back convierta cursiva y subrayado, que hoy llegan con los símbolos visibles (web y app los ofrecen).
 21. **Optimizaciones en segundo plano y notificación al terminar:** que la optimización siga y se guarde aunque se cambie de chat o se salga de la app, con push al terminar y el chat marcado con "!" en la lista. Propuesta en el progreso de la fase 4.
+22. **Título renombrado en `get_chat`:** que `_chat_summary` devuelva la columna `titulo` (hoy da la primera pregunta y la cabecera no refleja el nombre puesto a mano). Afecta también a la web si usa ese título.
+23. **Qué clientes tienen las tablas de carpetas, archivos y la columna `titulo`:** se crean a mano por cliente. Sin ellas, crear carpeta o renombrar dan 409 después de que el usuario lo intente. Valorar que `get_chats` diga si están activas para ocultar los botones.
+24. **"Archivos generados" de todas las conversaciones en la app** con `GET /archivos` (y quitar del listado con `DELETE`), como la web.
 
 ---
 
@@ -1000,6 +1075,8 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-13 | Back de formularios lanzados simplificado (bucles simples, id puesto en el `return` de las tools). Las copias sin id (chats antiguos) no se enlazan y se quedan en su turno, como ya pasaba en producción |
 | 2026-10-13 | Fase 4, bloque 4d (flota) en el editor: vehículos incluidos, hoja para editar/añadir/eliminar (las paradas son la `capacidad`; `maxdestinos` no se toca) y escenarios con flota propia y "Volver a calcularlo". Al recalcular la zona se borran los escenarios editados |
 | 2026-10-13 | Fase 4, bloque 4e: "¿Algo que afinar?" en una hoja inferior (`SectorsRefineSheet`) y no dentro de la tarjeta, porque en la lista invertida del chat el teclado tapaba el campo; sin `autoFocus` |
+| 2026-10-13 | Fase 5: renombrar conversación, carpetas ("Guardar en carpeta") y notas de voz, como la web. Acciones de cada conversación en un menú "⋯" con hoja inferior; nombres en una hoja, no en línea; carpetas sin arrastrar; notas de voz con `expo-audio` (m4a), el texto al campo para revisarlo |
 | 2026-10-13 | Etiqueta de flota "Escenarios" (antes "Múltiples escenarios") en la app, para que los tres chips quepan en una línea |
+| 2026-10-13 | Editor de sectores: indicador en "Editar" y en los chips "Por CP" / "Por proveedor" mientras se monta (cambio en el siguiente fotograma). Con el editor abierto, "Optimizar" y "¿Algo que afinar?" se desactivan, para que un toque en cola no lance nada. Memorizar a mano los chips y secciones se probó y se revirtió (no se notaba); el React Compiler se descartó |
 | 2026-10-09 | Fase 4, bloque 4c: demanda, aprovechamiento mínimo y tipo de optimización en una sola sección "Parámetros"; números limitados a lo que acepta el back (demanda 1–100, aprovechamiento 0–100) |
 | 2026-10-09 | Estilo: legibilidad primero; `async`/`await` con `try`/`catch` en lugar de `.then().catch()`, cambiando las cadenas existentes al tocar cada archivo |

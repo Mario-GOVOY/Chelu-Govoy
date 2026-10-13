@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import { DrawerContentComponentProps, useDrawerStatus } from '@react-navigation/drawer';
-import { LogOut, Moon, Plus, RefreshCw, Sun, UserRoundX } from 'lucide-react-native';
+import { CopyPlus, LogOut, Moon, Pencil, Plus, RefreshCw, Sun, Trash2, UserRoundX } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { borrarChat, duplicarChat } from '@/chat/chatApi';
-import { useConversaciones } from '@/chat/useConversaciones';
+import { borrarChat } from '@/chat/chatApi';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { ListaConversaciones } from '@/components/ListaConversaciones';
+import { NameSheet } from '@/components/NameSheet';
+import { HojaInferior } from '@/components/ui/HojaInferior';
+import { useConversaciones } from '@/context/ConversacionesContext';
 import { useSesion, useSesionActiva } from '@/context/SesionContext';
 import type { AppDrawerParamList } from '@/navigation/AppNavigator';
 import type { ResumenChat } from '@/types/Chat';
@@ -41,7 +43,7 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
     const { sesion, staff } = useSesionActiva();
     const isMenuOpen = useDrawerStatus() === 'open';
     const conversaciones = useConversaciones();
-    const { chats, recargar } = conversaciones;
+    const { chats, recargar, renameChat, duplicateChat } = conversaciones;
     const chatActivo = (state.routes[state.index].params as AppDrawerParamList['Chat'])?.chatId;
 
     // Último chat por el que se recargó: si el back no lo devuelve, no se vuelve a pedir al abrir el menú.
@@ -63,50 +65,73 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
 
     const openChatFromList = useCallback((chat: ResumenChat) => abrirChat(chat.id), [abrirChat]);
 
-    // Acción en curso sobre una conversación, para pintar su icono cargando.
-    const [ocupado, setOcupado] = useState<{ id: string; accion: 'duplicar' | 'borrar' } | null>(null);
+    // Conversación con una acción en curso, para pintar su "⋯" cargando.
+    const [busyChatId, setBusyChatId] = useState<string | null>(null);
+    // Conversación cuya hoja de acciones está abierta.
+    const [actionsChat, setActionsChat] = useState<ResumenChat | null>(null);
+    const closeActions = useCallback(() => setActionsChat(null), []);
 
-    const duplicar = useCallback((chat: ResumenChat) => {
+    const duplicar = (chat: ResumenChat) => {
         Alert.alert('Duplicar conversación', `Se creará una copia de «${chat.titulo}».`, [
             { text: 'Cancelar', style: 'cancel' },
             {
                 text: 'Duplicar',
                 onPress: async () => {
-                    setOcupado({ id: chat.id, accion: 'duplicar' });
+                    setBusyChatId(chat.id);
                     try {
-                        abrirChat(await duplicarChat(chat.id));
+                        abrirChat(await duplicateChat(chat));
                     } catch {
                         Alert.alert('No se pudo duplicar la conversación', 'Inténtalo de nuevo.');
                     } finally {
-                        setOcupado(null);
+                        setBusyChatId(null);
                     }
                 },
             },
         ]);
-    }, [abrirChat]);
+    };
 
-    const borrar = useCallback((chat: ResumenChat) => {
-        Alert.alert('Borrar conversación', `Se borrará «${chat.titulo}».`, [
+    const eliminar = (chat: ResumenChat) => {
+        Alert.alert('Eliminar conversación', `Se eliminará «${chat.titulo}».`, [
             { text: 'Cancelar', style: 'cancel' },
             {
-                text: 'Borrar',
+                text: 'Eliminar',
                 style: 'destructive',
                 onPress: async () => {
-                    setOcupado({ id: chat.id, accion: 'borrar' });
+                    setBusyChatId(chat.id);
                     try {
                         await borrarChat(chat.id);
                         // Si era la abierta, se pasa a una nueva; el menú sigue abierto.
                         if (chat.id === chatActivo) navigation.navigate('Chat', { chatId: undefined });
                         await recargar();
                     } catch {
-                        Alert.alert('No se pudo borrar la conversación', 'Inténtalo de nuevo.');
+                        Alert.alert('No se pudo eliminar la conversación', 'Inténtalo de nuevo.');
                     } finally {
-                        setOcupado(null);
+                        setBusyChatId(null);
                     }
                 },
             },
         ]);
-    }, [chatActivo, navigation, recargar]);
+    };
+
+    // Conversación cuya hoja de nombre está abierta.
+    const [renamingChat, setRenamingChat] = useState<ResumenChat | null>(null);
+    const closeRename = useCallback(() => setRenamingChat(null), []);
+
+    const rename = async (chat: ResumenChat, title: string) => {
+        setRenamingChat(null);
+        try {
+            await renameChat(chat, title);
+        } catch (e) {
+            Alert.alert('No se pudo renombrar la conversación', (e as Error).message);
+        }
+    };
+
+    // Cierra la hoja y lanza la acción elegida.
+    const chooseAction = (action: (chat: ResumenChat) => void) => {
+        if (!actionsChat) return;
+        setActionsChat(null);
+        action(actionsChat);
+    };
 
     return (
         <View className="flex-1 bg-superficie" style={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 8 }}>
@@ -155,9 +180,8 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                     activoId={chatActivo}
                     onReintentar={conversaciones.recargar}
                     onAbrir={openChatFromList}
-                    onDuplicar={duplicar}
-                    onBorrar={borrar}
-                    ocupado={ocupado}
+                    onOpenActions={setActionsChat}
+                    busyChatId={busyChatId}
                 />
             </View>
 
@@ -195,6 +219,42 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                 {staff && <OpcionMenu texto="Salir de suplantación" icono={UserRoundX} onPress={salirDeSuplantacion} />}
                 <OpcionMenu texto="Cerrar sesión" icono={LogOut} onPress={cerrarSesion} peligro />
             </View>
+
+            <HojaInferior visible={!!actionsChat} titulo={actionsChat?.titulo ?? ''} onCerrar={closeActions}>
+                <View className="overflow-hidden rounded-2xl bg-superficie">
+                    <Pressable
+                        onPress={() => chooseAction(setRenamingChat)}
+                        className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                    >
+                        <Pencil size={20} color={colores['texto-secundario']} />
+                        <Text className="text-base text-texto">Renombrar</Text>
+                    </Pressable>
+                    <View className="mx-4 h-px bg-borde" />
+                    <Pressable
+                        onPress={() => chooseAction(duplicar)}
+                        className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                    >
+                        <CopyPlus size={20} color={colores['texto-secundario']} />
+                        <Text className="text-base text-texto">Duplicar</Text>
+                    </Pressable>
+                    <View className="mx-4 h-px bg-borde" />
+                    <Pressable
+                        onPress={() => chooseAction(eliminar)}
+                        className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                    >
+                        <Trash2 size={20} color={colores.peligro} />
+                        <Text className="text-base text-peligro">Eliminar</Text>
+                    </Pressable>
+                </View>
+            </HojaInferior>
+            <NameSheet
+                visible={!!renamingChat}
+                title="Renombrar conversación"
+                initialName={renamingChat?.titulo ?? ''}
+                placeholder="Nombre de la conversación"
+                onSave={(title) => rename(renamingChat!, title)}
+                onClose={closeRename}
+            />
         </View>
     );
 }

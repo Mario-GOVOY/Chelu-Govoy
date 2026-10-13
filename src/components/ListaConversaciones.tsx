@@ -1,13 +1,11 @@
 import { memo, useEffect, useRef } from 'react';
 import { ActivityIndicator, Pressable, Text } from 'react-native';
 import { FlashList, FlashListRef } from '@shopify/flash-list';
-import { CopyPlus, MessageSquare, Trash2 } from 'lucide-react-native';
+import { MessageSquare, MoreHorizontal } from 'lucide-react-native';
 
 import type { ResumenChat } from '@/types/Chat';
 import { useColores } from '@/theme/ThemeProvider';
 import { fechaRelativa } from '@/utils/fechas';
-
-type AccionChat = 'duplicar' | 'borrar';
 
 type Props = {
     chats: ResumenChat[] | null;
@@ -15,19 +13,17 @@ type Props = {
     activoId?: string;
     onReintentar: () => void;
     onAbrir: (chat: ResumenChat) => void;
-    onDuplicar: (chat: ResumenChat) => void;
-    onBorrar: (chat: ResumenChat) => void;
-    ocupado?: { id: string; accion: AccionChat } | null;
+    onOpenActions: (chat: ResumenChat) => void;
+    // Conversación con una acción en curso (duplicar, eliminar…).
+    busyChatId: string | null;
 };
 
 type RowProps = ResumenChat & {
     activo: boolean;
-    // Acción en curso sobre esta conversación, con su icono cargando.
-    accionEnCurso?: AccionChat;
+    busy: boolean;
     disabled: boolean;
     onAbrir: (chat: ResumenChat) => void;
-    onDuplicar: (chat: ResumenChat) => void;
-    onBorrar: (chat: ResumenChat) => void;
+    onOpenActions: (chat: ResumenChat) => void;
 };
 
 const ConversationRow = memo(function ConversationRow({
@@ -35,18 +31,18 @@ const ConversationRow = memo(function ConversationRow({
     titulo,
     actualizado,
     activo,
-    accionEnCurso,
+    busy,
     disabled,
     onAbrir,
-    onDuplicar,
-    onBorrar,
+    onOpenActions,
 }: RowProps) {
     const colores = useColores();
     const chat = { id, titulo, actualizado };
     return (
         <Pressable
             onPress={() => onAbrir(chat)}
-            className={`flex-row items-center gap-3 rounded-xl px-3 py-3 ${activo ? 'bg-primario-suave' : 'active:bg-fondo'}`}
+            onLongPress={disabled ? undefined : () => onOpenActions(chat)}
+            className={`flex-row items-center gap-3 rounded-xl py-3 pl-3 pr-1 ${activo ? 'bg-primario-suave' : 'active:bg-fondo'}`}
         >
             <MessageSquare size={18} color={activo ? colores.primario : colores['texto-tenue']} />
             <Text className={`flex-1 text-base ${activo ? 'font-semibold text-primario' : 'text-texto'}`} numberOfLines={1}>
@@ -54,36 +50,23 @@ const ConversationRow = memo(function ConversationRow({
             </Text>
             <Text className="text-xs text-texto-tenue">{fechaRelativa(actualizado)}</Text>
             <Pressable
-                onPress={() => onDuplicar(chat)}
+                onPress={() => onOpenActions(chat)}
                 disabled={disabled}
                 accessibilityRole="button"
-                accessibilityLabel="Duplicar conversación"
-                className="h-8 w-8 items-center justify-center"
+                accessibilityLabel="Más opciones"
+                className="-ml-1 h-8 w-8 items-center justify-center rounded-full active:bg-borde"
             >
-                {accionEnCurso === 'duplicar' ? (
+                {busy ? (
                     <ActivityIndicator size={14} color={colores['texto-tenue']} />
                 ) : (
-                    <CopyPlus size={16} color={colores['texto-tenue']} />
-                )}
-            </Pressable>
-            <Pressable
-                onPress={() => onBorrar(chat)}
-                disabled={disabled}
-                accessibilityRole="button"
-                accessibilityLabel="Borrar conversación"
-                className="-ml-2 h-8 w-8 items-center justify-center"
-            >
-                {accionEnCurso === 'borrar' ? (
-                    <ActivityIndicator size={14} color={colores['texto-tenue']} />
-                ) : (
-                    <Trash2 size={16} color={colores['texto-tenue']} />
+                    <MoreHorizontal size={18} color={colores['texto-tenue']} />
                 )}
             </Pressable>
         </Pressable>
     );
 });
 
-export function ListaConversaciones({ chats, error, activoId, onReintentar, onAbrir, onDuplicar, onBorrar, ocupado }: Props) {
+export function ListaConversaciones({ chats, error, activoId, onReintentar, onAbrir, onOpenActions, busyChatId }: Props) {
     const colores = useColores();
     const listRef = useRef<FlashListRef<ResumenChat>>(null);
     // Ids de la lista anterior, para saber si al recargar ha llegado alguna conversación nueva.
@@ -123,11 +106,10 @@ export function ListaConversaciones({ chats, error, activoId, onReintentar, onAb
                 <ConversationRow
                     {...item}
                     activo={item.id === activoId}
-                    accionEnCurso={ocupado?.id === item.id ? ocupado.accion : undefined}
-                    disabled={!!ocupado}
+                    busy={busyChatId === item.id}
+                    disabled={!!busyChatId}
                     onAbrir={onAbrir}
-                    onDuplicar={onDuplicar}
-                    onBorrar={onBorrar}
+                    onOpenActions={onOpenActions}
                 />
             )}
         />

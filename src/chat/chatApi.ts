@@ -215,6 +215,19 @@ export async function borrarChat(sessionId: string): Promise<void> {
     if (!respuesta.ok) throw new Error(`delete_chat ${respuesta.status}`);
 }
 
+/** Cambia el título de una conversación y devuelve el que guarda el back (limpio y con mayúscula inicial). */
+export async function renameChat(sessionId: string, title: string): Promise<string> {
+    const respuesta = await authFetch(`${API_URL}chat-cex/chat_title`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, title }),
+    });
+    const json = await respuesta.json().catch(() => null);
+    // El detail del back ya viene en español (p. ej. el 409 si el cliente aún no permite renombrar).
+    if (!respuesta.ok) throw new Error(json?.detail || 'No se pudo renombrar la conversación.');
+    return json.title;
+}
+
 /**
  * Copia una conversación en otra nueva y devuelve su id; la original no cambia.
  * Con hastaRunId la copia acaba en esa respuesta y descarta lo posterior.

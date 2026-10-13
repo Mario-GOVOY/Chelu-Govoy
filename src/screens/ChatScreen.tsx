@@ -6,7 +6,6 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BarChart3, FileText, Menu, RefreshCw, TrendingUp, TriangleAlert, Truck } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { duplicarChat } from '@/chat/chatApi';
 import { useChat } from '@/chat/useChat';
 import { ArchivosGenerados } from '@/components/ArchivosGenerados';
 import { BurbujaMensaje } from '@/components/BurbujaMensaje';
@@ -21,6 +20,7 @@ import { Pantalla } from '@/components/ui/Pantalla';
 import { AppDrawerParamList } from '@/navigation/AppNavigator';
 import { RootStackParamList } from '@/navigation/RootNavigator';
 import { useColores } from '@/theme/ThemeProvider';
+import { useConversaciones } from '@/context/ConversacionesContext';
 import { useSesionActiva } from '@/context/SesionContext';
 import type { Documento, Mensaje } from '@/types/Chat';
 import type { SectorsForm } from '@/types/SectorsForm';
@@ -62,6 +62,7 @@ export default function ChatScreen({ navigation, route }: Props) {
         changeSectorsFormMap,
         saveSectorsForm,
     } = useChat(chatId, alCrearse);
+    const { chats, duplicateChat } = useConversaciones();
     // La lista va invertida: el desplazamiento 0 es el último mensaje.
     const listRef = useRef<FlatList<Mensaje>>(null);
     const sendAndScroll = (pregunta: string) => {
@@ -107,7 +108,7 @@ export default function ChatScreen({ navigation, route }: Props) {
                 onPress: async () => {
                     setDuplicando(runId);
                     try {
-                        navigation.setParams({ chatId: await duplicarChat(chatId, runId) });
+                        navigation.setParams({ chatId: await duplicateChat({ id: chatId, titulo: cabecera }, runId) });
                     } catch {
                         Alert.alert('No se pudo duplicar la conversación', 'Inténtalo de nuevo.');
                     } finally {
@@ -118,7 +119,9 @@ export default function ChatScreen({ navigation, route }: Props) {
         ]);
     };
 
-    const cabecera = chatId ? titulo ?? '' : 'Nueva conversación';
+    // Primero el de la lista, que tiene el nombre puesto a mano (get_chat devuelve la primera pregunta).
+    const listTitle = chats?.find((chat) => chat.id === chatId)?.titulo;
+    const cabecera = chatId ? listTitle ?? titulo ?? '' : 'Nueva conversación';
 
     return (
         <Pantalla margenInferior={false} margenSuperior={false}>
