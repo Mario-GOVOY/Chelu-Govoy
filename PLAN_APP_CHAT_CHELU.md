@@ -831,7 +831,7 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 |---|---|---|
 | 1 | Menú de acciones por conversación: un botón "⋯" en cada fila que abre una hoja inferior (Renombrar, Duplicar, Guardar en carpeta, Eliminar), en lugar de los iconos sueltos de duplicar y borrar | Hecho con Duplicar y Eliminar (Renombrar y Guardar en carpeta entran con sus bloques), falta probar en el móvil |
 | 2 | Renombrar conversación | Hecho, falta probar en el móvil |
-| 3 | Carpetas, en sub-bloques: 3a datos y lista agrupada (carpetas plegables arriba, chats sueltos debajo); 3b crear, renombrar y eliminar carpeta; 3c guardar o sacar un chat de una carpeta | 3a hecho, falta probar en el móvil |
+| 3 | Carpetas, en sub-bloques: 3a datos y lista agrupada (carpetas plegables arriba, chats sueltos debajo); 3b crear, renombrar y eliminar carpeta; 3c guardar o sacar un chat de una carpeta | Hecho (3a, 3b y 3c), falta probar en el móvil |
 | 4 | Notas de voz, en sub-bloques: 4a grabar y transcribir (permiso, `expo-audio`, `/transcribir`, texto al campo); 4b barra de grabación con onda, tiempo, descartar y transcribir | Pendiente |
 
 **Cómo funciona en la web y el back**
@@ -897,6 +897,19 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
   - Abrir una conversación que está en una carpeta plegada la despliega (una vez; si luego se pliega, se queda plegada).
   - Filas de conversación con `memo` y campos sueltos, como antes.
 - No se filtran los chats con una carpeta que no está en la lista: el back solo manda `carpeta_id` de carpetas vivas.
+
+**Hecho en el bloque 3b**
+- **Permiso:** `HAS_FOLDERS_CHAT_CHELU = ['92', '100', '101']` en `ControlOpcionesUsuarios.ts`: los clientes que tienen las tablas de carpetas (comprobado en la base de datos el 2026-10-13). Sin él no salen "Nueva carpeta" ni el "⋯" de las carpetas (la web no tiene permiso: enseña los botones y da 409). Las carpetas que haya se siguen viendo.
+- `chatApi`: `createFolder`, `renameFolder` y `deleteFolder` (`POST /carpetas`, `PATCH /carpetas/{id}`, `DELETE /carpetas/{id}?con_chats=…`); si fallan, lanzan el `detail` del back.
+- Contexto: crear y eliminar esperan al back (sin el id temporal negativo de la web); renombrar es optimista como el de las conversaciones. Al eliminar, las conversaciones que quedan pasan a sueltas y se quitan de la lista las que el back devuelve en `borrados`. Si la abierta era una de ellas, se pasa a una nueva.
+- Menú: icono `FolderPlus` junto al de recargar → `NameSheet` "Nueva carpeta" (la carpeta nueva sale plegada, al final). En cada carpeta, "⋯" (y mantener pulsada) → hoja con "Renombrar" (`NameSheet`) y "Eliminar".
+- Eliminar con un `Alert`: vacía, confirmación normal; con conversaciones, "Cancelar" / "Solo la carpeta" / "Carpeta y conversaciones" (en rojo), en lugar de la ventana con dos tarjetas de la web.
+
+**Hecho en el bloque 3c**
+- `chatApi.moveChatToFolder` (`PUT /carpetas/mover`, `carpeta_id` null para sacarla). En el contexto es optimista como renombrar: si el back falla, la conversación vuelve a su carpeta. `createFolder` devuelve la carpeta creada.
+- "Guardar en carpeta" en la hoja de acciones de la conversación, entre "Duplicar" y "Eliminar", solo con `HAS_FOLDERS_CHAT_CHELU`. Abre una hoja con las carpetas (la actual en negrita y con ✓, tocarla solo cierra) y, fijas debajo, "Nueva carpeta…" y, si está en una, "Sacar de la carpeta". Solo las carpetas hacen scroll (la hoja llega como mucho al 80 % del alto).
+- "Nueva carpeta…" abre la `NameSheet` de carpeta; al guardar crea la carpeta y mete en ella la conversación. Si falla la creación, no se mueve nada.
+- Al guardar en una carpeta plegada, la conversación desaparece de la vista y sube el número de la carpeta (salvo si es la abierta, que despliega su carpeta). Sin arrastrar, a diferencia de la web.
 
 **Visto de paso: archivos de todas las conversaciones**
 - En el mismo commit, el back añadió un índice de documentos por usuario (`chat_archivos_chelu`, B `:3703-3887`): `GET /archivos` (todos los del usuario, con el título de su chat), `DELETE /archivos/{id}` (los quita del listado, no de S3 ni del chat) y `POST /archivos/migrar` (rellena los anteriores; la web lo llama una vez por usuario y navegador). Sin la tabla, 409 y la web usa los que tiene en memoria.
@@ -1005,7 +1018,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 20. **Formato del cuerpo del correo:** que `cuerpo_a_html` del back convierta cursiva y subrayado, que hoy llegan con los símbolos visibles (web y app los ofrecen).
 21. **Optimizaciones en segundo plano y notificación al terminar:** que la optimización siga y se guarde aunque se cambie de chat o se salga de la app, con push al terminar y el chat marcado con "!" en la lista. Propuesta en el progreso de la fase 4.
 22. **Título renombrado en `get_chat`:** que `_chat_summary` devuelva la columna `titulo` (hoy da la primera pregunta y la cabecera no refleja el nombre puesto a mano). Afecta también a la web si usa ese título.
-23. **Qué clientes tienen las tablas de carpetas, archivos y la columna `titulo`:** se crean a mano por cliente. Sin ellas, crear carpeta o renombrar dan 409 después de que el usuario lo intente. Valorar que `get_chats` diga si están activas para ocultar los botones.
+23. **Qué clientes tienen las tablas de carpetas, archivos y la columna `titulo`:** se crean a mano por cliente. Carpetas: 92, 100 y 101 (comprobado el 2026-10-13; en la app van en `HAS_FOLDERS_CHAT_CHELU`, que hay que mantener a mano). Sin ellas, crear carpeta o renombrar dan 409 después de que el usuario lo intente. Valorar que `get_chats` diga si están activas para ocultar los botones.
 24. **"Archivos generados" de todas las conversaciones en la app** con `GET /archivos` (y quitar del listado con `DELETE`), como la web.
 
 ---

@@ -235,6 +235,54 @@ export async function renameChat(sessionId: string, title: string): Promise<stri
     return json.title;
 }
 
+/** Crea una carpeta al final de las del usuario. */
+export async function createFolder(name: string): Promise<ChatFolder> {
+    const respuesta = await authFetch(`${API_URL}chat-cex/carpetas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: name }),
+    });
+    const json = await respuesta.json().catch(() => null);
+    if (!respuesta.ok) throw new Error(json?.detail || 'No se pudo crear la carpeta.');
+    return { id: json.carpeta.id, name: json.carpeta.nombre };
+}
+
+/** Cambia el nombre de una carpeta y devuelve el que guarda el back. */
+export async function renameFolder(folderId: number, name: string): Promise<string> {
+    const respuesta = await authFetch(`${API_URL}chat-cex/carpetas/${folderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: name }),
+    });
+    const json = await respuesta.json().catch(() => null);
+    if (!respuesta.ok) throw new Error(json?.detail || 'No se pudo renombrar la carpeta.');
+    return json.carpeta.nombre;
+}
+
+/** Mete una conversación en una carpeta, la cambia de carpeta o la saca (folderId null). */
+export async function moveChatToFolder(sessionId: string, folderId: number | null): Promise<void> {
+    const respuesta = await authFetch(`${API_URL}chat-cex/carpetas/mover`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, carpeta_id: folderId }),
+    });
+    const json = await respuesta.json().catch(() => null);
+    if (!respuesta.ok) throw new Error(json?.detail || 'No se pudo mover la conversación.');
+}
+
+/**
+ * Elimina una carpeta. Sin withChats sus conversaciones quedan sueltas; con él se eliminan también.
+ * Devuelve los ids de las conversaciones eliminadas.
+ */
+export async function deleteFolder(folderId: number, withChats: boolean): Promise<string[]> {
+    const respuesta = await authFetch(`${API_URL}chat-cex/carpetas/${folderId}?con_chats=${withChats}`, {
+        method: 'DELETE',
+    });
+    const json = await respuesta.json().catch(() => null);
+    if (!respuesta.ok) throw new Error(json?.detail || 'No se pudo eliminar la carpeta.');
+    return json.borrados;
+}
+
 /**
  * Copia una conversación en otra nueva y devuelve su id; la original no cambia.
  * Con hastaRunId la copia acaba en esa respuesta y descarta lo posterior.

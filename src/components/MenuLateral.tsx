@@ -1,7 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { DrawerContentComponentProps, useDrawerStatus } from '@react-navigation/drawer';
-import { CopyPlus, LogOut, Moon, Pencil, Plus, RefreshCw, Sun, Trash2, UserRoundX } from 'lucide-react-native';
+import {
+    Check,
+    CopyPlus,
+    Folder,
+    FolderInput,
+    FolderMinus,
+    FolderPlus,
+    LogOut,
+    Moon,
+    Pencil,
+    Plus,
+    RefreshCw,
+    Sun,
+    Trash2,
+    UserRoundX,
+} from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { borrarChat } from '@/chat/chatApi';
@@ -12,8 +27,9 @@ import { NameSheet } from '@/components/ui/NameSheet';
 import { useConversaciones } from '@/context/ConversacionesContext';
 import { useSesion, useSesionActiva } from '@/context/SesionContext';
 import type { AppDrawerParamList } from '@/navigation/AppNavigator';
-import type { ResumenChat } from '@/types/Chat';
+import type { ChatFolder, ResumenChat } from '@/types/Chat';
 import { useColores, useTema } from '@/theme/ThemeProvider';
+import { esSesionMaster, HAS_FOLDERS_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
 
 const ROLES: Record<string, string> = {
     administrador: 'Administrador',
@@ -43,7 +59,8 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
     const { sesion, staff } = useSesionActiva();
     const isMenuOpen = useDrawerStatus() === 'open';
     const conversaciones = useConversaciones();
-    const { chats, recargar, renameChat, duplicateChat } = conversaciones;
+    const { chats, folders, recargar, renameChat, duplicateChat, createFolder, moveChatToFolder, renameFolder, deleteFolder } =
+        conversaciones;
     const chatActivo = (state.routes[state.index].params as AppDrawerParamList['Chat'])?.chatId;
 
     // Último chat por el que se recargó: si el back no lo devuelve, no se vuelve a pedir al abrir el menú.
@@ -133,6 +150,100 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
         action(actionsChat);
     };
 
+    const canManageFolders = validatorUserHasOption(HAS_FOLDERS_CHAT_CHELU, sesion.empresaId, esSesionMaster(sesion));
+    // Carpeta cuya hoja de acciones está abierta.
+    const [actionsFolder, setActionsFolder] = useState<ChatFolder | null>(null);
+    const closeFolderActions = useCallback(() => setActionsFolder(null), []);
+    // Hoja de nombre de carpeta: para crear una o para renombrar renamingFolder.
+    const [creatingFolder, setCreatingFolder] = useState(false);
+    const [renamingFolder, setRenamingFolder] = useState<ChatFolder | null>(null);
+    // Conversación que se guarda en la carpeta que se está creando ("Nueva carpeta…" de "Guardar en carpeta").
+    const [chatForNewFolder, setChatForNewFolder] = useState<ResumenChat | null>(null);
+    const closeFolderName = useCallback(() => {
+        setCreatingFolder(false);
+        setRenamingFolder(null);
+        setChatForNewFolder(null);
+    }, []);
+
+    const saveFolderName = async (name: string) => {
+        const folder = renamingFolder;
+        const chat = chatForNewFolder;
+        closeFolderName();
+        if (folder) {
+            try {
+                await renameFolder(folder, name);
+            } catch (e) {
+                Alert.alert('No se pudo renombrar la carpeta', (e as Error).message);
+            }
+            return;
+        }
+        let newFolder: ChatFolder;
+        try {
+            newFolder = await createFolder(name);
+        } catch (e) {
+            Alert.alert('No se pudo crear la carpeta', (e as Error).message);
+            return;
+        }
+        if (chat) moveChat(chat, newFolder.id);
+    };
+
+    // Conversación cuya hoja "Guardar en carpeta" está abierta.
+    const [movingChat, setMovingChat] = useState<ResumenChat | null>(null);
+    const closeMoveSheet = useCallback(() => setMovingChat(null), []);
+
+    const moveChat = async (chat: ResumenChat, folderId: number | null) => {
+        setMovingChat(null);
+        try {
+            await moveChatToFolder(chat, folderId);
+        } catch (e) {
+            Alert.alert('No se pudo mover la conversación', (e as Error).message);
+        }
+    };
+
+    const createFolderForChat = (chat: ResumenChat) => {
+        setMovingChat(null);
+        setChatForNewFolder(chat);
+        setCreatingFolder(true);
+    };
+
+    const removeFolder = async (folder: ChatFolder, withChats: boolean) => {
+        try {
+            const deletedChatIds = await deleteFolder(folder, withChats);
+            // Si la abierta se ha eliminado, se pasa a una nueva; el menú sigue abierto.
+            if (chatActivo && deletedChatIds.includes(chatActivo)) navigation.navigate('Chat', { chatId: undefined });
+        } catch (e) {
+            Alert.alert('No se pudo eliminar la carpeta', (e as Error).message);
+        }
+    };
+
+    // Con conversaciones dentro se elige si se eliminan también o pasan a la lista general.
+    const confirmDeleteFolder = (folder: ChatFolder) => {
+        const chatCount = chats?.filter((chat) => chat.folderId === folder.id).length ?? 0;
+        if (chatCount === 0) {
+            Alert.alert('Eliminar carpeta', `Se eliminará «${folder.name}».`, [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Eliminar', style: 'destructive', onPress: () => removeFolder(folder, false) },
+            ]);
+            return;
+        }
+        const chatsText = chatCount === 1 ? 'una conversación' : `${chatCount} conversaciones`;
+        Alert.alert(
+            'Eliminar carpeta',
+            `«${folder.name}» tiene ${chatsText}. Puedes eliminar solo la carpeta (pasan a la lista general) o también sus conversaciones.`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Solo la carpeta', onPress: () => removeFolder(folder, false) },
+                { text: 'Carpeta y conversaciones', style: 'destructive', onPress: () => removeFolder(folder, true) },
+            ],
+        );
+    };
+
+    const chooseFolderAction = (action: (folder: ChatFolder) => void) => {
+        if (!actionsFolder) return;
+        setActionsFolder(null);
+        action(actionsFolder);
+    };
+
     return (
         <View className="flex-1 bg-superficie" style={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 8 }}>
             <View className="flex-row items-center gap-3 px-5">
@@ -158,7 +269,18 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
             </Pressable>
 
             <View className="ml-5 mr-3 mt-4 flex-row items-center justify-between">
-                <Text className="text-xs font-bold uppercase tracking-wider text-texto-tenue">Conversaciones</Text>
+                <Text className="flex-1 text-xs font-bold uppercase tracking-wider text-texto-tenue">Conversaciones</Text>
+                {canManageFolders && (
+                    <Pressable
+                        onPress={() => setCreatingFolder(true)}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel="Nueva carpeta"
+                        className="h-9 w-9 items-center justify-center rounded-full active:bg-fondo"
+                    >
+                        <FolderPlus size={16} color={colores['texto-tenue']} />
+                    </Pressable>
+                )}
                 <Pressable
                     onPress={conversaciones.recargar}
                     disabled={conversaciones.cargando}
@@ -181,6 +303,7 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                     onReintentar={conversaciones.recargar}
                     onAbrir={openChatFromList}
                     onOpenActions={setActionsChat}
+                    onOpenFolderActions={canManageFolders ? setActionsFolder : undefined}
                     busyChatId={busyChatId}
                 />
             </View>
@@ -238,6 +361,18 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                         <Text className="text-base text-texto">Duplicar</Text>
                     </Pressable>
                     <View className="mx-4 h-px bg-borde" />
+                    {canManageFolders && (
+                        <>
+                            <Pressable
+                                onPress={() => chooseAction(setMovingChat)}
+                                className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                            >
+                                <FolderInput size={20} color={colores['texto-secundario']} />
+                                <Text className="text-base text-texto">Guardar en carpeta</Text>
+                            </Pressable>
+                            <View className="mx-4 h-px bg-borde" />
+                        </>
+                    )}
                     <Pressable
                         onPress={() => chooseAction(eliminar)}
                         className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
@@ -254,6 +389,77 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                 placeholder="Nombre de la conversación"
                 onSave={(title) => rename(renamingChat!, title)}
                 onClose={closeRename}
+            />
+
+            <HojaInferior visible={!!movingChat} titulo="Guardar en carpeta" onCerrar={closeMoveSheet}>
+                {movingChat && (
+                    // Solo hacen scroll las carpetas: "Nueva carpeta…" y "Sacar de la carpeta" quedan siempre a la vista.
+                    <View className="shrink overflow-hidden rounded-2xl bg-superficie">
+                        <ScrollView className="shrink">
+                            {folders.map((folder) => {
+                                const current = folder.id === movingChat.folderId;
+                                return (
+                                    <Pressable
+                                        key={folder.id}
+                                        onPress={() => (current ? closeMoveSheet() : moveChat(movingChat, folder.id))}
+                                        accessibilityState={{ selected: current }}
+                                        className="flex-row items-center gap-3 border-b border-borde px-4 py-4 active:bg-superficie-alt"
+                                    >
+                                        <Folder size={20} color={colores.primario} />
+                                        <Text className={`flex-1 text-base text-texto ${current ? 'font-semibold' : ''}`} numberOfLines={1}>
+                                            {folder.name}
+                                        </Text>
+                                        {current && <Check size={20} color={colores.primario} />}
+                                    </Pressable>
+                                );
+                            })}
+                        </ScrollView>
+                        <Pressable
+                            onPress={() => createFolderForChat(movingChat)}
+                            className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                        >
+                            <FolderPlus size={20} color={colores['texto-secundario']} />
+                            <Text className="text-base text-texto">Nueva carpeta…</Text>
+                        </Pressable>
+                        {movingChat.folderId !== null && (
+                            <Pressable
+                                onPress={() => moveChat(movingChat, null)}
+                                className="flex-row items-center gap-3 border-t border-borde px-4 py-4 active:bg-superficie-alt"
+                            >
+                                <FolderMinus size={20} color={colores['texto-secundario']} />
+                                <Text className="text-base text-texto">Sacar de la carpeta</Text>
+                            </Pressable>
+                        )}
+                    </View>
+                )}
+            </HojaInferior>
+
+            <HojaInferior visible={!!actionsFolder} titulo={actionsFolder?.name ?? ''} onCerrar={closeFolderActions}>
+                <View className="overflow-hidden rounded-2xl bg-superficie">
+                    <Pressable
+                        onPress={() => chooseFolderAction(setRenamingFolder)}
+                        className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                    >
+                        <Pencil size={20} color={colores['texto-secundario']} />
+                        <Text className="text-base text-texto">Renombrar</Text>
+                    </Pressable>
+                    <View className="mx-4 h-px bg-borde" />
+                    <Pressable
+                        onPress={() => chooseFolderAction(confirmDeleteFolder)}
+                        className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                    >
+                        <Trash2 size={20} color={colores.peligro} />
+                        <Text className="text-base text-peligro">Eliminar</Text>
+                    </Pressable>
+                </View>
+            </HojaInferior>
+            <NameSheet
+                visible={creatingFolder || !!renamingFolder}
+                title={renamingFolder ? 'Renombrar carpeta' : 'Nueva carpeta'}
+                initialName={renamingFolder?.name ?? ''}
+                placeholder="Nombre de la carpeta"
+                onSave={saveFolderName}
+                onClose={closeFolderName}
             />
         </View>
     );

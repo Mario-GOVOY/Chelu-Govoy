@@ -15,6 +15,8 @@ type Props = {
     onReintentar: () => void;
     onAbrir: (chat: ResumenChat) => void;
     onOpenActions: (chat: ResumenChat) => void;
+    // Sin él, las carpetas no tienen "⋯" (empresa sin carpetas).
+    onOpenFolderActions?: (folder: ChatFolder) => void;
     // Conversación con una acción en curso (duplicar, eliminar…).
     busyChatId: string | null;
 };
@@ -77,6 +79,7 @@ export function ListaConversaciones({
     onReintentar,
     onAbrir,
     onOpenActions,
+    onOpenFolderActions,
     busyChatId,
 }: Props) {
     const colores = useColores();
@@ -139,9 +142,10 @@ export function ListaConversaciones({
             <View key={folder.id}>
                 <Pressable
                     onPress={() => toggleFolder(folder.id)}
+                    onLongPress={onOpenFolderActions && (() => onOpenFolderActions(folder))}
                     accessibilityRole="button"
                     accessibilityState={{ expanded: open }}
-                    className="flex-row items-center gap-2 rounded-xl py-3 pl-1 pr-3 active:bg-fondo"
+                    className={`flex-row items-center gap-2 rounded-xl py-3 pl-1 active:bg-fondo ${onOpenFolderActions ? 'pr-1' : 'pr-3'}`}
                 >
                     <View style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}>
                         <ChevronRight size={16} color={colores['texto-tenue']} />
@@ -151,6 +155,16 @@ export function ListaConversaciones({
                         {folder.name}
                     </Text>
                     <Text className="text-xs text-texto-tenue">{folderChats.length}</Text>
+                    {onOpenFolderActions && (
+                        <Pressable
+                            onPress={() => onOpenFolderActions(folder)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Más opciones de la carpeta"
+                            className="-ml-1 h-8 w-8 items-center justify-center rounded-full active:bg-borde"
+                        >
+                            <MoreHorizontal size={18} color={colores['texto-tenue']} />
+                        </Pressable>
+                    )}
                 </Pressable>
                 {open && folderChats.length === 0 && <Text className="py-2 pl-9 text-sm text-texto-tenue">Carpeta vacía.</Text>}
                 {open && folderChats.map(renderChat)}

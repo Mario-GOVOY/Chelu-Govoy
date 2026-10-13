@@ -1,6 +1,14 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 
-import { duplicarChat, obtenerChats, renameChat as renameChatApi } from '@/chat/chatApi';
+import {
+    createFolder as createFolderApi,
+    deleteFolder as deleteFolderApi,
+    duplicarChat,
+    moveChatToFolder as moveChatToFolderApi,
+    obtenerChats,
+    renameChat as renameChatApi,
+    renameFolder as renameFolderApi,
+} from '@/chat/chatApi';
 import type { ChatFolder, ResumenChat } from '@/types/Chat';
 
 // Conversación de la que se duplica (puede no estar aún en la lista).
@@ -15,6 +23,12 @@ type ConversacionesContextType = {
     renameChat: (chat: ResumenChat, title: string) => Promise<void>;
     // Devuelve el id de la copia. Con untilRunId, la copia acaba en esa respuesta.
     duplicateChat: (source: ChatSource, untilRunId?: string) => Promise<string>;
+    createFolder: (name: string) => Promise<ChatFolder>;
+    // folderId null saca la conversación de su carpeta.
+    moveChatToFolder: (chat: ResumenChat, folderId: number | null) => Promise<void>;
+    renameFolder: (folder: ChatFolder, name: string) => Promise<void>;
+    // Devuelve los ids de las conversaciones eliminadas con la carpeta.
+    deleteFolder: (folder: ChatFolder, withChats: boolean) => Promise<string[]>;
 };
 
 const ConversacionesContext = createContext<ConversacionesContextType | null>(null);
@@ -74,8 +88,52 @@ export function ConversacionesProvider({ children }: { children: ReactNode }) {
         return id;
     }, []);
 
+    const createFolder = useCallback(async (name: string) => {
+        const folder = await createFolderApi(name);
+        setFolders((prev) => [...prev, folder]);
+        return folder;
+    }, []);
+
+    // Como renameChat: se pinta al momento y, si el back falla, vuelve a su carpeta anterior.
+    const moveChatToFolder = useCallback(async (chat: ResumenChat, folderId: number | null) => {
+        const setFolder = (newFolderId: number | null) =>
+            setChats((prev) => prev && prev.map((c) => (c.id === chat.id ? { ...c, folderId: newFolderId } : c)));
+        setFolder(folderId);
+        try {
+            await moveChatToFolderApi(chat.id, folderId);
+        } catch (e) {
+            setFolder(chat.folderId);
+            throw e;
+        }
+    }, []);
+
+    // Como renameChat: se pinta al momento y, si el back falla, vuelve el nombre anterior.
+    const renameFolder = useCallback(async (folder: ChatFolder, name: string) => {
+        const setName = (newName: string) =>
+            setFolders((prev) => prev.map((f) => (f.id === folder.id ? { ...f, name: newName } : f)));
+        setName(name);
+        try {
+            setName(await renameFolderApi(folder.id, name));
+        } catch (e) {
+            setName(folder.name);
+            throw e;
+        }
+    }, []);
+
+    // Las conversaciones que no se eliminan con la carpeta pasan a sueltas.
+    const deleteFolder = useCallback(async (folder: ChatFolder, withChats: boolean) => {
+        const deletedChatIds = await deleteFolderApi(folder.id, withChats);
+        setFolders((prev) => prev.filter((f) => f.id !== folder.id));
+        setChats((prev) => prev && prev
+            .filter((c) => !deletedChatIds.includes(c.id))
+            .map((c) => (c.folderId === folder.id ? { ...c, folderId: null } : c)));
+        return deletedChatIds;
+    }, []);
+
     return (
-        <ConversacionesContext.Provider value={{ chats, folders, cargando, error, recargar, renameChat, duplicateChat }}>
+        <ConversacionesContext.Provider
+            value={{ chats, folders, cargando, error, recargar, renameChat, duplicateChat, createFolder, moveChatToFolder, renameFolder, deleteFolder }}
+        >
             {children}
         </ConversacionesContext.Provider>
     );
