@@ -1,5 +1,5 @@
 import { ReactNode, useEffect } from 'react';
-import { BackHandler, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Keyboard, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from 'react-native';
 import { X } from 'lucide-react-native';
 import Animated, { Easing, FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +22,12 @@ export function HojaInferior({ visible, titulo, onCerrar, children }: {
     const insets = useSafeAreaInsets();
     const teclado = useTecladoVisible();
 
+    // El teclado se quita antes de cerrar: si el campo enfocado se desmonta primero, se queda abierto.
+    const cerrar = () => {
+        Keyboard.dismiss();
+        onCerrar();
+    };
+
     useEffect(() => {
         if (!visible) return;
         const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -37,7 +43,7 @@ export function HojaInferior({ visible, titulo, onCerrar, children }: {
     return (
         <>
             <Animated.View entering={FadeIn.duration(250)} exiting={FadeOut.duration(250)} style={StyleSheet.absoluteFill}>
-                <Pressable onPress={onCerrar} className="flex-1 bg-black/40" accessibilityLabel="Cerrar" />
+                <Pressable onPress={cerrar} className="flex-1 bg-black/40" accessibilityLabel="Cerrar" />
             </Animated.View>
             {/* Con el teclado abierto la hoja sube por encima de él. */}
             <KeyboardAvoidingView behavior="padding" pointerEvents="box-none" style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]}>
@@ -55,7 +61,7 @@ export function HojaInferior({ visible, titulo, onCerrar, children }: {
                                 {titulo}
                             </Text>
                             <Pressable
-                                onPress={onCerrar}
+                                onPress={cerrar}
                                 hitSlop={8}
                                 accessibilityRole="button"
                                 accessibilityLabel="Cerrar"

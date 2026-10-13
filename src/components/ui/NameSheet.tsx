@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TextInput, View } from 'react-native';
+import { Keyboard, TextInput, View } from 'react-native';
 
 import { Boton } from '@/components/ui/Boton';
 import { HojaInferior } from '@/components/ui/HojaInferior';
@@ -35,6 +35,12 @@ function NameField({ initialName, placeholder, onSave }: {
     const trimmedName = name.trim();
     const canSave = !!trimmedName && trimmedName !== initialName;
 
+    // Guardar cierra la hoja: el teclado se quita antes, o se quedaría abierto.
+    const save = () => {
+        Keyboard.dismiss();
+        onSave(trimmedName);
+    };
+
     return (
         <View className="gap-3">
             <TextInput
@@ -45,11 +51,11 @@ function NameField({ initialName, placeholder, onSave }: {
                 placeholder={placeholder}
                 placeholderTextColor={colores['texto-tenue']}
                 returnKeyType="done"
-                onSubmitEditing={() => canSave && onSave(trimmedName)}
+                onSubmitEditing={() => canSave && save()}
                 accessibilityLabel={placeholder}
                 className="h-14 rounded-xl border border-borde-medio bg-superficie px-3 text-base text-texto"
             />
-            <Boton texto="Guardar" onPress={() => onSave(trimmedName)} deshabilitado={!canSave} />
+            <Boton texto="Guardar" onPress={save} deshabilitado={!canSave} />
         </View>
     );
 }

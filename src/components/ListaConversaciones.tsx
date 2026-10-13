@@ -1,14 +1,15 @@
-import { memo, useEffect, useRef } from 'react';
-import { ActivityIndicator, Pressable, Text } from 'react-native';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { FlashList, FlashListRef } from '@shopify/flash-list';
-import { MessageSquare, MoreHorizontal } from 'lucide-react-native';
+import { ChevronRight, Folder, FolderOpen, MessageSquare, MoreHorizontal } from 'lucide-react-native';
 
-import type { ResumenChat } from '@/types/Chat';
+import type { ChatFolder, ResumenChat } from '@/types/Chat';
 import { useColores } from '@/theme/ThemeProvider';
 import { fechaRelativa } from '@/utils/fechas';
 
 type Props = {
     chats: ResumenChat[] | null;
+    folders: ChatFolder[];
     error: boolean;
     activoId?: string;
     onReintentar: () => void;
@@ -18,6 +19,7 @@ type Props = {
     busyChatId: string | null;
 };
 
+// Campos sueltos y no el objeto, que es nuevo en cada recarga: así memo evita repintar las filas.
 type RowProps = ResumenChat & {
     activo: boolean;
     busy: boolean;
@@ -30,6 +32,7 @@ const ConversationRow = memo(function ConversationRow({
     id,
     titulo,
     actualizado,
+    folderId,
     activo,
     busy,
     disabled,
@@ -37,12 +40,12 @@ const ConversationRow = memo(function ConversationRow({
     onOpenActions,
 }: RowProps) {
     const colores = useColores();
-    const chat = { id, titulo, actualizado };
+    const chat = { id, titulo, actualizado, folderId };
     return (
         <Pressable
             onPress={() => onAbrir(chat)}
             onLongPress={disabled ? undefined : () => onOpenActions(chat)}
-            className={`flex-row items-center gap-3 rounded-xl py-3 pl-3 pr-1 ${activo ? 'bg-primario-suave' : 'active:bg-fondo'}`}
+            className={`flex-row items-center gap-3 rounded-xl py-3 pr-1 ${folderId === null ? 'pl-3' : 'pl-9'} ${activo ? 'bg-primario-suave' : 'active:bg-fondo'}`}
         >
             <MessageSquare size={18} color={activo ? colores.primario : colores['texto-tenue']} />
             <Text className={`flex-1 text-base ${activo ? 'font-semibold text-primario' : 'text-texto'}`} numberOfLines={1}>
@@ -66,11 +69,31 @@ const ConversationRow = memo(function ConversationRow({
     );
 });
 
-export function ListaConversaciones({ chats, error, activoId, onReintentar, onAbrir, onOpenActions, busyChatId }: Props) {
+export function ListaConversaciones({
+    chats,
+    folders,
+    error,
+    activoId,
+    onReintentar,
+    onAbrir,
+    onOpenActions,
+    busyChatId,
+}: Props) {
     const colores = useColores();
     const listRef = useRef<FlashListRef<ResumenChat>>(null);
     // Ids de la lista anterior, para saber si al recargar ha llegado alguna conversación nueva.
     const previousIdsRef = useRef<Set<string> | null>(null);
+    const [openFolderIds, setOpenFolderIds] = useState<number[]>([]);
+
+    const toggleFolder = useCallback((folderId: number) => {
+        setOpenFolderIds((prev) => (prev.includes(folderId) ? prev.filter((id) => id !== folderId) : [...prev, folderId]));
+    }, []);
+
+    // Abrir una conversación que está en una carpeta plegada la despliega, para que se vea marcada.
+    const activeFolderId = chats?.find((chat) => chat.id === activoId)?.folderId ?? null;
+    useEffect(() => {
+        if (activeFolderId !== null) setOpenFolderIds((prev) => (prev.includes(activeFolderId) ? prev : [...prev, activeFolderId]));
+    }, [activeFolderId]);
 
     // Si hay alguna nueva, la lista sube arriba, donde aparecen las más recientes.
     useEffect(() => {
@@ -93,25 +116,68 @@ export function ListaConversaciones({ chats, error, activoId, onReintentar, onAb
         return <ActivityIndicator className="mt-4" color={colores.primario} />;
     }
 
+    const renderChat = (chat: ResumenChat) => (
+        <ConversationRow
+            key={chat.id}
+            {...chat}
+            activo={chat.id === activoId}
+            busy={busyChatId === chat.id}
+            disabled={!!busyChatId}
+            onAbrir={onAbrir}
+            onOpenActions={onOpenActions}
+        />
+    );
+
+    const looseChats = chats.filter((chat) => chat.folderId === null);
+
+    // Las carpetas, con sus conversaciones debajo si están abiertas, van encima de las sueltas.
+    const folderSections = folders.map((folder) => {
+        const folderChats = chats.filter((chat) => chat.folderId === folder.id);
+        const open = openFolderIds.includes(folder.id);
+        const FolderIcon = open ? FolderOpen : Folder;
+        return (
+            <View key={folder.id}>
+                <Pressable
+                    onPress={() => toggleFolder(folder.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: open }}
+                    className="flex-row items-center gap-2 rounded-xl py-3 pl-1 pr-3 active:bg-fondo"
+                >
+                    <View style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}>
+                        <ChevronRight size={16} color={colores['texto-tenue']} />
+                    </View>
+                    <FolderIcon size={18} color={colores.primario} />
+                    <Text className="flex-1 text-base font-semibold text-texto" numberOfLines={1}>
+                        {folder.name}
+                    </Text>
+                    <Text className="text-xs text-texto-tenue">{folderChats.length}</Text>
+                </Pressable>
+                {open && folderChats.length === 0 && <Text className="py-2 pl-9 text-sm text-texto-tenue">Carpeta vacía.</Text>}
+                {open && folderChats.map(renderChat)}
+            </View>
+        );
+    });
+
     return (
         <FlashList
             ref={listRef}
             // Sin él, al entrar una conversación arriba la lista se queda donde estaba y la nueva queda oculta encima.
             maintainVisibleContentPosition={{ disabled: true }}
-            data={chats}
+            data={looseChats}
             keyExtractor={(c) => c.id}
             contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}
-            ListEmptyComponent={<Text className="px-2 text-sm text-texto-tenue">Aún no hay conversaciones.</Text>}
-            renderItem={({ item }) => (
-                <ConversationRow
-                    {...item}
-                    activo={item.id === activoId}
-                    busy={busyChatId === item.id}
-                    disabled={!!busyChatId}
-                    onAbrir={onAbrir}
-                    onOpenActions={onOpenActions}
-                />
-            )}
+            ListHeaderComponent={
+                folders.length > 0 ? (
+                    <>
+                        {folderSections}
+                        {looseChats.length > 0 && <View className="mx-2 my-2 h-px bg-borde" />}
+                    </>
+                ) : null
+            }
+            ListEmptyComponent={
+                folders.length === 0 ? <Text className="px-2 text-sm text-texto-tenue">Aún no hay conversaciones.</Text> : null
+            }
+            renderItem={({ item }) => renderChat(item)}
         />
     );
 }

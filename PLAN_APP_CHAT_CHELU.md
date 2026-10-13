@@ -831,7 +831,7 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 |---|---|---|
 | 1 | Menú de acciones por conversación: un botón "⋯" en cada fila que abre una hoja inferior (Renombrar, Duplicar, Guardar en carpeta, Eliminar), en lugar de los iconos sueltos de duplicar y borrar | Hecho con Duplicar y Eliminar (Renombrar y Guardar en carpeta entran con sus bloques), falta probar en el móvil |
 | 2 | Renombrar conversación | Hecho, falta probar en el móvil |
-| 3 | Carpetas, en sub-bloques: 3a datos y lista agrupada (carpetas plegables arriba, chats sueltos debajo); 3b crear, renombrar y eliminar carpeta; 3c guardar o sacar un chat de una carpeta | Pendiente |
+| 3 | Carpetas, en sub-bloques: 3a datos y lista agrupada (carpetas plegables arriba, chats sueltos debajo); 3b crear, renombrar y eliminar carpeta; 3c guardar o sacar un chat de una carpeta | 3a hecho, falta probar en el móvil |
 | 4 | Notas de voz, en sub-bloques: 4a grabar y transcribir (permiso, `expo-audio`, `/transcribir`, texto al campo); 4b barra de grabación con onda, tiempo, descartar y transcribir | Pendiente |
 
 **Cómo funciona en la web y el back**
@@ -885,6 +885,18 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 - `NameSheet`: hoja con un campo (120 caracteres, el texto se selecciona al tocarlo) y "Guardar", desactivado si está vacío o no ha cambiado; también guarda con el botón del teclado. Sin `autoFocus`, por lo visto en el 4e. Se reutilizará para las carpetas.
 - "Renombrar" es la primera opción de la hoja de acciones. Al guardar se cierra la hoja; si el back falla, aviso con su mensaje.
 - **Duplicar tras renombrar:** la copia no estaba en la lista hasta recargarla, así que su cabecera salía con el título de `get_chat` (el antiguo). El back copia también la columna `titulo`, así que `duplicateChat` del contexto (desde el menú y "Duplicar desde aquí") mete la copia arriba de la lista con el título de la original, sin recargar.
+
+**Hecho en el bloque 3a**
+- Tipos: `folderId` en `ResumenChat` (null si está suelta) y `ChatFolder` (`id`, `name`).
+- `obtenerChats` devuelve `{ chats, folders }`: lee `carpeta_id` de cada chat y `carpetas` (ya llegan ordenadas). El contexto guarda `folders` aparte.
+- `duplicateChat` mete la copia en la carpeta de la original, como hace el back.
+- `ListaConversaciones`: las carpetas van en la cabecera de la `FlashList` (`ListHeaderComponent`) y la lista virtualizada sigue siendo solo de las conversaciones sueltas. Se probó primero una lista plana con cuatro tipos de fila (carpeta, "vacía", separador y conversación) y se simplificó: con pocas conversaciones por carpeta no hace falta virtualizarlas.
+  - Carpeta: chevron que gira, icono de carpeta (abierta o cerrada) en el color principal, nombre y número de conversaciones. Al tocarla se pliega o despliega; abierta, sus conversaciones debajo con sangría (o "Carpeta vacía."). Una línea separa las carpetas de las sueltas (solo si hay de las dos).
+  - **Para más adelante:** si alguna carpeta llega a tener cientos de conversaciones y el menú va lento, volver a la lista plana (la única forma de virtualizarlas). Una `FlashList` dentro de cada carpeta no sirve: dentro de la lista del menú no hace scroll propio, así que pinta todas sus filas (y da el aviso de listas virtualizadas anidadas); con altura fija sí virtualiza, pero deja un scroll dentro del scroll del menú.
+  - **Carpetas abiertas solo en memoria:** al cerrar la app se pliegan todas (la web lo guarda en `localStorage`). Se añadirá con AsyncStorage si se echa de menos.
+  - Abrir una conversación que está en una carpeta plegada la despliega (una vez; si luego se pliega, se queda plegada).
+  - Filas de conversación con `memo` y campos sueltos, como antes.
+- No se filtran los chats con una carpeta que no está en la lista: el back solo manda `carpeta_id` de carpetas vivas.
 
 **Visto de paso: archivos de todas las conversaciones**
 - En el mismo commit, el back añadió un índice de documentos por usuario (`chat_archivos_chelu`, B `:3703-3887`): `GET /archivos` (todos los del usuario, con el título de su chat), `DELETE /archivos/{id}` (los quita del listado, no de S3 ni del chat) y `POST /archivos/migrar` (rellena los anteriores; la web lo llama una vez por usuario y navegador). Sin la tabla, 409 y la web usa los que tiene en memoria.

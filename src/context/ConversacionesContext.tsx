@@ -1,13 +1,14 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 
 import { duplicarChat, obtenerChats, renameChat as renameChatApi } from '@/chat/chatApi';
-import type { ResumenChat } from '@/types/Chat';
+import type { ChatFolder, ResumenChat } from '@/types/Chat';
 
 // Conversación de la que se duplica (puede no estar aún en la lista).
 type ChatSource = Pick<ResumenChat, 'id' | 'titulo'>;
 
 type ConversacionesContextType = {
     chats: ResumenChat[] | null;
+    folders: ChatFolder[];
     cargando: boolean;
     error: boolean;
     recargar: () => Promise<void>;
@@ -27,6 +28,7 @@ export function useConversaciones() {
 
 export function ConversacionesProvider({ children }: { children: ReactNode }) {
     const [chats, setChats] = useState<ResumenChat[] | null>(null);
+    const [folders, setFolders] = useState<ChatFolder[]>([]);
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState(false);
 
@@ -34,7 +36,9 @@ export function ConversacionesProvider({ children }: { children: ReactNode }) {
         setCargando(true);
         setError(false);
         try {
-            setChats(await obtenerChats());
+            const lista = await obtenerChats();
+            setChats(lista.chats);
+            setFolders(lista.folders);
         } catch {
             setError(true);
         } finally {
@@ -59,15 +63,19 @@ export function ConversacionesProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
-    // La copia conserva el título de la original: se pone arriba de la lista sin esperar a recargarla.
+    // La copia conserva el título y la carpeta de la original: se pone arriba de la lista sin esperar a recargarla.
     const duplicateChat = useCallback(async (source: ChatSource, untilRunId?: string) => {
         const id = await duplicarChat(source.id, untilRunId);
-        setChats((prev) => prev && [{ id, titulo: source.titulo, actualizado: Date.now() }, ...prev]);
+        setChats((prev) => {
+            if (!prev) return prev;
+            const folderId = prev.find((c) => c.id === source.id)?.folderId ?? null;
+            return [{ id, titulo: source.titulo, actualizado: Date.now(), folderId }, ...prev];
+        });
         return id;
     }, []);
 
     return (
-        <ConversacionesContext.Provider value={{ chats, cargando, error, recargar, renameChat, duplicateChat }}>
+        <ConversacionesContext.Provider value={{ chats, folders, cargando, error, recargar, renameChat, duplicateChat }}>
             {children}
         </ConversacionesContext.Provider>
     );

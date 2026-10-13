@@ -6,6 +6,14 @@ export type ResumenChat = {
     id: string;
     titulo: string;
     actualizado: number;
+    // Carpeta en la que la tiene el usuario; null si está suelta.
+    folderId: number | null;
+};
+
+// Carpeta de conversaciones del usuario (un solo nivel).
+export type ChatFolder = {
+    id: number;
+    name: string;
 };
 
 export type Chat = {

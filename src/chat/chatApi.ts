@@ -9,6 +9,7 @@ import { aMapa } from '@/chat/mapas';
 import type {
     BorradorCorreo,
     Chat,
+    ChatFolder,
     Documento,
     EditedEmail,
     Grafica,
@@ -76,16 +77,22 @@ const toSectorsForm = ({ tipo, ...form }: any): SectorsForm | null => (form.zona
 // El back manda los tiempos en segundos.
 const aMs = (ts?: number | null) => (ts == null ? Date.now() : ts < 1e12 ? ts * 1000 : ts);
 
-export async function obtenerChats(): Promise<ResumenChat[]> {
+// Las carpetas llegan ordenadas. Sin las tablas de carpetas en el cliente, la lista viene vacía.
+export async function obtenerChats(): Promise<{ chats: ResumenChat[]; folders: ChatFolder[] }> {
     const respuesta = await authFetch(`${API_URL}chat-cex/get_chats`);
     if (!respuesta.ok) throw new Error(`get_chats ${respuesta.status}`);
     const json = await respuesta.json();
     const chats: any[] = Array.isArray(json?.chats) ? json.chats : [];
-    return chats.map((c) => ({
-        id: c.session_id,
-        titulo: c.title || 'Conversación',
-        actualizado: aMs(c.updated_at ?? c.created_at),
-    }));
+    const folders: any[] = Array.isArray(json?.carpetas) ? json.carpetas : [];
+    return {
+        chats: chats.map((c) => ({
+            id: c.session_id,
+            titulo: c.title || 'Conversación',
+            actualizado: aMs(c.updated_at ?? c.created_at),
+            folderId: c.carpeta_id ?? null,
+        })),
+        folders: folders.map((f) => ({ id: f.id, name: f.nombre })),
+    };
 }
 
 // Lanzar desde el formulario de sectores guarda esta línea de resumen; la web tampoco la pinta.
