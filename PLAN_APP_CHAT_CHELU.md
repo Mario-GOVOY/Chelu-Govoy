@@ -279,7 +279,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
     - Atribución "© OpenStreetMap contributors" visible, enlazada a openstreetmap.org/copyright. El botón (i) de MapLibre no basta porque la esconde.
     - Usar la caché (MapLibre revalida con `If-None-Match`) y sin descargas masivas ni paquetes sin conexión (`OfflineManager` no se usa).
     - Sin garantías: pueden bloquear sin avisar, por eso la URL se puede cambiar en una línea.
-  - **Licencias del software:** MapLibre RN (MIT), MapLibre Native (BSD-2-Clause), turf (MIT), style-spec (ISC), OkHttp (Apache 2.0). Ninguna pide aparecer en el mapa (el logo de MapLibre se quita); van en la pantalla de licencias de terceros, pendiente antes de publicar. Falta revisar la de `leaflet-color-markers`, de donde vienen los pines que lleva la app.
+  - **Licencias del software:** MapLibre RN (MIT), MapLibre Native (BSD-2-Clause), turf (MIT), style-spec (ISC), OkHttp (Apache 2.0). Ninguna pide aparecer en el mapa (el logo de MapLibre se quita); van en la pantalla de licencias de terceros, pendiente antes de publicar. Los pines que lleva la app vienen de `leaflet-color-markers` (BSD-2-Clause, revisada).
   - **Modo oscuro (decidido): el mapa queda fuera.** Las teselas se ven siempre claras, como en la web, y los colores de polígonos se eligen para fondo claro.
     - El marco del mapa sí sigue el tema: tarjeta, cabecera, leyenda, tooltips, botones y pantalla completa.
     - Opcional más adelante: atenuar el mapa al ~85–90 % de brillo en modo oscuro para que no deslumbre (CSS en B, `raster-brightness-max` en A).
@@ -602,7 +602,7 @@ Decisión de librería y planteamiento en D8. Se trabaja en bloques, revisando c
 - **Leyenda:** en pantalla completa va en un `ScrollView` de 144 px de alto como máximo (con `style`: la clase `max-h-36` de NativeWind no se aplicaba); en la tarjeta del chat, 8 capas como mucho y "+N más".
 - **PUDO:** icono de 24×24, dibujado directamente en esas coordenadas.
 - **Rutas (bloque 5, `chat/rutas.ts`):** `getLinesByStreets` manda todas las líneas en un POST a `/directionsForMap2-todas-las-rutas` (sin token, como la web) y cambia la geometría de cada una por el trazado de OSRM. Si una ruta falla no se dibuja (no la recta). Caché en memoria por coordenadas de la línea, solo de las trazadas. La petición sale al abrir la pantalla; si tarda más de 5 s, el mapa se abre sin líneas y se pintan al llegar.
-- **Pendientes de mapas:** revisar la licencia de `leaflet-color-markers` (los pines) para la pantalla de licencias; los pines se ven algo borrosos en pantallas densas (se podrían generar como SVG); el texto "Colocando las paradas…" sale también en mapas sin paradas.
+- **Pendientes de mapas:** los pines se ven algo borrosos en pantallas densas (se podrían generar como SVG); el texto "Colocando las paradas…" sale también en mapas sin paradas.
 - **Vista previa (bloque 6), caso grande (20 mapas de 2000 puntos):** cola de una captura a la vez, priorizando las tarjetas visibles (la lista invertida monta primero las recientes); cancelar al desmontar la tarjeta; pausar la cola mientras se arrastra la lista (crear la vista nativa puede costar uno o dos fotogramas); capturar a densidad 2; caché en disco con clave `runId` + posición del mapa (el back no manda id); tiempo máximo, y si salta, la tarjeta queda sin imagen pero se puede abrir.
 
 ### Progreso de la fase 4
@@ -870,7 +870,7 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
 - Por huella y no por `run_id` + posición: el borrador llega antes de que acabe la respuesta, cuando aún no hay `run_id`. No hace falta tabla nueva.
 
 **Licencias para la pantalla de licencias (pendiente antes de publicar)**
-- Ya en la app: `@shopify/flash-list` (MIT); `@react-native-community/datetimepicker` (MIT); `expo-audio` (MIT); `expo-file-system` (MIT); `@gorhom/portal` y su dependencia `nanoid` (MIT); MapLibre y compañía (ver D8); falta revisar `leaflet-color-markers`.
+- Ya en la app: `@shopify/flash-list` (MIT); `@react-native-community/datetimepicker` (MIT); `expo-audio` (MIT); `expo-file-system` (MIT); `@gorhom/portal` y su dependencia `nanoid` (MIT); MapLibre y compañía (ver D8); `leaflet-color-markers` (los pines): BSD-2-Clause, © 2010-2019 Vladimir Agafonkin, © 2010-2011 CloudMade, © 2013-2020 Thomas Pointhuber (revisado el 2026-10-14).
 - Con el bloque 3, lo que entra en la app de `react-native-enriched-html`: la propia librería (MIT, Software Mansion), **Gumbo** (analizador de HTML de Google, Apache-2.0, en Android e iOS) y **TagSoup** 1.2.1 (Apache-2.0, solo Android). Comprobado en el paquete: `index.native.js` solo importa la parte nativa.
 - Sus dependencias de web (TipTap, ProseMirror, `linkifyjs`, `fast-equals`, `use-sync-external-store`: MIT; `dompurify`: MPL-2.0 o Apache-2.0 a elegir) se instalan en `node_modules` pero no entran en la app; no van en la pantalla. No se pueden quitar de forma limpia (son `dependencies` del paquete) y no hace falta.
 
@@ -1007,11 +1007,20 @@ Decidido el 2026-10-13 hacerla en lugar de cambiar el tema desde el menú latera
 - **Modelo (solo master, D10):** lista de `CHAT_MODELS` (`chat/models.ts`, los de la web) con proveedor, descripción y "por defecto". Cambiarlo empieza una conversación nueva. `ChatModelContext` lo guarda en AsyncStorage (`modelo_chat`) y lo borra al cerrar sesión o salir de la suplantación; fuera de master se usa siempre `deepseek-v4-flash`.
 
 **Pendiente:**
-- **Licencias de terceros:** obligatoria antes de publicar (ver "Licencias para la pantalla de licencias" y D8).
+- **Licencias de terceros:** obligatoria antes de publicar (ver "Licencias para la pantalla de licencias" y D8). **Propuesta (2026-10-14, pendiente de confirmar):**
+  - **Qué debe salir:** MIT, BSD e ISC piden el copyright y el texto de la licencia de todo el código que va en la app, también las dependencias de las dependencias (`scheduler`, el `marked` de `react-native-marked`…); Apache-2.0 además su `NOTICE`. La parte nativa también cuenta (AndroidX, Hermes, Fresco, Yoga, folly, fbjni, Kotlin, OkHttp/Okio…). Solo las dependencias directas no basta, y recorrer las 673 de producción mete herramientas de compilación que no van en la app.
+  - **JS:** `npx expo export --platform android --source-maps`; un script de Node lee los `sources` del source map (los ficheros de `node_modules` que van en el bundle) y escribe un JSON con cada paquete, su licencia, copyright y texto (`LICENSE` y `NOTICE`). Se vuelve a generar antes de cada versión.
+  - **Nativo Android:** `./gradlew app:dependencies --configuration releaseRuntimeClasspath`, y se añaden a mano en un fichero aparte, agrupadas (AndroidX, OkHttp/Okio, Kotlin, MapLibre Native, Gumbo, TagSoup…).
+  - **Lo que no es código:** los pines y la atribución de OpenStreetMap.
+  - **Pantalla:** fila "Licencias de terceros" en Ajustes que abre la ruta `Licenses`, con la lista y el texto desplegable al pulsar cada una.
 - **Versión de la app** y, con EAS Update, buscar actualizaciones.
-- **Privacidad y aviso de IA:** enlace a la política y aviso de que los datos van a OpenAI/DeepSeek (pregunta 13).
-- **Datos guardados:** olvidar el usuario y la contraseña recordados y borrar los registros locales (correos enviados).
+- **Privacidad y aviso de IA:** enlace a la política y aviso de que los datos van a OpenAI/DeepSeek (pregunta 13). **Política (2026-10-14, pendiente):** se parte de la de AppGovoy, que hay que adaptar:
+  - **Quitar:** ubicación (también en segundo plano), cámara, Google Maps y el seguimiento de trabajadores.
+  - **Añadir:** conversaciones guardadas en los servidores de Govoy; mensajes procesados por DeepSeek (por defecto) y OpenAI; micrófono y notas de voz (transcritas con `gpt-4o-mini-transcribe` de OpenAI), y el permiso de micrófono en "Control y gestión de permisos"; envío de borradores de correo con adjuntos; documentos descargados al móvil; teselas de OpenStreetMap (recibe la IP); datos en el móvil (usuario y contraseña cifrados en SecureStore, preferencias, registro de correos enviados).
+  - **A revisar por quien lleve lo legal:** transferencia internacional a DeepSeek (China) y OpenAI (EE. UU.), ver D10; base legal (los usuarios son empleados de clientes: probablemente ejecución del contrato y Govoy como encargado del tratamiento, no consentimiento); plazos de conservación de conversaciones, audios y documentos; nombre de la app y URL donde se publicará.
 - Más adelante: notificaciones push, desbloqueo con huella (pregunta 16) y tamaño de letra del chat.
+
+**Descartado (2026-10-14): "Datos guardados"** (olvidar usuario y contraseña, borrar el registro de correos enviados). No es obligatorio: el RGPD no exige un botón para borrar datos locales (se borran desinstalando o borrando los datos de la app) y las tiendas solo piden eliminar la cuenta si la app permite crearla. Borrar el registro de correos haría que los borradores ya enviados volvieran a mostrar el botón de enviar.
 
 ### Fase 0 en detalle (Back-Govoy)
 

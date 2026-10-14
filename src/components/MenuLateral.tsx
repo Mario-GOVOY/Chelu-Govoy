@@ -158,6 +158,8 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
     const [renamingFolder, setRenamingFolder] = useState<ChatFolder | null>(null);
     // Conversación que se guarda en la carpeta que se está creando ("Nueva carpeta…" de "Guardar en carpeta").
     const [chatForNewFolder, setChatForNewFolder] = useState<ResumenChat | null>(null);
+    // Carpeta creándose desde la cabecera, para pintar su botón cargando.
+    const [savingFolder, setSavingFolder] = useState(false);
     const closeFolderName = useCallback(() => {
         setCreatingFolder(false);
         setRenamingFolder(null);
@@ -176,14 +178,17 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
             }
             return;
         }
-        let newFolder: ChatFolder;
+        if (chat) setBusyChatId(chat.id);
+        else setSavingFolder(true);
         try {
-            newFolder = await createFolder(name);
+            const newFolder = await createFolder(name);
+            if (chat) await moveChat(chat, newFolder.id);
         } catch (e) {
             Alert.alert('No se pudo crear la carpeta', (e as Error).message);
-            return;
+        } finally {
+            setBusyChatId(null);
+            setSavingFolder(false);
         }
-        if (chat) moveChat(chat, newFolder.id);
     };
 
     // Conversación cuya hoja "Guardar en carpeta" está abierta.
@@ -272,12 +277,17 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                 {canManageFolders && (
                     <Pressable
                         onPress={() => setCreatingFolder(true)}
+                        disabled={savingFolder}
                         hitSlop={8}
                         accessibilityRole="button"
                         accessibilityLabel="Nueva carpeta"
                         className="h-9 w-9 items-center justify-center rounded-full active:bg-fondo"
                     >
-                        <FolderPlus size={16} color={colores['texto-tenue']} />
+                        {savingFolder ? (
+                            <ActivityIndicator size="small" color={colores['texto-tenue']} />
+                        ) : (
+                            <FolderPlus size={16} color={colores['texto-tenue']} />
+                        )}
                     </Pressable>
                 )}
                 <Pressable
