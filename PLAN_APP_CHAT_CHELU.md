@@ -213,7 +213,8 @@ Consecuencias:
 | `jwt-decode` | 4.0.0 | No hace falta por ahora | La respuesta del login ya trae todos los datos de la sesión |
 | `lucide-react-native` | 1.52 | OK | Admite React 19 y `react-native-svg` 12–15 (el SDK fija la 15.15) |
 | `@shopify/flash-list` | 2.0.2 (la que fija el SDK) | OK, instalada | Licencia MIT. Solo JS (sin código nativo, no hace falta recompilar); la v2 necesita la nueva arquitectura, la única en RN 0.86. Se usa en la lista de conversaciones |
-| **`react-native-enriched-html`** (fase 4, elegida) | 1.1.1 | OK, **sin instalar todavía** (bloque 3) | Software Mansion, MIT. Editor de texto enriquecido nativo, solo nueva arquitectura; el paquete se desarrolla contra RN 0.86.0. Antes se llamaba `react-native-enriched` (ese ya no se actualiza). Necesita recompilar, sin plugin de Expo. Ver "Progreso de la fase 4" para licencias de lo que lleva dentro |
+| `@gorhom/portal` | 1.0.14 | OK, instalada (2026-10-14) | Licencia MIT; depende solo de `nanoid` (MIT). Solo JS, no hace falta recompilar. Pinta las hojas del menú lateral encima del drawer, a pantalla completa |
+| **`react-native-enriched-html`** (fase 4, elegida) | 1.1.1 | OK, instalada (bloque 3) | Software Mansion, MIT. Editor de texto enriquecido nativo, solo nueva arquitectura; el paquete se desarrolla contra RN 0.86.0. Antes se llamaba `react-native-enriched` (ese ya no se actualiza). Necesita recompilar, sin plugin de Expo. Ver "Progreso de la fase 4" para licencias de lo que lleva dentro |
 
 ### D6. Mismo backend que el resto de repositorios
 
@@ -869,7 +870,7 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
 - Por huella y no por `run_id` + posición: el borrador llega antes de que acabe la respuesta, cuando aún no hay `run_id`. No hace falta tabla nueva.
 
 **Licencias para la pantalla de licencias (pendiente antes de publicar)**
-- Ya en la app: `@shopify/flash-list` (MIT); `@react-native-community/datetimepicker` (MIT); `expo-audio` (MIT); `expo-file-system` (MIT); MapLibre y compañía (ver D8); falta revisar `leaflet-color-markers`.
+- Ya en la app: `@shopify/flash-list` (MIT); `@react-native-community/datetimepicker` (MIT); `expo-audio` (MIT); `expo-file-system` (MIT); `@gorhom/portal` y su dependencia `nanoid` (MIT); MapLibre y compañía (ver D8); falta revisar `leaflet-color-markers`.
 - Con el bloque 3, lo que entra en la app de `react-native-enriched-html`: la propia librería (MIT, Software Mansion), **Gumbo** (analizador de HTML de Google, Apache-2.0, en Android e iOS) y **TagSoup** 1.2.1 (Apache-2.0, solo Android). Comprobado en el paquete: `index.native.js` solo importa la parte nativa.
 - Sus dependencias de web (TipTap, ProseMirror, `linkifyjs`, `fast-equals`, `use-sync-external-store`: MIT; `dompurify`: MPL-2.0 o Apache-2.0 a elegir) se instalan en `node_modules` pero no entran en la app; no van en la pantalla. No se pueden quitar de forma limpia (son `dependencies` del paquete) y no hace falta.
 
@@ -989,6 +990,9 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 - **Skeletons:** `Spinners/ChatSkeleton` (al cargar un chat, en lugar del `ActivityIndicator`) y `Spinners/ConversationListSkeleton` (carga inicial de la lista), con bloques `bg-borde-medio` que laten (`usePulseStyle`). Hechos a mano: las librerías de skeleton no aportan nada para dos pantallas.
 - **Gráficas que crecían tras cargar:** `TarjetaGrafica` calcula el ancho con `useWindowDimensions` (lado corto menos los márgenes del chat) en vez de medirlo después de pintar.
 - **Chelu en la web:** PNG en lugar del SVG (`chelu-224.png` para burbujas, menú y panel; `chelu-112.png` y `chelu-224.png` con `srcSet` en la bienvenida). Se veía con bordes de sierra porque Chrome reduce mal una imagen dentro de una capa animada; se arregla con imágenes cuadradas del tamaño exacto. En la app, `assets/chelu.png` pasa a 336×342.
+- **Hojas del menú lateral a pantalla completa:** las de acciones de conversación y carpeta, "Guardar en carpeta" y las `NameSheet` van dentro de un `Portal` (`@gorhom/portal`; `PortalProvider` en `AppNavigator`, alrededor del drawer). Antes ocupaban solo el ancho del menú porque `HojaInferior` es una capa dentro de quien la pinta. Descartado hacerla con `Modal` (se pierde la animación de cierre y cambia el teclado en Android) o subir el estado de las hojas a un contexto.
+- **Teclado del chat:** tocar o arrastrar la lista de mensajes o la bienvenida lo cierra (`onTouchStart={Keyboard.dismiss}`; con `keyboardShouldPersistTaps="handled"` solo se cerraba al tocar una zona vacía, no un mensaje). El botón del menú también lo cierra; al abrir el menú deslizando ya lo hacía el drawer (`keyboardDismissMode: 'on-drag'`).
+- **README:** requisitos, clonar en una ruta corta (`C:\Chelu-Govoy`), `prebuild`, desarrollo (`expo run:android`, Metro por Wi-Fi o `adb reverse`), back local (`adb reverse tcp:8000 tcp:8000`), APK y AAB con `gradlew`, firma y los atajos de PowerShell.
 
 **Visto de paso: archivos de todas las conversaciones**
 - En el mismo commit, el back añadió un índice de documentos por usuario (`chat_archivos_chelu`, B `:3703-3887`): `GET /archivos` (todos los del usuario, con el título de su chat), `DELETE /archivos/{id}` (los quita del listado, no de S3 ni del chat) y `POST /archivos/migrar` (rellena los anteriores; la web lo llama una vez por usuario y navegador). Sin la tabla, 409 y la web usa los que tiene en memoria.
@@ -1201,6 +1205,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-14 | Skeletons propios para el chat y la lista; buscador en "Archivos generados"; gráficas con ancho calculado de la ventana; Chelu en PNG en la web con `srcSet` de tamaño exacto |
 | 2026-10-14 | Cambiar de chat no corta la respuesta (solo app): conversaciones respondiendo montadas y ocultas; nuevas arriba de la lista; sin acciones mientras responden |
 | 2026-10-14 | Segundo plano: respuestas reanudables (`generation_id`, eventos numerados, `?desde=N`, parar por endpoint). Eventos en MySQL (lotes borrados al terminar) o en Redis Streams, a elegir con el equipo. Descartados: tarea de ubicación, servicio en primer plano y paquetes de Stream |
+| 2026-10-14 | Hojas del menú lateral a pantalla completa con `@gorhom/portal` (MIT); el teclado del chat se cierra al tocar la lista o abrir el menú; README con los comandos de desarrollo y de build |
 | 2026-10-13 | Etiqueta de flota "Escenarios" (antes "Múltiples escenarios") en la app, para que los tres chips quepan en una línea |
 | 2026-10-13 | Editor de sectores: indicador en "Editar" y en los chips "Por CP" / "Por proveedor" mientras se monta (cambio en el siguiente fotograma). Con el editor abierto, "Optimizar" y "¿Algo que afinar?" se desactivan, para que un toque en cola no lance nada. Memorizar a mano los chips y secciones se probó y se revirtió (no se notaba); el React Compiler se descartó |
 | 2026-10-09 | Fase 4, bloque 4c: demanda, aprovechamiento mínimo y tipo de optimización en una sola sección "Parámetros"; números limitados a lo que acepta el back (demanda 1–100, aprovechamiento 0–100) |
