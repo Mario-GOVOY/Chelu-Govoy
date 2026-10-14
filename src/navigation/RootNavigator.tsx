@@ -11,6 +11,7 @@ import { AppNavigator } from '@/navigation/AppNavigator';
 import GraficaScreen from '@/screens/GraficaScreen';
 import LoginScreen from '@/screens/LoginScreen';
 import MapaScreen from '@/screens/MapaScreen';
+import SettingsScreen from '@/screens/SettingsScreen';
 import SuplantarScreen from '@/screens/SuplantarScreen';
 import { useColores, useEsquema } from '@/theme/ThemeProvider';
 import type { Grafica, Mapa } from '@/types/Chat';
@@ -21,6 +22,7 @@ export type RootStackParamList = {
     App: undefined;
     Grafica: { grafica: Grafica };
     Mapa: { mapa: Mapa };
+    Settings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -95,6 +97,7 @@ export function RootNavigator() {
                             }}
                         />
                         <Stack.Screen name="Mapa" component={MapaScreen} options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="Settings" component={SettingsScreen} />
                     </>
                 )}
             </Stack.Navigator>

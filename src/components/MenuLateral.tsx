@@ -9,11 +9,10 @@ import {
     FolderMinus,
     FolderPlus,
     LogOut,
-    Moon,
     Pencil,
     Plus,
     RefreshCw,
-    Sun,
+    Settings,
     Trash2,
     UserRoundX,
 } from 'lucide-react-native';
@@ -28,7 +27,7 @@ import { useConversaciones } from '@/context/ConversacionesContext';
 import { useSesion, useSesionActiva } from '@/context/SesionContext';
 import type { AppDrawerParamList } from '@/navigation/AppNavigator';
 import type { ChatFolder, ResumenChat } from '@/types/Chat';
-import { useColores, useTema } from '@/theme/ThemeProvider';
+import { useColores } from '@/theme/ThemeProvider';
 import { esSesionMaster, HAS_FOLDERS_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
 
 const ROLES: Record<string, string> = {
@@ -54,7 +53,6 @@ function OpcionMenu({ texto, icono: Icono, onPress, peligro = false }: {
 export function MenuLateral({ navigation, state }: DrawerContentComponentProps) {
     const insets = useSafeAreaInsets();
     const colores = useColores();
-    const { esquema, setEsquema } = useTema();
     const { salirDeSuplantacion, cerrarSesion } = useSesion();
     const { sesion, staff } = useSesionActiva();
     const isMenuOpen = useDrawerStatus() === 'open';
@@ -335,9 +333,12 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                     </View>
                 </View>
                 <OpcionMenu
-                    texto={esquema === 'dark' ? 'Modo claro' : 'Modo oscuro'}
-                    icono={esquema === 'dark' ? Sun : Moon}
-                    onPress={() => setEsquema(esquema === 'dark' ? 'light' : 'dark')}
+                    texto="Ajustes"
+                    icono={Settings}
+                    onPress={() => {
+                        navigation.closeDrawer();
+                        navigation.navigate('Settings');
+                    }}
                 />
                 {staff && <OpcionMenu texto="Salir de suplantación" icono={UserRoundX} onPress={salirDeSuplantacion} />}
                 <OpcionMenu texto="Cerrar sesión" icono={LogOut} onPress={cerrarSesion} peligro />

@@ -865,6 +865,7 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 | 2 | Renombrar conversación | Hecho, falta probar en el móvil |
 | 3 | Carpetas, en sub-bloques: 3a datos y lista agrupada (carpetas plegables arriba, chats sueltos debajo); 3b crear, renombrar y eliminar carpeta; 3c guardar o sacar un chat de una carpeta | Hecho (3a, 3b y 3c), falta probar en el móvil |
 | 4 | Notas de voz, en sub-bloques: 4a grabar y transcribir (permiso, `expo-audio`, `/transcribir`, texto al campo); 4b barra de grabación con onda, tiempo, descartar y transcribir | 4a hecho (con fila de grabación sencilla: tiempo, X y ✓), falta probar en el móvil |
+| 5 | Buscador de conversaciones en el menú lateral (nuevo, no estaba en la web; se añade también a la web) | Hecho en la app y en la web, falta probar |
 
 **Cómo funciona en la web y el back**
 
@@ -951,6 +952,13 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 - `chat/useVoiceNote.ts`: `useAudioRecorder` con `RecordingPresets.HIGH_QUALITY` (m4a/AAC). `start` pide el permiso, pone `allowsRecording` (solo afecta a iOS) y graba; `finish` para y transcribe; `cancel` para y descarta. Tope de 2 minutos (para y transcribe sola, con `durationMillis` de `useAudioRecorderState`). Si la app pasa a segundo plano mientras graba, se descarta. Errores como la web ("No hay permiso para usar el micrófono.", "No se ha entendido nada. Prueba otra vez." o el `detail`), 5 s.
 - `CajaMensaje`: micro entre el campo y enviar (desactivado mientras Chelu responde). Grabando, una fila ocupa el sitio del campo y de enviar: punto rojo, "Chelu te escucha…", tiempo, X (descartar) y ✓ (transcribir). Transcribiendo, spinner en el micro y "Transcribiendo…" en el campo, que no se puede editar. El texto se añade tras lo escrito y no se envía solo; `fromVoice` se olvida al vaciar el campo o al enviar. El error, en una línea roja encima de la caja.
 - La grabación se borra del móvil al acabar (transcrita, con error o descartada) con `File.delete()`.
+
+**Hecho en el bloque 5 (buscador)**
+- **Solo por título y sin back:** `get_chats` ya trae todas las conversaciones sin paginar, así que se filtra en la app y en el navegador. Sin tildes ni mayúsculas (`normalizeForSearch` en `utils/text.ts` en la app; `normalizar` en F `helpers.ts` en la web, que antes estaba solo en `ChatFilesModal`). No se busca en `summary`/`topics`: el resumen de Agno puede estar en inglés.
+- **App (`ListaConversaciones`):** campo "Buscar conversaciones" con lupa encima de la lista y X para borrar. Mientras hay texto se ocultan las carpetas y sale una sola lista con todas las que coinciden (también las de dentro de carpetas, sin sangría), o "No hay conversaciones que coincidan". Al abrir una conversación se borra la búsqueda. `keyboardShouldPersistTaps="handled"` para abrir un resultado con el teclado abierto.
+- **Web (F `ConvList.tsx`):** el mismo campo bajo "Conversaciones" (Escape lo borra) y la misma lista de resultados. Al abrir un resultado **no** se borra la búsqueda: la lista sigue a la vista. Las filas se pueden arrastrar, pero buscando no hay dónde soltarlas; para mover se usa el menú "⋯".
+- **Para más adelante:** buscar también en el contenido de los mensajes. Necesita un endpoint en el back y, para que sea rápido, guardar el texto en una columna con índice de texto completo (los mensajes están en `runs`, un JSON que `get_chats` evita leer por memoria).
+- Utilidad común en la app: `normalizeForSearch` sustituye a las copias de `SectorsZoneSection` y `mapas.ts`.
 
 **Visto de paso: archivos de todas las conversaciones**
 - En el mismo commit, el back añadió un índice de documentos por usuario (`chat_archivos_chelu`, B `:3703-3887`): `GET /archivos` (todos los del usuario, con el título de su chat), `DELETE /archivos/{id}` (los quita del listado, no de S3 ni del chat) y `POST /archivos/migrar` (rellena los anteriores; la web lo llama una vez por usuario y navegador). Sin la tabla, 409 y la web usa los que tiene en memoria.
@@ -1153,6 +1161,8 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-13 | Fase 4, bloque 4d (flota) en el editor: vehículos incluidos, hoja para editar/añadir/eliminar (las paradas son la `capacidad`; `maxdestinos` no se toca) y escenarios con flota propia y "Volver a calcularlo". Al recalcular la zona se borran los escenarios editados |
 | 2026-10-13 | Fase 4, bloque 4e: "¿Algo que afinar?" en una hoja inferior (`SectorsRefineSheet`) y no dentro de la tarjeta, porque en la lista invertida del chat el teclado tapaba el campo; sin `autoFocus` |
 | 2026-10-13 | Fase 5: renombrar conversación, carpetas ("Guardar en carpeta") y notas de voz, como la web. Acciones de cada conversación en un menú "⋯" con hoja inferior; nombres en una hoja, no en línea; carpetas sin arrastrar; notas de voz con `expo-audio` (m4a), el texto al campo para revisarlo |
+| 2026-10-14 | Buscador de conversaciones en el menú (app y web): solo por título, filtrando en el cliente; buscando, lista plana sin carpetas. Buscar en el contenido, para más adelante (necesita back) |
+| 2026-10-14 | Release en Windows: con el proyecto en el escritorio, `armeabi-v7a` superaba los 260 caracteres de ruta (`react-native-enriched-html`). El proyecto pasa a `C:\Chelu-Govoy` |
 | 2026-10-13 | Etiqueta de flota "Escenarios" (antes "Múltiples escenarios") en la app, para que los tres chips quepan en una línea |
 | 2026-10-13 | Editor de sectores: indicador en "Editar" y en los chips "Por CP" / "Por proveedor" mientras se monta (cambio en el siguiente fotograma). Con el editor abierto, "Optimizar" y "¿Algo que afinar?" se desactivan, para que un toque en cola no lance nada. Memorizar a mano los chips y secciones se probó y se revirtió (no se notaba); el React Compiler se descartó |
 | 2026-10-09 | Fase 4, bloque 4c: demanda, aprovechamiento mínimo y tipo de optimización en una sola sección "Parámetros"; números limitados a lo que acepta el back (demanda 1–100, aprovechamiento 0–100) |
