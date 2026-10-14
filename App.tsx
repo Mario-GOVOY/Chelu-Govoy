@@ -3,6 +3,7 @@ import './global.css';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { ChatModelProvider } from '@/context/ChatModelContext';
 import { SesionProvider } from '@/context/SesionContext';
 import { RootNavigator } from '@/navigation/RootNavigator';
 import { ThemeProvider } from '@/theme/ThemeProvider';
@@ -13,7 +14,9 @@ export default function App() {
             <SafeAreaProvider>
                 <ThemeProvider>
                     <SesionProvider>
-                        <RootNavigator />
+                        <ChatModelProvider>
+                            <RootNavigator />
+                        </ChatModelProvider>
                     </SesionProvider>
                 </ThemeProvider>
             </SafeAreaProvider>

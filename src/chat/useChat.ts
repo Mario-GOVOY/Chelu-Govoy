@@ -26,8 +26,9 @@ import { etiquetaHerramienta } from '@/chat/herramientas';
 /**
  * Mensajes de una conversación (o de una nueva, sin chatId) y envío de preguntas.
  * @param onCreada se llama con el id que da el back al empezar una conversación nueva.
+ * @param model modelo con el que responde el back.
  */
-export function useChat(chatId: string | undefined, onCreada: (id: string) => void) {
+export function useChat(chatId: string | undefined, onCreada: (id: string) => void, model: string) {
     const [mensajes, setMensajes] = useState<Mensaje[]>([]);
     const [titulo, setTitulo] = useState<string | null>(null);
     const [cargando, setCargando] = useState(false);
@@ -129,6 +130,7 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
                 await enviarMensaje({
                     pregunta,
                     sessionId: chatId,
+                    model,
                     sectorsForm,
                     fromVoice,
                     signal: controlador.signal,
@@ -189,7 +191,7 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
                 setRespondiendo(false);
             }
         },
-        [chatId, onCreada],
+        [chatId, onCreada, model],
     );
 
     const parar = useCallback(() => abortRef.current?.abort(), []);

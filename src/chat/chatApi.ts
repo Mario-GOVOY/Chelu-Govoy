@@ -369,9 +369,6 @@ export async function fetchSectorsProviders(mapId: number): Promise<FormProvider
     return proveedores;
 }
 
-// Como la web. Más adelante, guardado en AsyncStorage y con selector para master.
-const MODELO = 'deepseek-v4-flash';
-
 // Eventos del stream que usa la app por ahora; el resto se ignoran.
 export type EventoChat =
     | { tipo: 'session'; session_id: string }
@@ -448,9 +445,10 @@ export async function transcribeAudio(audio: File, sessionId?: string): Promise<
  * Con sectorsForm y sin pregunta, el back lanza la optimización de sectores directamente.
  * Al abortar con signal, lanza un AbortError.
  */
-export async function enviarMensaje({ pregunta, sessionId, sectorsForm, fromVoice = false, signal, onEvento }: {
+export async function enviarMensaje({ pregunta, sessionId, model, sectorsForm, fromVoice = false, signal, onEvento }: {
     pregunta: string;
     sessionId?: string;
+    model: string;
     sectorsForm?: SectorsFormPayload;
     // La pregunta salió de una nota de voz: solo etiqueta la traza en el back.
     fromVoice?: boolean;
@@ -466,7 +464,7 @@ export async function enviarMensaje({ pregunta, sessionId, sectorsForm, fromVoic
                 pregunta,
                 session_id: sessionId,
                 formulario: sectorsForm,
-                modelo: MODELO,
+                modelo: model,
                 incluir_herramientas: true,
                 incluir_metricas: false,
                 origen_audio: fromVoice,

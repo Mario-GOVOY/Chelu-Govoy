@@ -1,4 +1,4 @@
-﻿import { useCallback, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { DrawerScreenProps } from '@react-navigation/drawer';
 import { CompositeScreenProps } from '@react-navigation/native';
@@ -21,6 +21,7 @@ import { Pantalla } from '@/components/ui/Pantalla';
 import { AppDrawerParamList } from '@/navigation/AppNavigator';
 import { RootStackParamList } from '@/navigation/RootNavigator';
 import { useColores } from '@/theme/ThemeProvider';
+import { useChatModel } from '@/context/ChatModelContext';
 import { useConversaciones } from '@/context/ConversacionesContext';
 import { useSesionActiva } from '@/context/SesionContext';
 import type { Documento, Mensaje } from '@/types/Chat';
@@ -48,6 +49,14 @@ export default function ChatScreen({ navigation, route }: Props) {
     const chatId = route.params?.chatId;
     // Al crearse la conversación se pone su id en la ruta, para que el menú la marque como activa.
     const alCrearse = useCallback((id: string) => navigation.setParams({ chatId: id }), [navigation]);
+    const model = useChatModel();
+    // Como la web: cambiar de modelo (en Ajustes) empieza una conversación nueva.
+    const previousModelRef = useRef(model);
+    useEffect(() => {
+        if (model === previousModelRef.current) return;
+        previousModelRef.current = model;
+        if (chatId) navigation.setParams({ chatId: undefined });
+    }, [model]);
     const {
         mensajes,
         titulo,
@@ -62,7 +71,7 @@ export default function ChatScreen({ navigation, route }: Props) {
         launchSectorsForm,
         changeSectorsFormMap,
         saveSectorsForm,
-    } = useChat(chatId, alCrearse);
+    } = useChat(chatId, alCrearse, model);
     const { chats, duplicateChat } = useConversaciones();
     // La lista va invertida: el desplazamiento 0 es el último mensaje.
     const listRef = useRef<FlatList<Mensaje>>(null);
