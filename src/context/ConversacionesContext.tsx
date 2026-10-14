@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 import {
     createFolder as createFolderApi,
@@ -23,6 +23,9 @@ type ConversacionesContextType = {
     renameChat: (chat: ResumenChat, title: string) => Promise<void>;
     // Devuelve el id de la copia. Con untilRunId, la copia acaba en esa respuesta.
     duplicateChat: (source: ChatSource, untilRunId?: string) => Promise<string>;
+    addNewChatToList: (id: string, question: string) => void;
+    respondingChatIds: string[];
+    setChatResponding: (id: string, responding: boolean) => void;
     createFolder: (name: string) => Promise<ChatFolder>;
     // folderId null saca la conversación de su carpeta.
     moveChatToFolder: (chat: ResumenChat, folderId: number | null) => Promise<void>;
@@ -46,12 +49,20 @@ export function ConversacionesProvider({ children }: { children: ReactNode }) {
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState(false);
 
+    // Empezadas en la app que el back aún no devuelve: las guarda al terminar la primera respuesta.
+    const newChatsRef = useRef(new Map<string, ResumenChat>());
+
     const recargar = useCallback(async () => {
         setCargando(true);
         setError(false);
         try {
             const lista = await obtenerChats();
-            setChats(lista.chats);
+            const missing: ResumenChat[] = [];
+            for (const [id, chat] of newChatsRef.current) {
+                if (lista.chats.some((c) => c.id === id)) newChatsRef.current.delete(id);
+                else missing.push(chat);
+            }
+            setChats([...missing, ...lista.chats]);
             setFolders(lista.folders);
         } catch {
             setError(true);
@@ -86,6 +97,23 @@ export function ConversacionesProvider({ children }: { children: ReactNode }) {
             return [{ id, titulo: source.titulo, actualizado: Date.now(), folderId }, ...prev];
         });
         return id;
+    }, []);
+
+    // Una conversación recién empezada se pone arriba sin esperar a recargar, para poder volver a ella
+    // aunque siga respondiendo. El título es la pregunta, como el que pone el back.
+    const addNewChatToList = useCallback((id: string, question: string) => {
+        const text = question.trim();
+        const chat = { id, titulo: text ? text.charAt(0).toUpperCase() + text.slice(1) : 'Nueva conversación', actualizado: Date.now(), folderId: null };
+        newChatsRef.current.set(id, chat);
+        setChats((prev) => prev && !prev.some((c) => c.id === id) ? [chat, ...prev] : prev);
+    }, []);
+
+    // Conversaciones que están respondiendo: en la lista, con indicador y sin acciones hasta que terminen.
+    const [respondingChatIds, setRespondingChatIds] = useState<string[]>([]);
+    const setChatResponding = useCallback((id: string, responding: boolean) => {
+        setRespondingChatIds((prev) => (responding ? [...prev.filter((x) => x !== id), id] : prev.filter((x) => x !== id)));
+        // Al terminar, el back ya la tiene guardada: deja de hacer falta mantenerla al recargar.
+        if (!responding) newChatsRef.current.delete(id);
     }, []);
 
     const createFolder = useCallback(async (name: string) => {
@@ -132,7 +160,7 @@ export function ConversacionesProvider({ children }: { children: ReactNode }) {
 
     return (
         <ConversacionesContext.Provider
-            value={{ chats, folders, cargando, error, recargar, renameChat, duplicateChat, createFolder, moveChatToFolder, renameFolder, deleteFolder }}
+            value={{ chats, folders, cargando, error, recargar, renameChat, duplicateChat, addNewChatToList, respondingChatIds, setChatResponding, createFolder, moveChatToFolder, renameFolder, deleteFolder }}
         >
             {children}
         </ConversacionesContext.Provider>

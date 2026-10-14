@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { DrawerScreenProps } from '@react-navigation/drawer';
 import { CompositeScreenProps } from '@react-navigation/native';
@@ -42,20 +42,86 @@ const EJEMPLOS = [
     { pregunta: '¿Qué proveedores acumulan más incidencias este mes?', icono: Truck },
 ];
 
+// Una conversación montada. Con chatId undefined, una nueva hasta que el back le da id.
+type Conversation = { key: string; chatId?: string; responding: boolean };
+
 export default function ChatScreen({ navigation, route }: Props) {
+    const routeChatId = route.params?.chatId;
+    // En un ref y no en el módulo: con la recarga en caliente el módulo vuelve a empezar y repetiría claves.
+    const nextKeyRef = useRef(1);
+    const [conversations, setConversations] = useState<Conversation[]>([{ key: '0', chatId: routeChatId, responding: false }]);
+
+    // Al cambiar la ruta se quedan las que responden y la de destino (o una nueva si no está montada).
+    const [shownChatId, setShownChatId] = useState(routeChatId);
+    if (routeChatId !== shownChatId) {
+        setShownChatId(routeChatId);
+        const newKey = String(nextKeyRef.current++);
+        setConversations((prev) => {
+            const target = routeChatId ? prev.find((c) => c.chatId === routeChatId) : undefined;
+            const kept = prev.filter((c) => c.responding || c === target);
+            return target ? kept : [...kept, { key: newKey, chatId: routeChatId, responding: false }];
+        });
+    }
+    // La última: si se pide una nueva, la recién añadida y no otra nueva que aún esté esperando su id.
+    const visibleKey = conversations.findLast((c) => c.chatId === routeChatId)?.key;
+    const visibleKeyRef = useRef(visibleKey);
+    visibleKeyRef.current = visibleKey;
+
+    // Pone la conversación en la lista para poder volver a ella. Solo la visible pone su id en la ruta, para que el menú la marque como activa.
+    const { addNewChatToList } = useConversaciones();
+    const handleCreated = useCallback(
+        (key: string, chatId: string, question: string) => {
+            addNewChatToList(chatId, question);
+            setConversations((prev) => prev.map((c) => (c.key === key ? { ...c, chatId } : c)));
+            if (key === visibleKeyRef.current) navigation.setParams({ chatId });
+        },
+        [navigation, addNewChatToList],
+    );
+
+    // Una oculta que termina de responder se desmonta.
+    const handleRespondingChange = useCallback((key: string, responding: boolean) => {
+        setConversations((prev) =>
+            prev
+                .map((c) => (c.key === key ? { ...c, responding } : c))
+                .filter((c) => c.key !== key || responding || key === visibleKeyRef.current),
+        );
+    }, []);
+
+    return conversations.map((c) => (
+        <ChatConversation
+            key={c.key}
+            conversationKey={c.key}
+            navigation={navigation}
+            chatId={c.chatId}
+            visible={c.key === visibleKey}
+            onCreated={handleCreated}
+            onRespondingChange={handleRespondingChange}
+        />
+    ));
+}
+
+function ChatConversation({ conversationKey, navigation, chatId, visible, onCreated, onRespondingChange }: {
+    conversationKey: string;
+    navigation: Props['navigation'];
+    chatId?: string;
+    visible: boolean;
+    onCreated: (key: string, chatId: string, question: string) => void;
+    onRespondingChange: (key: string, responding: boolean) => void;
+}) {
     const colores = useColores();
     const insets = useSafeAreaInsets();
     const { sesion } = useSesionActiva();
-    const chatId = route.params?.chatId;
-    // Al crearse la conversación se pone su id en la ruta, para que el menú la marque como activa.
-    const alCrearse = useCallback((id: string) => navigation.setParams({ chatId: id }), [navigation]);
+    const alCrearse = useCallback(
+        (id: string, question: string) => onCreated(conversationKey, id, question),
+        [onCreated, conversationKey],
+    );
     const model = useChatModel();
     // Como la web: cambiar de modelo (en Ajustes) empieza una conversación nueva.
     const previousModelRef = useRef(model);
     useEffect(() => {
         if (model === previousModelRef.current) return;
         previousModelRef.current = model;
-        if (chatId) navigation.setParams({ chatId: undefined });
+        if (chatId && visible) navigation.setParams({ chatId: undefined });
     }, [model]);
     const {
         mensajes,
@@ -72,6 +138,12 @@ export default function ChatScreen({ navigation, route }: Props) {
         changeSectorsFormMap,
         saveSectorsForm,
     } = useChat(chatId, alCrearse, model);
+    useEffect(() => onRespondingChange(conversationKey, respondiendo), [respondiendo]);
+    // Una nueva se marca en cuanto tiene id, que llega ya respondiendo.
+    const { setChatResponding } = useConversaciones();
+    useEffect(() => {
+        if (chatId) setChatResponding(chatId, respondiendo);
+    }, [chatId, respondiendo]);
     const { chats, duplicateChat } = useConversaciones();
     // La lista va invertida: el desplazamiento 0 es el último mensaje.
     const listRef = useRef<FlatList<Mensaje>>(null);
@@ -135,165 +207,167 @@ export default function ChatScreen({ navigation, route }: Props) {
     const cabecera = chatId ? listTitle ?? titulo ?? '' : 'Nueva conversación';
 
     return (
-        <Pantalla margenInferior={false} margenSuperior={false}>
-            <View
-                className="flex-row items-center gap-2 border-b border-borde bg-superficie px-2"
-                style={{ paddingTop: insets.top, height: insets.top + 56 }}
-            >
-                <Pressable
-                    onPress={() => navigation.openDrawer()}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Abrir menú"
-                    className="h-10 w-10 items-center justify-center rounded-full active:bg-fondo"
+        <View style={{ flex: 1, display: visible ? 'flex' : 'none' }}>
+            <Pantalla margenInferior={false} margenSuperior={false}>
+                <View
+                    className="flex-row items-center gap-2 border-b border-borde bg-superficie px-2"
+                    style={{ paddingTop: insets.top, height: insets.top + 56 }}
                 >
-                    <Menu size={24} color={colores.texto} />
-                </Pressable>
-                <Text className="flex-1 text-lg font-semibold text-texto" numberOfLines={1}>
-                    {cabecera}
-                </Text>
-                {chatId && (
                     <Pressable
-                        onPress={() => setArchivosAbierto(true)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Archivos generados (${documentos.length})`}
-                        className="h-10 w-10 items-center justify-center rounded-full active:bg-fondo"
-                    >
-                        <FileText size={20} color={colores['texto-secundario']} />
-                        {documentos.length > 0 && (
-                            <View className="absolute right-0.5 top-0.5 h-4 min-w-4 items-center justify-center rounded-full bg-primario px-1">
-                                <Text className="text-[10px] font-bold text-sobre-primario">{documentos.length}</Text>
-                            </View>
-                        )}
-                    </Pressable>
-                )}
-                {/* Vuelve a pedir la conversación al back; con una respuesta en curso no, porque la cortaría. */}
-                {chatId && (
-                    <Pressable
-                        onPress={recargar}
-                        disabled={cargando || respondiendo}
+                        onPress={() => navigation.openDrawer()}
                         hitSlop={8}
                         accessibilityRole="button"
-                        accessibilityLabel="Actualizar conversación"
+                        accessibilityLabel="Abrir menú"
                         className="h-10 w-10 items-center justify-center rounded-full active:bg-fondo"
                     >
-                        {cargando ? (
-                            <ActivityIndicator size="small" color={colores['texto-secundario']} />
-                        ) : (
-                            <RefreshCw size={20} color={respondiendo ? colores['texto-tenue'] : colores['texto-secundario']} />
-                        )}
+                        <Menu size={24} color={colores.texto} />
                     </Pressable>
-                )}
-            </View>
+                    <Text className="flex-1 text-lg font-semibold text-texto" numberOfLines={1}>
+                        {cabecera}
+                    </Text>
+                    {chatId && (
+                        <Pressable
+                            onPress={() => setArchivosAbierto(true)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Archivos generados (${documentos.length})`}
+                            className="h-10 w-10 items-center justify-center rounded-full active:bg-fondo"
+                        >
+                            <FileText size={20} color={colores['texto-secundario']} />
+                            {documentos.length > 0 && (
+                                <View className="absolute right-0.5 top-0.5 h-4 min-w-4 items-center justify-center rounded-full bg-primario px-1">
+                                    <Text className="text-[10px] font-bold text-sobre-primario">{documentos.length}</Text>
+                                </View>
+                            )}
+                        </Pressable>
+                    )}
+                    {/* Vuelve a pedir la conversación al back; con una respuesta en curso no, porque la cortaría. */}
+                    {chatId && (
+                        <Pressable
+                            onPress={recargar}
+                            disabled={cargando || respondiendo}
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityLabel="Actualizar conversación"
+                            className="h-10 w-10 items-center justify-center rounded-full active:bg-fondo"
+                        >
+                            {cargando ? (
+                                <ActivityIndicator size="small" color={colores['texto-secundario']} />
+                            ) : (
+                                <RefreshCw size={20} color={respondiendo ? colores['texto-tenue'] : colores['texto-secundario']} />
+                            )}
+                        </Pressable>
+                    )}
+                </View>
 
-            <KeyboardAvoidingView behavior="padding" className="flex-1">
-                {error ? (
-                    <View className="flex-1 items-center justify-center gap-4 px-8">
-                        <Text className="text-center text-base text-texto-secundario">No se pudo cargar la conversación.</Text>
-                        <Boton texto="Reintentar" variante="secundario" onPress={recargar} />
-                    </View>
-                ) : cargando ? (
-                    <ChatSkeleton />
-                ) : mensajes.length === 0 ? (
-                    // Con scroll por si con el teclado abierto no cabe; si cabe, queda centrado.
-                    <ScrollView
-                        contentContainerClassName="flex-grow items-center justify-center px-6 py-6"
-                        keyboardShouldPersistTaps="handled"
-                    >
-                        <View className="h-32 w-28">
-                            <CheluAvatar />
+                <KeyboardAvoidingView behavior="padding" className="flex-1">
+                    {error ? (
+                        <View className="flex-1 items-center justify-center gap-4 px-8">
+                            <Text className="text-center text-base text-texto-secundario">No se pudo cargar la conversación.</Text>
+                            <Boton texto="Reintentar" variante="secundario" onPress={recargar} />
                         </View>
-                        <Text className="mt-4 text-2xl font-bold text-texto">¿En qué te ayudo <Text className="text-primario">hoy</Text>?</Text>
-                        <Text className="mt-2 text-center text-base text-texto-secundario">
-                            Pregúntame en chat CHELU sobre rutas, alertas, paradas, proveedores, depots, recogidas o PUDOS de {sesion.nombreEmpresa}.
-                        </Text>
-                        <View className="mt-6 w-full gap-3">
-                            <Text className="text-xs font-bold uppercase tracking-wider text-primario">Prueba a preguntar</Text>
-                            {EJEMPLOS.map(({ pregunta, icono: Icono }) => (
-                                <Pressable
-                                    key={pregunta}
-                                    onPress={() => enviar(pregunta)}
-                                    accessibilityRole="button"
-                                    className="flex-row items-center gap-3 rounded-xl border border-borde-medio bg-superficie px-4 py-3 active:bg-primario-suave"
-                                >
-                                    <View className="h-8 w-8 items-center justify-center rounded-lg bg-primario-suave">
-                                        <Icono size={16} color={colores.primario} />
-                                    </View>
-                                    <Text className="flex-1 text-sm text-texto">{pregunta}</Text>
-                                </Pressable>
-                            ))}
-                        </View>
-                    </ScrollView>
-                ) : (
-                    <FlatList
-                        ref={listRef}
-                        inverted
-                        data={invertidos}
-                        keyExtractor={(m) => m.id}
-                        contentContainerClassName="gap-5 px-6 py-4"
-                        keyboardShouldPersistTaps="handled"
-                        renderItem={({ item, index }) => (
-                            <BurbujaMensaje
-                                mensaje={item}
-                                // Sugerencias solo en la última respuesta (la lista va invertida: es la 0).
-                                onPreguntar={index === 0 && !respondiendo ? sendAndScroll : undefined}
-                                // Solo respuestas guardadas y completas: las detenidas o con error no tienen turno en el back.
-                                onDuplicarDesde={item.runId && !item.estado && !respondiendo
-                                    ? () => duplicarDesde(item.runId!)
-                                    : undefined}
-                                duplicando={!!item.runId && item.runId === duplicando}
-                                // Igual que duplicar: solo respuestas con turno guardado en el back.
-                                onValorar={puedeValorar && item.runId && !item.estado
-                                    ? (valoracion) => setValorando({ runId: item.runId!, valoracion, anterior: item.voto ?? null })
-                                    : undefined}
-                                onAmpliarGrafica={(grafica) => navigation.navigate('Grafica', { grafica })}
-                                onAbrirMapa={(mapa) => navigation.navigate('Mapa', { mapa })}
-                                onSendEmail={sendEmail}
-                                onLaunchSectorsForm={sectorsFormBusy ? undefined : (form) => launchSectorsForm(form, '')}
-                                onRefineSectorsForm={sectorsFormBusy ? undefined : setRefiningSectorsForm}
-                                onChangeSectorsFormMap={changeSectorsFormMap}
-                                onEditSectorsForm={(form, map) => setEditingSectorsForm({ form, map })}
-                            />
-                        )}
+                    ) : cargando ? (
+                        <ChatSkeleton />
+                    ) : mensajes.length === 0 ? (
+                        // Con scroll por si con el teclado abierto no cabe; si cabe, queda centrado.
+                        <ScrollView
+                            contentContainerClassName="flex-grow items-center justify-center px-6 py-6"
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            <View className="h-32 w-28">
+                                <CheluAvatar />
+                            </View>
+                            <Text className="mt-4 text-2xl font-bold text-texto">¿En qué te ayudo <Text className="text-primario">hoy</Text>?</Text>
+                            <Text className="mt-2 text-center text-base text-texto-secundario">
+                                Pregúntame en chat CHELU sobre rutas, alertas, paradas, proveedores, depots, recogidas o PUDOS de {sesion.nombreEmpresa}.
+                            </Text>
+                            <View className="mt-6 w-full gap-3">
+                                <Text className="text-xs font-bold uppercase tracking-wider text-primario">Prueba a preguntar</Text>
+                                {EJEMPLOS.map(({ pregunta, icono: Icono }) => (
+                                    <Pressable
+                                        key={pregunta}
+                                        onPress={() => enviar(pregunta)}
+                                        accessibilityRole="button"
+                                        className="flex-row items-center gap-3 rounded-xl border border-borde-medio bg-superficie px-4 py-3 active:bg-primario-suave"
+                                    >
+                                        <View className="h-8 w-8 items-center justify-center rounded-lg bg-primario-suave">
+                                            <Icono size={16} color={colores.primario} />
+                                        </View>
+                                        <Text className="flex-1 text-sm text-texto">{pregunta}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+                        </ScrollView>
+                    ) : (
+                        <FlatList
+                            ref={listRef}
+                            inverted
+                            data={invertidos}
+                            keyExtractor={(m) => m.id}
+                            contentContainerClassName="gap-5 px-6 py-4"
+                            keyboardShouldPersistTaps="handled"
+                            renderItem={({ item, index }) => (
+                                <BurbujaMensaje
+                                    mensaje={item}
+                                    // Sugerencias solo en la última respuesta (la lista va invertida: es la 0).
+                                    onPreguntar={index === 0 && !respondiendo ? sendAndScroll : undefined}
+                                    // Solo respuestas guardadas y completas: las detenidas o con error no tienen turno en el back.
+                                    onDuplicarDesde={item.runId && !item.estado && !respondiendo
+                                        ? () => duplicarDesde(item.runId!)
+                                        : undefined}
+                                    duplicando={!!item.runId && item.runId === duplicando}
+                                    // Igual que duplicar: solo respuestas con turno guardado en el back.
+                                    onValorar={puedeValorar && item.runId && !item.estado
+                                        ? (valoracion) => setValorando({ runId: item.runId!, valoracion, anterior: item.voto ?? null })
+                                        : undefined}
+                                    onAmpliarGrafica={(grafica) => navigation.navigate('Grafica', { grafica })}
+                                    onAbrirMapa={(mapa) => navigation.navigate('Mapa', { mapa })}
+                                    onSendEmail={sendEmail}
+                                    onLaunchSectorsForm={sectorsFormBusy ? undefined : (form) => launchSectorsForm(form, '')}
+                                    onRefineSectorsForm={sectorsFormBusy ? undefined : setRefiningSectorsForm}
+                                    onChangeSectorsFormMap={changeSectorsFormMap}
+                                    onEditSectorsForm={(form, map) => setEditingSectorsForm({ form, map })}
+                                />
+                            )}
+                        />
+                    )}
+                    <CajaMensaje
+                        onEnviar={sendAndScroll}
+                        onParar={parar}
+                        respondiendo={respondiendo}
+                        desactivada={cargando || error}
+                        voiceNotes={puedeDictar}
+                        sessionId={chatId}
                     />
-                )}
-                <CajaMensaje
-                    onEnviar={sendAndScroll}
-                    onParar={parar}
-                    respondiendo={respondiendo}
-                    desactivada={cargando || error}
-                    voiceNotes={puedeDictar}
-                    sessionId={chatId}
+                </KeyboardAvoidingView>
+                <ArchivosGenerados
+                    visible={archivosAbierto}
+                    documentos={documentos}
+                    onCerrar={() => setArchivosAbierto(false)}
                 />
-            </KeyboardAvoidingView>
-            <ArchivosGenerados
-                visible={archivosAbierto}
-                documentos={documentos}
-                onCerrar={() => setArchivosAbierto(false)}
-            />
-            <HojaValoracion
-                valorando={valorando}
-                onCerrar={cerrarValoracion}
-                onEnviar={(voto) => votar(valorando!.runId, voto, valorando!.anterior)}
-            />
-            <SectorsFormEditor
-                editing={editingSectorsForm}
-                onSave={(form, editedForm) => {
-                    saveSectorsForm(form, editedForm);
-                    closeSectorsFormEditor();
-                }}
-                onClose={closeSectorsFormEditor}
-            />
-            <SectorsRefineSheet
-                form={refiningSectorsForm}
-                onSend={(form, question) => {
-                    listRef.current?.scrollToOffset({ offset: 0, animated: true });
-                    launchSectorsForm(form, question);
-                    closeRefineSheet();
-                }}
-                onClose={closeRefineSheet}
-            />
-            <CapaGiro />
-        </Pantalla>
+                <HojaValoracion
+                    valorando={valorando}
+                    onCerrar={cerrarValoracion}
+                    onEnviar={(voto) => votar(valorando!.runId, voto, valorando!.anterior)}
+                />
+                <SectorsFormEditor
+                    editing={editingSectorsForm}
+                    onSave={(form, editedForm) => {
+                        saveSectorsForm(form, editedForm);
+                        closeSectorsFormEditor();
+                    }}
+                    onClose={closeSectorsFormEditor}
+                />
+                <SectorsRefineSheet
+                    form={refiningSectorsForm}
+                    onSend={(form, question) => {
+                        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+                        launchSectorsForm(form, question);
+                        closeRefineSheet();
+                    }}
+                    onClose={closeRefineSheet}
+                />
+                <CapaGiro />
+            </Pantalla>
+        </View>
     );
 }

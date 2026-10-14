@@ -25,10 +25,10 @@ import { etiquetaHerramienta } from '@/chat/herramientas';
 
 /**
  * Mensajes de una conversación (o de una nueva, sin chatId) y envío de preguntas.
- * @param onCreada se llama con el id que da el back al empezar una conversación nueva.
+ * @param onCreada se llama con el id que da el back al empezar una conversación nueva y la pregunta que la empezó.
  * @param model modelo con el que responde el back.
  */
-export function useChat(chatId: string | undefined, onCreada: (id: string) => void, model: string) {
+export function useChat(chatId: string | undefined, onCreada: (id: string, pregunta: string) => void, model: string) {
     const [mensajes, setMensajes] = useState<Mensaje[]>([]);
     const [titulo, setTitulo] = useState<string | null>(null);
     const [cargando, setCargando] = useState(false);
@@ -138,7 +138,7 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
                         if (evento.tipo === 'session' && !chatId && !controlador.signal.aborted) {
                             creadaRef.current = evento.session_id;
                             setTitulo(pregunta);
-                            onCreada(evento.session_id);
+                            onCreada(evento.session_id, pregunta);
                         } else if (evento.tipo === 'delta') {
                             texto += evento.texto;
                             if (!pintadoPendiente) {

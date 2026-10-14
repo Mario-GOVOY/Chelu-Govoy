@@ -21,6 +21,8 @@ type Props = {
     onOpenFolderActions?: (folder: ChatFolder) => void;
     // Conversación con una acción en curso (duplicar, eliminar…).
     busyChatId: string | null;
+    // Conversaciones respondiendo: indicador y sin acciones hasta que terminen.
+    respondingChatIds: string[];
 };
 
 // Campos sueltos y no el objeto, que es nuevo en cada recarga: así memo evita repintar las filas.
@@ -86,6 +88,7 @@ export function ListaConversaciones({
     onOpenActions,
     onOpenFolderActions,
     busyChatId,
+    respondingChatIds,
 }: Props) {
     const colores = useColores();
     const listRef = useRef<FlashListRef<ResumenChat>>(null);
@@ -143,8 +146,8 @@ export function ListaConversaciones({
             {...chat}
             indented={!searching && chat.folderId !== null}
             activo={chat.id === activoId}
-            busy={busyChatId === chat.id}
-            disabled={!!busyChatId}
+            busy={busyChatId === chat.id || respondingChatIds.includes(chat.id)}
+            disabled={!!busyChatId || respondingChatIds.includes(chat.id)}
             onAbrir={openChat}
             onOpenActions={onOpenActions}
         />
