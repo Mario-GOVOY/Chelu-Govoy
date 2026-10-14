@@ -7,6 +7,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTecladoVisible } from '@/hooks/useTecladoVisible';
 import { useColores } from '@/theme/ThemeProvider';
 
+// Lo que tarda la hoja en irse al cerrarla.
+export const SHEET_EXIT_MS = 300;
+
 /**
  * Hoja que sube desde abajo con fondo oscurecido. Tocar fuera, la X o el botón atrás la cierran.
  * Es una capa encima de la pantalla, así que va la última dentro de ella.
@@ -49,7 +52,7 @@ export function HojaInferior({ visible, titulo, onCerrar, children }: {
             <KeyboardAvoidingView behavior="padding" pointerEvents="box-none" style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]}>
                 <Animated.View
                     entering={SlideInDown.duration(380).easing(Easing.out(Easing.cubic))}
-                    exiting={SlideOutDown.duration(300).easing(Easing.in(Easing.cubic))}
+                    exiting={SlideOutDown.duration(SHEET_EXIT_MS).easing(Easing.in(Easing.cubic))}
                     style={{ maxHeight: '80%' }}
                 >
                     <View

@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, FlatList, Keyboard, KeyboardAvoidingView, Pre
 import { DrawerScreenProps } from '@react-navigation/drawer';
 import { CompositeScreenProps } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { BarChart3, FileText, Menu, RefreshCw, TrendingUp, TriangleAlert, Truck } from 'lucide-react-native';
+import { BarChart3, FileText, ListOrdered, Menu, RefreshCw, TrendingUp, TriangleAlert, Truck } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useChat } from '@/chat/useChat';
@@ -13,10 +13,12 @@ import { CajaMensaje } from '@/components/CajaMensaje';
 import { ChatSkeleton } from '@/components/Spinners/ChatSkeleton';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { HojaValoracion, type Valorando } from '@/components/HojaValoracion';
+import { QuestionsSheet, type Question } from '@/components/QuestionsSheet';
 import { SectorsFormEditor, type SectorsFormEditing } from '@/components/SectorsFormEditor';
 import { SectorsRefineSheet } from '@/components/SectorsRefineSheet';
 import { Boton } from '@/components/ui/Boton';
 import { CapaGiro } from '@/components/ui/CapaGiro';
+import { SHEET_EXIT_MS } from '@/components/ui/HojaInferior';
 import { Pantalla } from '@/components/ui/Pantalla';
 import { AppDrawerParamList } from '@/navigation/AppNavigator';
 import { RootStackParamList } from '@/navigation/RootNavigator';
@@ -41,6 +43,10 @@ const EJEMPLOS = [
     { pregunta: 'Reparto de alertas por delegación en una gráfica', icono: BarChart3 },
     { pregunta: '¿Qué proveedores acumulan más incidencias este mes?', icono: Truck },
 ];
+
+// Saltar a una pregunta: espera sin cambios de tamaño para quitar el skeleton, y tope de recolocaciones.
+const JUMP_SETTLE_MS = 250;
+const JUMP_MAX_MS = 2000;
 
 // Una conversación montada. Con chatId undefined, una nueva hasta que el back le da id.
 type Conversation = { key: string; chatId?: string; responding: boolean };
@@ -179,6 +185,51 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
     }, [invertidos]);
     const [archivosAbierto, setArchivosAbierto] = useState(false);
 
+    const questions = useMemo(() => {
+        const userQuestions: Question[] = [];
+        for (const m of mensajes) {
+            if (m.rol === 'usuario') userQuestions.push({ messageId: m.id, text: m.texto });
+        }
+        return userQuestions;
+    }, [mensajes]);
+    const [questionsOpen, setQuestionsOpen] = useState(false);
+    const closeQuestions = useCallback(() => setQuestionsOpen(false), []);
+
+    // El salto es sin animación y el skeleton lo tapa hasta que la lista deja de cambiar de tamaño.
+    const [jumping, setJumping] = useState(false);
+    const jumpEndTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+    const jumpIndexRef = useRef(0);
+    const jumpStartedAtRef = useRef(0);
+    // Con la lista invertida, viewPosition 1 deja la pregunta arriba de la pantalla.
+    const jumpToIndex = (index: number) => {
+        jumpIndexRef.current = index;
+        setJumping(true);
+        clearTimeout(jumpEndTimerRef.current);
+        jumpEndTimerRef.current = setTimeout(() => setJumping(false), JUMP_SETTLE_MS);
+        listRef.current?.scrollToIndex({ index, viewPosition: 1, animated: false });
+    };
+    // El skeleton sale ya; el salto espera a que se vaya la hoja, o su animación se traba mientras se pinta la lista.
+    const jumpToQuestion = (messageId: string) => {
+        setQuestionsOpen(false);
+        setJumping(true);
+        const index = invertidos.findIndex((m) => m.id === messageId);
+        setTimeout(() => {
+            jumpStartedAtRef.current = Date.now();
+            jumpToIndex(index);
+        }, SHEET_EXIT_MS);
+    };
+    // Mientras se pintan respuestas alrededor, la pregunta se vuelve a colocar; con un tope por si Chelu está respondiendo.
+    const keepJumpPosition = () => {
+        if (!jumping || Date.now() - jumpStartedAtRef.current > JUMP_MAX_MS) return;
+        jumpToIndex(jumpIndexRef.current);
+    };
+    // La pregunta aún no está medida: se baja a su posición aproximada para que se pinte y se reintenta.
+    const retryJump = (index: number, averageItemLength: number) => {
+        clearTimeout(jumpEndTimerRef.current);
+        listRef.current?.scrollToOffset({ offset: index * averageItemLength, animated: false });
+        setTimeout(() => jumpToIndex(index), 100);
+    };
+
     // La copia la hace el back; aquí solo se abre. La conversación actual no cambia.
     // Respuesta desde la que se está duplicando, para pintar su botón cargando.
     const [duplicando, setDuplicando] = useState<string | null>(null);
@@ -228,6 +279,16 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                     <Text className="flex-1 text-lg font-semibold text-texto" numberOfLines={1}>
                         {cabecera}
                     </Text>
+                    {questions.length >= 2 && !cargando && (
+                        <Pressable
+                            onPress={() => setQuestionsOpen(true)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Ir a una pregunta"
+                            className="h-10 w-10 items-center justify-center rounded-full active:bg-fondo"
+                        >
+                            <ListOrdered size={20} color={colores['texto-secundario']} />
+                        </Pressable>
+                    )}
                     {chatId && (
                         <Pressable
                             onPress={() => setArchivosAbierto(true)}
@@ -302,39 +363,48 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                             </View>
                         </ScrollView>
                     ) : (
-                        <FlatList
-                            ref={listRef}
-                            inverted
-                            data={invertidos}
-                            keyExtractor={(m) => m.id}
-                            contentContainerClassName="gap-5 px-6 py-4"
-                            keyboardShouldPersistTaps="handled"
-                            // Tocar cualquier parte del chat (también un mensaje o una tarjeta) cierra el teclado.
-                            onTouchStart={Keyboard.dismiss}
-                            renderItem={({ item, index }) => (
-                                <BurbujaMensaje
-                                    mensaje={item}
-                                    // Sugerencias solo en la última respuesta (la lista va invertida: es la 0).
-                                    onPreguntar={index === 0 && !respondiendo ? sendAndScroll : undefined}
-                                    // Solo respuestas guardadas y completas: las detenidas o con error no tienen turno en el back.
-                                    onDuplicarDesde={item.runId && !item.estado && !respondiendo
-                                        ? () => duplicarDesde(item.runId!)
-                                        : undefined}
-                                    duplicando={!!item.runId && item.runId === duplicando}
-                                    // Igual que duplicar: solo respuestas con turno guardado en el back.
-                                    onValorar={puedeValorar && item.runId && !item.estado
-                                        ? (valoracion) => setValorando({ runId: item.runId!, valoracion, anterior: item.voto ?? null })
-                                        : undefined}
-                                    onAmpliarGrafica={(grafica) => navigation.navigate('Grafica', { grafica })}
-                                    onAbrirMapa={(mapa) => navigation.navigate('Mapa', { mapa })}
-                                    onSendEmail={sendEmail}
-                                    onLaunchSectorsForm={sectorsFormBusy ? undefined : (form) => launchSectorsForm(form, '')}
-                                    onRefineSectorsForm={sectorsFormBusy ? undefined : setRefiningSectorsForm}
-                                    onChangeSectorsFormMap={changeSectorsFormMap}
-                                    onEditSectorsForm={(form, map) => setEditingSectorsForm({ form, map })}
-                                />
+                        <View className="flex-1">
+                            <FlatList
+                                ref={listRef}
+                                inverted
+                                data={invertidos}
+                                keyExtractor={(m) => m.id}
+                                contentContainerClassName="gap-5 px-6 py-4"
+                                keyboardShouldPersistTaps="handled"
+                                // Tocar cualquier parte del chat (también un mensaje o una tarjeta) cierra el teclado.
+                                onTouchStart={Keyboard.dismiss}
+                                onScrollToIndexFailed={({ index, averageItemLength }) => retryJump(index, averageItemLength)}
+                                onContentSizeChange={keepJumpPosition}
+                                renderItem={({ item, index }) => (
+                                    <BurbujaMensaje
+                                        mensaje={item}
+                                        // Sugerencias solo en la última respuesta (la lista va invertida: es la 0).
+                                        onPreguntar={index === 0 && !respondiendo ? sendAndScroll : undefined}
+                                        // Solo respuestas guardadas y completas: las detenidas o con error no tienen turno en el back.
+                                        onDuplicarDesde={item.runId && !item.estado && !respondiendo
+                                            ? () => duplicarDesde(item.runId!)
+                                            : undefined}
+                                        duplicando={!!item.runId && item.runId === duplicando}
+                                        // Igual que duplicar: solo respuestas con turno guardado en el back.
+                                        onValorar={puedeValorar && item.runId && !item.estado
+                                            ? (valoracion) => setValorando({ runId: item.runId!, valoracion, anterior: item.voto ?? null })
+                                            : undefined}
+                                        onAmpliarGrafica={(grafica) => navigation.navigate('Grafica', { grafica })}
+                                        onAbrirMapa={(mapa) => navigation.navigate('Mapa', { mapa })}
+                                        onSendEmail={sendEmail}
+                                        onLaunchSectorsForm={sectorsFormBusy ? undefined : (form) => launchSectorsForm(form, '')}
+                                        onRefineSectorsForm={sectorsFormBusy ? undefined : setRefiningSectorsForm}
+                                        onChangeSectorsFormMap={changeSectorsFormMap}
+                                        onEditSectorsForm={(form, map) => setEditingSectorsForm({ form, map })}
+                                    />
+                                )}
+                            />
+                            {jumping && (
+                                <View className="absolute inset-0 bg-fondo">
+                                    <ChatSkeleton />
+                                </View>
                             )}
-                        />
+                        </View>
                     )}
                     <CajaMensaje
                         onEnviar={sendAndScroll}
@@ -349,6 +419,12 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                     visible={archivosAbierto}
                     documentos={documentos}
                     onCerrar={() => setArchivosAbierto(false)}
+                />
+                <QuestionsSheet
+                    visible={questionsOpen}
+                    questions={questions}
+                    onJump={jumpToQuestion}
+                    onClose={closeQuestions}
                 />
                 <HojaValoracion
                     valorando={valorando}
