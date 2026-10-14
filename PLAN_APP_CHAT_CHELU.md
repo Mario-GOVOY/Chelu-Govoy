@@ -808,6 +808,37 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
   3. **App:** con la app abierta en otro chat, aviso dentro de la app ("La optimización de X ha terminado · Ver"). Al volver a un chat con una optimización en curso, "Optimización en proceso…" hasta que termine (consultando el estado o con el aviso).
   4. **Lista de conversaciones:** el chat cuya optimización ha terminado y aún no se ha abierto sale resaltado con un "!" hasta abrirlo. Hace falta saberlo al cargar la lista: un campo en `get_chats` (p. ej. resultado sin ver) o, solo en el móvil, apuntarlo al recibir la notificación.
 - No sirve que la app se avise sola al acabar el stream: en segundo plano Android e iOS cortan la conexión o la app en pocos minutos.
+- **Cualquier respuesta, no solo las optimizaciones:** el mecanismo es el mismo.
+- **Infraestructura (investigado el 2026-10-14):**
+  - **Procesos en producción:**
+    - La API corre con Gunicorn, 4 workers, y en producción con un ASG de varias instancias (B `agentes/chat_CEX/README.md:419-441`).
+    - Las peticiones de un mismo chat caen en workers distintos (`history_db.py:21-25`).
+    - Lo único compartido entre procesos es MySQL y S3; el back principal no usa Redis. Solo lo usa el servicio de geolocalización, en su propio contenedor.
+  - **Consecuencias:**
+    - Un búfer en memoria no sirve: la reconexión o el "Parar" pueden llegar a otro worker o instancia.
+    - Al desplegar o cuando el ASG quita una instancia, las respuestas en curso mueren sin avisar.
+- **Decidido (probablemente; no se hace todavía): estado en MySQL, sin reenganche en directo:**
+  - **Tabla de turnos en curso:**
+    - Una por cliente: `session_id`, estado y `actualizado`.
+    - En el esquema del historial y con su mismo usuario de escritura.
+  - **La respuesta sigue aunque se corte la conexión:** sigue en su worker y, al terminar, se guarda en el historial como ahora.
+  - **Al volver a un chat en curso:**
+    - La app muestra "Chelu sigue respondiendo…" y consulta el estado cada pocos segundos.
+    - Cuando termina, recarga el chat entero; el texto no se ve saliendo en directo.
+    - Si te quedas en el chat, la respuesta se sigue viendo en directo como ahora.
+  - **Parar:** endpoint nuevo que pone una marca en la tabla. La respuesta la comprueba entre trozos, esté en el worker que esté. Cerrar la conexión deja de significar parar.
+  - **Respuestas muertas:** la respuesta actualiza `actualizado` mientras corre. Si lleva más de un par de minutos sin hacerlo, se da por muerta y se marca como fallida.
+  - **`get_chats`:** dos campos nuevos por chat, `en_curso` y `sin_ver`; de `sin_ver` sale el "!" de la lista.
+  - **Push:** tabla de tokens por usuario del chat. `routes/notifications.py` ya envía con `exp.host`, pero guarda el token por conductor (AppGovoy).
+  - **Descartado de momento: Redis (ElastiCache) con pub/sub:**
+    - Permitiría reengancharse en directo.
+    - A cambio exige infraestructura nueva: servidor, red (security group y `REDIS_URL`) y mantenimiento.
+    - Se puede añadir más adelante sobre lo anterior.
+  - **Orden:**
+    1. Back: separar la respuesta de la conexión y el endpoint de parar.
+    2. App: no cancelar al salir del chat, "Chelu sigue respondiendo…" y el nuevo parar.
+    3. `en_curso`/`sin_ver` y el "!" en la lista.
+    4. Notificaciones.
 
 **Pendiente de hablar con el equipo: "ya enviado" entre dispositivos**
 - **Problema:** el registro de enviados es de cada dispositivo (AsyncStorage en el móvil, `localStorage` en la web). Un correo enviado desde el móvil sigue saliendo como enviable en la web, y al revés. Pasa también en la web entre navegadores.
