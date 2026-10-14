@@ -7,15 +7,13 @@ import { Chip } from '@/components/ui/Chip';
 import { useColores } from '@/theme/ThemeProvider';
 import type { FormFleet, FormProvider, FormZone, ZoneMode } from '@/types/SectorsForm';
 import { formatInteger } from '@/utils/numbers';
+import { normalizeForSearch } from '@/utils/text';
 
 const ZONE_MODES: { value: ZoneMode; label: string }[] = [
     { value: 'mapa_entero', label: 'Mapa entero' },
     { value: 'cps', label: 'Por CP' },
     { value: 'proveedor', label: 'Por proveedor' },
 ];
-
-// Para buscar sin distinguir mayúsculas ni tildes.
-const normalizeText = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /** Zona del formulario: el mapa entero, los CP elegidos o los de un proveedor, con las celdas y vehículos que salen. */
 export function SectorsZoneSection({
@@ -62,8 +60,8 @@ export function SectorsZoneSection({
         [zone.cps_disponibles, filter],
     );
     const matchingProviders = useMemo(() => {
-        const search = normalizeText(providerFilter.trim());
-        return (providers ?? []).filter((provider) => normalizeText(provider.nombre).includes(search));
+        const search = normalizeForSearch(providerFilter.trim());
+        return (providers ?? []).filter((provider) => normalizeForSearch(provider.nombre).includes(search));
     }, [providers, providerFilter]);
 
     return (

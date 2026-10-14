@@ -19,6 +19,7 @@ import type {
 
 import { TILE_URL } from '@/auth/Constants';
 import type { CapaMapa, Mapa, PropiedadesMapa } from '@/types/Chat';
+import { normalizeForSearch } from '@/utils/text';
 
 // Solo las teselas de OSM; las capas del mapa van encima como fuentes GeoJSON.
 export const ESTILO_MAPA: StyleSpecification = {
@@ -77,8 +78,7 @@ export function vistaInicial({ bounds, centro }: Mapa): InitialViewState {
 }
 
 // Para unir capas con nombres equivalentes: sin acentos, mayúsculas ni espacios de más.
-const claveNombre = (nombre: string) =>
-    nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+const claveNombre = (nombre: string) => normalizeForSearch(nombre).replace(/\s+/g, ' ').trim();
 
 // "VALÈNCIA" y "VALENCIA" van en una sola capa, con el color de la primera.
 function unirCapas(capas: CapaMapa[]): CapaMapa[] {

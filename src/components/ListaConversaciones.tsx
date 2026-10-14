@@ -1,11 +1,12 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { FlashList, FlashListRef } from '@shopify/flash-list';
-import { ChevronRight, Folder, FolderOpen, MessageSquare, MoreHorizontal } from 'lucide-react-native';
+import { ChevronRight, Folder, FolderOpen, MessageSquare, MoreHorizontal, Search, X } from 'lucide-react-native';
 
 import type { ChatFolder, ResumenChat } from '@/types/Chat';
 import { useColores } from '@/theme/ThemeProvider';
 import { fechaRelativa } from '@/utils/fechas';
+import { normalizeForSearch } from '@/utils/text';
 
 type Props = {
     chats: ResumenChat[] | null;
@@ -23,6 +24,8 @@ type Props = {
 
 // Campos sueltos y no el objeto, que es nuevo en cada recarga: así memo evita repintar las filas.
 type RowProps = ResumenChat & {
+    // Con sangría bajo su carpeta; en los resultados de búsqueda, sin ella.
+    indented: boolean;
     activo: boolean;
     busy: boolean;
     disabled: boolean;
@@ -35,6 +38,7 @@ const ConversationRow = memo(function ConversationRow({
     titulo,
     actualizado,
     folderId,
+    indented,
     activo,
     busy,
     disabled,
@@ -47,7 +51,7 @@ const ConversationRow = memo(function ConversationRow({
         <Pressable
             onPress={() => onAbrir(chat)}
             onLongPress={disabled ? undefined : () => onOpenActions(chat)}
-            className={`flex-row items-center gap-3 rounded-xl py-3 pr-1 ${folderId === null ? 'pl-3' : 'pl-9'} ${activo ? 'bg-primario-suave' : 'active:bg-fondo'}`}
+            className={`flex-row items-center gap-3 rounded-xl py-3 pr-1 ${indented ? 'pl-9' : 'pl-3'} ${activo ? 'bg-primario-suave' : 'active:bg-fondo'}`}
         >
             <MessageSquare size={18} color={activo ? colores.primario : colores['texto-tenue']} />
             <Text className={`flex-1 text-base ${activo ? 'font-semibold text-primario' : 'text-texto'}`} numberOfLines={1}>
@@ -87,6 +91,16 @@ export function ListaConversaciones({
     // Ids de la lista anterior, para saber si al recargar ha llegado alguna conversación nueva.
     const previousIdsRef = useRef<Set<string> | null>(null);
     const [openFolderIds, setOpenFolderIds] = useState<number[]>([]);
+    const [query, setQuery] = useState('');
+
+    // Al abrir una conversación se limpia la búsqueda.
+    const openChat = useCallback(
+        (chat: ResumenChat) => {
+            setQuery('');
+            onAbrir(chat);
+        },
+        [onAbrir],
+    );
 
     const toggleFolder = useCallback((folderId: number) => {
         setOpenFolderIds((prev) => (prev.includes(folderId) ? prev.filter((id) => id !== folderId) : [...prev, folderId]));
@@ -119,19 +133,27 @@ export function ListaConversaciones({
         return <ActivityIndicator className="mt-4" color={colores.primario} />;
     }
 
+    const searchText = normalizeForSearch(query.trim());
+    const searching = searchText !== '';
+
     const renderChat = (chat: ResumenChat) => (
         <ConversationRow
             key={chat.id}
             {...chat}
+            indented={!searching && chat.folderId !== null}
             activo={chat.id === activoId}
             busy={busyChatId === chat.id}
             disabled={!!busyChatId}
-            onAbrir={onAbrir}
+            onAbrir={openChat}
             onOpenActions={onOpenActions}
         />
     );
 
-    const looseChats = chats.filter((chat) => chat.folderId === null);
+    // Buscando, una sola lista con todas las que coinciden, estén o no en una carpeta.
+    const listChats = searching
+        ? chats.filter((chat) => normalizeForSearch(chat.titulo).includes(searchText))
+        : chats.filter((chat) => chat.folderId === null);
+    const showFolders = !searching && folders.length > 0;
 
     // Las carpetas, con sus conversaciones debajo si están abiertas, van encima de las sueltas.
     const folderSections = folders.map((folder) => {
@@ -173,25 +195,54 @@ export function ListaConversaciones({
     });
 
     return (
-        <FlashList
-            ref={listRef}
-            // Sin él, al entrar una conversación arriba la lista se queda donde estaba y la nueva queda oculta encima.
-            maintainVisibleContentPosition={{ disabled: true }}
-            data={looseChats}
-            keyExtractor={(c) => c.id}
-            contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}
-            ListHeaderComponent={
-                folders.length > 0 ? (
-                    <>
-                        {folderSections}
-                        {looseChats.length > 0 && <View className="mx-2 my-2 h-px bg-borde" />}
-                    </>
-                ) : null
-            }
-            ListEmptyComponent={
-                folders.length === 0 ? <Text className="px-2 text-sm text-texto-tenue">Aún no hay conversaciones.</Text> : null
-            }
-            renderItem={({ item }) => renderChat(item)}
-        />
+        <View className="flex-1">
+            <View className="mx-3 mb-1 h-10 flex-row items-center gap-2 rounded-xl bg-fondo pl-3">
+                <Search size={16} color={colores['texto-tenue']} />
+                <TextInput
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder="Buscar conversaciones"
+                    placeholderTextColor={colores['texto-tenue']}
+                    returnKeyType="search"
+                    className="flex-1 py-0 text-base text-texto"
+                />
+                {query !== '' && (
+                    <Pressable
+                        onPress={() => setQuery('')}
+                        accessibilityRole="button"
+                        accessibilityLabel="Borrar búsqueda"
+                        className="h-10 w-10 items-center justify-center"
+                    >
+                        <X size={16} color={colores['texto-tenue']} />
+                    </Pressable>
+                )}
+            </View>
+            <FlashList
+                ref={listRef}
+                // Sin él, al entrar una conversación arriba la lista se queda donde estaba y la nueva queda oculta encima.
+                maintainVisibleContentPosition={{ disabled: true }}
+                // Con el teclado abierto, el primer toque abre la conversación en vez de solo cerrarlo.
+                keyboardShouldPersistTaps="handled"
+                data={listChats}
+                keyExtractor={(c) => c.id}
+                contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}
+                ListHeaderComponent={
+                    showFolders ? (
+                        <>
+                            {folderSections}
+                            {listChats.length > 0 && <View className="mx-2 my-2 h-px bg-borde" />}
+                        </>
+                    ) : null
+                }
+                ListEmptyComponent={
+                    searching ? (
+                        <Text className="px-2 py-2 text-sm text-texto-tenue">No hay conversaciones que coincidan.</Text>
+                    ) : folders.length === 0 ? (
+                        <Text className="px-2 text-sm text-texto-tenue">Aún no hay conversaciones.</Text>
+                    ) : null
+                }
+                renderItem={({ item }) => renderChat(item)}
+            />
+        </View>
     );
 }
