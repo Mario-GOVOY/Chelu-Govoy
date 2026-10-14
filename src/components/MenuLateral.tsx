@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { DrawerContentComponentProps, useDrawerStatus } from '@react-navigation/drawer';
+import { Portal } from '@gorhom/portal';
 import {
     Check,
     CopyPlus,
@@ -344,124 +345,127 @@ export function MenuLateral({ navigation, state }: DrawerContentComponentProps) 
                 <OpcionMenu texto="Cerrar sesión" icono={LogOut} onPress={cerrarSesion} peligro />
             </View>
 
-            <HojaInferior visible={!!actionsChat} titulo={actionsChat?.titulo ?? ''} onCerrar={closeActions}>
-                <View className="overflow-hidden rounded-2xl bg-superficie">
-                    <Pressable
-                        onPress={() => chooseAction(setRenamingChat)}
-                        className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
-                    >
-                        <Pencil size={20} color={colores['texto-secundario']} />
-                        <Text className="text-base text-texto">Renombrar</Text>
-                    </Pressable>
-                    <View className="mx-4 h-px bg-borde" />
-                    <Pressable
-                        onPress={() => chooseAction(duplicar)}
-                        className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
-                    >
-                        <CopyPlus size={20} color={colores['texto-secundario']} />
-                        <Text className="text-base text-texto">Duplicar</Text>
-                    </Pressable>
-                    <View className="mx-4 h-px bg-borde" />
-                    {canManageFolders && (
-                        <>
-                            <Pressable
-                                onPress={() => chooseAction(setMovingChat)}
-                                className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
-                            >
-                                <FolderInput size={20} color={colores['texto-secundario']} />
-                                <Text className="text-base text-texto">Guardar en carpeta</Text>
-                            </Pressable>
-                            <View className="mx-4 h-px bg-borde" />
-                        </>
-                    )}
-                    <Pressable
-                        onPress={() => chooseAction(eliminar)}
-                        className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
-                    >
-                        <Trash2 size={20} color={colores.peligro} />
-                        <Text className="text-base text-peligro">Eliminar</Text>
-                    </Pressable>
-                </View>
-            </HojaInferior>
-            <NameSheet
-                visible={!!renamingChat}
-                title="Renombrar conversación"
-                initialName={renamingChat?.titulo ?? ''}
-                placeholder="Nombre de la conversación"
-                onSave={(title) => rename(renamingChat!, title)}
-                onClose={closeRename}
-            />
-
-            <HojaInferior visible={!!movingChat} titulo="Guardar en carpeta" onCerrar={closeMoveSheet}>
-                {movingChat && (
-                    // Solo hacen scroll las carpetas: "Nueva carpeta…" y "Sacar de la carpeta" quedan siempre a la vista.
-                    <View className="shrink overflow-hidden rounded-2xl bg-superficie">
-                        <ScrollView className="shrink">
-                            {folders.map((folder) => {
-                                const current = folder.id === movingChat.folderId;
-                                return (
-                                    <Pressable
-                                        key={folder.id}
-                                        onPress={() => (current ? closeMoveSheet() : moveChat(movingChat, folder.id))}
-                                        accessibilityState={{ selected: current }}
-                                        className="flex-row items-center gap-3 border-b border-borde px-4 py-4 active:bg-superficie-alt"
-                                    >
-                                        <Folder size={20} color={colores.primario} />
-                                        <Text className={`flex-1 text-base text-texto ${current ? 'font-semibold' : ''}`} numberOfLines={1}>
-                                            {folder.name}
-                                        </Text>
-                                        {current && <Check size={20} color={colores.primario} />}
-                                    </Pressable>
-                                );
-                            })}
-                        </ScrollView>
+            {/* Las hojas ocupan toda la pantalla, no solo el ancho del menú. */}
+            <Portal>
+                <HojaInferior visible={!!actionsChat} titulo={actionsChat?.titulo ?? ''} onCerrar={closeActions}>
+                    <View className="overflow-hidden rounded-2xl bg-superficie">
                         <Pressable
-                            onPress={() => createFolderForChat(movingChat)}
+                            onPress={() => chooseAction(setRenamingChat)}
                             className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
                         >
-                            <FolderPlus size={20} color={colores['texto-secundario']} />
-                            <Text className="text-base text-texto">Nueva carpeta…</Text>
+                            <Pencil size={20} color={colores['texto-secundario']} />
+                            <Text className="text-base text-texto">Renombrar</Text>
                         </Pressable>
-                        {movingChat.folderId !== null && (
-                            <Pressable
-                                onPress={() => moveChat(movingChat, null)}
-                                className="flex-row items-center gap-3 border-t border-borde px-4 py-4 active:bg-superficie-alt"
-                            >
-                                <FolderMinus size={20} color={colores['texto-secundario']} />
-                                <Text className="text-base text-texto">Sacar de la carpeta</Text>
-                            </Pressable>
+                        <View className="mx-4 h-px bg-borde" />
+                        <Pressable
+                            onPress={() => chooseAction(duplicar)}
+                            className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                        >
+                            <CopyPlus size={20} color={colores['texto-secundario']} />
+                            <Text className="text-base text-texto">Duplicar</Text>
+                        </Pressable>
+                        <View className="mx-4 h-px bg-borde" />
+                        {canManageFolders && (
+                            <>
+                                <Pressable
+                                    onPress={() => chooseAction(setMovingChat)}
+                                    className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                                >
+                                    <FolderInput size={20} color={colores['texto-secundario']} />
+                                    <Text className="text-base text-texto">Guardar en carpeta</Text>
+                                </Pressable>
+                                <View className="mx-4 h-px bg-borde" />
+                            </>
                         )}
+                        <Pressable
+                            onPress={() => chooseAction(eliminar)}
+                            className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                        >
+                            <Trash2 size={20} color={colores.peligro} />
+                            <Text className="text-base text-peligro">Eliminar</Text>
+                        </Pressable>
                     </View>
-                )}
-            </HojaInferior>
+                </HojaInferior>
+                <NameSheet
+                    visible={!!renamingChat}
+                    title="Renombrar conversación"
+                    initialName={renamingChat?.titulo ?? ''}
+                    placeholder="Nombre de la conversación"
+                    onSave={(title) => rename(renamingChat!, title)}
+                    onClose={closeRename}
+                />
 
-            <HojaInferior visible={!!actionsFolder} titulo={actionsFolder?.name ?? ''} onCerrar={closeFolderActions}>
-                <View className="overflow-hidden rounded-2xl bg-superficie">
-                    <Pressable
-                        onPress={() => chooseFolderAction(setRenamingFolder)}
-                        className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
-                    >
-                        <Pencil size={20} color={colores['texto-secundario']} />
-                        <Text className="text-base text-texto">Renombrar</Text>
-                    </Pressable>
-                    <View className="mx-4 h-px bg-borde" />
-                    <Pressable
-                        onPress={() => chooseFolderAction(confirmDeleteFolder)}
-                        className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
-                    >
-                        <Trash2 size={20} color={colores.peligro} />
-                        <Text className="text-base text-peligro">Eliminar</Text>
-                    </Pressable>
-                </View>
-            </HojaInferior>
-            <NameSheet
-                visible={creatingFolder || !!renamingFolder}
-                title={renamingFolder ? 'Renombrar carpeta' : 'Nueva carpeta'}
-                initialName={renamingFolder?.name ?? ''}
-                placeholder="Nombre de la carpeta"
-                onSave={saveFolderName}
-                onClose={closeFolderName}
-            />
+                <HojaInferior visible={!!movingChat} titulo="Guardar en carpeta" onCerrar={closeMoveSheet}>
+                    {movingChat && (
+                        // Solo hacen scroll las carpetas: "Nueva carpeta…" y "Sacar de la carpeta" quedan siempre a la vista.
+                        <View className="shrink overflow-hidden rounded-2xl bg-superficie">
+                            <ScrollView className="shrink">
+                                {folders.map((folder) => {
+                                    const current = folder.id === movingChat.folderId;
+                                    return (
+                                        <Pressable
+                                            key={folder.id}
+                                            onPress={() => (current ? closeMoveSheet() : moveChat(movingChat, folder.id))}
+                                            accessibilityState={{ selected: current }}
+                                            className="flex-row items-center gap-3 border-b border-borde px-4 py-4 active:bg-superficie-alt"
+                                        >
+                                            <Folder size={20} color={colores.primario} />
+                                            <Text className={`flex-1 text-base text-texto ${current ? 'font-semibold' : ''}`} numberOfLines={1}>
+                                                {folder.name}
+                                            </Text>
+                                            {current && <Check size={20} color={colores.primario} />}
+                                        </Pressable>
+                                    );
+                                })}
+                            </ScrollView>
+                            <Pressable
+                                onPress={() => createFolderForChat(movingChat)}
+                                className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                            >
+                                <FolderPlus size={20} color={colores['texto-secundario']} />
+                                <Text className="text-base text-texto">Nueva carpeta…</Text>
+                            </Pressable>
+                            {movingChat.folderId !== null && (
+                                <Pressable
+                                    onPress={() => moveChat(movingChat, null)}
+                                    className="flex-row items-center gap-3 border-t border-borde px-4 py-4 active:bg-superficie-alt"
+                                >
+                                    <FolderMinus size={20} color={colores['texto-secundario']} />
+                                    <Text className="text-base text-texto">Sacar de la carpeta</Text>
+                                </Pressable>
+                            )}
+                        </View>
+                    )}
+                </HojaInferior>
+
+                <HojaInferior visible={!!actionsFolder} titulo={actionsFolder?.name ?? ''} onCerrar={closeFolderActions}>
+                    <View className="overflow-hidden rounded-2xl bg-superficie">
+                        <Pressable
+                            onPress={() => chooseFolderAction(setRenamingFolder)}
+                            className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                        >
+                            <Pencil size={20} color={colores['texto-secundario']} />
+                            <Text className="text-base text-texto">Renombrar</Text>
+                        </Pressable>
+                        <View className="mx-4 h-px bg-borde" />
+                        <Pressable
+                            onPress={() => chooseFolderAction(confirmDeleteFolder)}
+                            className="flex-row items-center gap-3 px-4 py-4 active:bg-superficie-alt"
+                        >
+                            <Trash2 size={20} color={colores.peligro} />
+                            <Text className="text-base text-peligro">Eliminar</Text>
+                        </Pressable>
+                    </View>
+                </HojaInferior>
+                <NameSheet
+                    visible={creatingFolder || !!renamingFolder}
+                    title={renamingFolder ? 'Renombrar carpeta' : 'Nueva carpeta'}
+                    initialName={renamingFolder?.name ?? ''}
+                    placeholder="Nombre de la carpeta"
+                    onSave={saveFolderName}
+                    onClose={closeFolderName}
+                />
+            </Portal>
         </View>
     );
 }

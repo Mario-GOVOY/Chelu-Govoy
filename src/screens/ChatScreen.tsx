@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Keyboard, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { DrawerScreenProps } from '@react-navigation/drawer';
 import { CompositeScreenProps } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -214,7 +214,10 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                     style={{ paddingTop: insets.top, height: insets.top + 56 }}
                 >
                     <Pressable
-                        onPress={() => navigation.openDrawer()}
+                        onPress={() => {
+                            Keyboard.dismiss();
+                            navigation.openDrawer();
+                        }}
                         hitSlop={8}
                         accessibilityRole="button"
                         accessibilityLabel="Abrir menú"
@@ -272,6 +275,7 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                         <ScrollView
                             contentContainerClassName="flex-grow items-center justify-center px-6 py-6"
                             keyboardShouldPersistTaps="handled"
+                            onTouchStart={Keyboard.dismiss}
                         >
                             <View className="h-32 w-28">
                                 <CheluAvatar />
@@ -305,6 +309,8 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                             keyExtractor={(m) => m.id}
                             contentContainerClassName="gap-5 px-6 py-4"
                             keyboardShouldPersistTaps="handled"
+                            // Tocar cualquier parte del chat (también un mensaje o una tarjeta) cierra el teclado.
+                            onTouchStart={Keyboard.dismiss}
                             renderItem={({ item, index }) => (
                                 <BurbujaMensaje
                                     mensaje={item}

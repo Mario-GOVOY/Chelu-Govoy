@@ -817,26 +817,44 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
   - **Consecuencias:**
     - Un búfer en memoria no sirve: la reconexión o el "Parar" pueden llegar a otro worker o instancia.
     - Al desplegar o cuando el ASG quita una instancia, las respuestas en curso mueren sin avisar.
-- **Decidido (probablemente; no se hace todavía): estado en MySQL, sin reenganche en directo:**
-  - **Tabla de turnos en curso:**
-    - Una por cliente: `session_id`, estado y `actualizado`.
-    - En el esquema del historial y con su mismo usuario de escritura.
-  - **La respuesta sigue aunque se corte la conexión:** sigue en su worker y, al terminar, se guarda en el historial como ahora.
-  - **Al volver a un chat en curso:**
-    - La app muestra "Chelu sigue respondiendo…" y consulta el estado cada pocos segundos.
-    - Cuando termina, recarga el chat entero; el texto no se ve saliendo en directo.
-    - Si te quedas en el chat, la respuesta se sigue viendo en directo como ahora.
-  - **Parar:** endpoint nuevo que pone una marca en la tabla. La respuesta la comprueba entre trozos, esté en el worker que esté. Cerrar la conexión deja de significar parar.
-  - **Respuestas muertas:** la respuesta actualiza `actualizado` mientras corre. Si lleva más de un par de minutos sin hacerlo, se da por muerta y se marca como fallida.
-  - **`get_chats`:** dos campos nuevos por chat, `en_curso` y `sin_ver`; de `sin_ver` sale el "!" de la lista.
+- **Ya hecho solo en la app (2026-10-14):** cambiar de chat no corta la respuesta (ver "Respuestas que siguen al cambiar de chat" en la fase 5). Salir de la app, cerrarla o pasar mucho rato en segundo plano sí la corta: eso necesita el back.
+- **Descartado para mantener viva la app en segundo plano:**
+  - **Tarea de ubicación en segundo plano:** Google Play y la App Store rechazan usar la ubicación para algo que no es ubicación.
+  - **Servicio en primer plano de Android** (notifee, `react-native-background-actions`): solo Android, y lo que importa es que el back no pare.
+  - **iOS:** `BGContinuedProcessingTask` (iOS 26) es para tareas que inicia el usuario con progreso visible; `URLSession` en segundo plano no admite streaming.
+  - **Paquetes de Stream** (`@stream-io/chat-ai-sdk`, `@stream-io/chat-react-native-ai`): necesitan Stream Chat (SaaS) y un agente en Node; no encajan.
+- **Decidido (no se hace todavía): respuestas reanudables.** Explicado con esquemas y ejemplos en el artifact "Respuestas reanudables" (https://claude.ai/artifact/TUGtV83uaWbtmgLk61PD9w):
+  - **Idea:**
+    - Cada respuesta es una "generación" con su `generation_id`, que corre en el back aunque se corte la conexión.
+    - Los eventos que manda (los mismos de hoy) se guardan numerados (`seq`).
+    - Al volver, la app pide los eventos desde el último que recibió y sigue viéndola en directo.
+  - **Endpoints:**
+    - `POST /chat-cex/stream` se mantiene; el evento `session` añade `generation_id`. 409 si ese chat ya tiene una generación en curso.
+    - `GET /chat-cex/stream/{generation_id}?desde=N` (nuevo): reenvía los eventos posteriores a `N` y sigue con los que lleguen (SSE con `id:`). Si ya terminó, lo dice y la app recarga con `get_chat`.
+    - `POST /chat-cex/stream/{generation_id}/parar` (nuevo): marca la generación para parar; la comprueba entre trozos, esté en el worker que esté. Cerrar la conexión deja de significar parar.
+    - `get_chat` devuelve `generacion_en_curso` (id y último `seq`); `get_chats`, `en_curso` por chat (más adelante `sin_ver`, para el "!").
+  - **Reglas:**
+    - Latido cada ~15 s; más de 2 min sin latido = muerta, se marca como error.
+    - Las peticiones del panel con `contexto_pantalla` no se guardan como generación.
+    - Al desplegar, revisar `--graceful-timeout` de Gunicorn para no matar las que están en curso.
+  - **Dónde guardar los eventos: dos opciones, se elige con el equipo de infraestructura:**
+    - **Opción A, MySQL (lo que ya hay):**
+      - Tabla `chat_generaciones_chelu` por cliente con el estado (`generation_id`, `session_id`, estado, `parar`, `latido`) y tabla `chat_generaciones_eventos_chelu` con los eventos en lotes (`generation_id`, `seq`, eventos en JSON), en el esquema del historial y con el usuario `chelu_hist`.
+      - Un `INSERT` por lote cada ~400 ms y solo si hay eventos nuevos (no una fila por token ni `UPDATE` con `CONCAT` de un texto largo).
+      - Los lotes de una generación se borran al terminar, detenerse o fallar: la tabla de eventos solo tiene lo que está en curso. Si una reconexión llega después, la respuesta ya está en el historial. Las filas de estado se limpian cada día o semana.
+      - Quien se reconecta consulta los lotes nuevos cada ~400 ms: un poco de retraso, que apenas se nota.
+      - A favor: sin infraestructura nueva. En contra: limpieza y consultas periódicas hechas a mano.
+    - **Opción B, Redis (ElastiCache o Valkey):**
+      - Es lo habitual para esto (por ejemplo, `resumable-stream` de Vercel, el que usa su AI SDK, va sobre Redis).
+      - Un Redis Stream por generación (`XADD` para escribir, `XREAD` desde un id para reanudar, esperando sin consultar en bucle) y un hash con el estado y la marca de parar. `EXPIRE` lo borra solo al rato de terminar.
+      - Todo en memoria: escribir cada evento no carga la base de datos, y la reconexión ve los eventos al momento desde cualquier instancia.
+      - Coste: el software es gratis; ElastiCache gestionado, unos 12–15 $/mes la instancia más pequeña (o *serverless* por uso). Alternativa: Redis en un contenedor propio, sin coste extra pero con mantenimiento.
+      - En contra: infraestructura nueva (servidor, security group, `REDIS_URL`, vigilancia) y decidir qué hacer si se cae.
+    - Los endpoints y la app son iguales en las dos: solo cambia dónde se guardan los eventos. Se puede empezar con A y pasar a B.
   - **Push:** tabla de tokens por usuario del chat. `routes/notifications.py` ya envía con `exp.host`, pero guarda el token por conductor (AppGovoy).
-  - **Descartado de momento: Redis (ElastiCache) con pub/sub:**
-    - Permitiría reengancharse en directo.
-    - A cambio exige infraestructura nueva: servidor, red (security group y `REDIS_URL`) y mantenimiento.
-    - Se puede añadir más adelante sobre lo anterior.
   - **Orden:**
-    1. Back: separar la respuesta de la conexión y el endpoint de parar.
-    2. App: no cancelar al salir del chat, "Chelu sigue respondiendo…" y el nuevo parar.
+    1. Back: generaciones, eventos guardados, reanudar y parar.
+    2. App y web: no cancelar al salir, reanudar al volver (con `generacion_en_curso`) y el nuevo parar.
     3. `en_curso`/`sin_ver` y el "!" en la lista.
     4. Notificaciones.
 
@@ -907,7 +925,7 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 
 **Hecho en el bloque 1**
 - `ListaConversaciones`: cada fila lleva solo el "⋯" (`MoreHorizontal`, como la web); mantener pulsada la fila hace lo mismo. Mientras se duplica o elimina, el "⋯" de esa fila pasa a spinner y los de todas se desactivan (`busyChatId`).
-- `MenuLateral`: `HojaInferior` montada al final del menú (ocupa el ancho del menú, no el de la pantalla), con el título de la conversación y las opciones en una tarjeta. Al elegir, se cierra la hoja y sale la confirmación de siempre.
+- `MenuLateral`: `HojaInferior` montada al final del menú dentro de un `Portal` (`@gorhom/portal`, MIT; desde el 2026-10-14, para que ocupe toda la pantalla y no solo el ancho del menú), con el título de la conversación y las opciones en una tarjeta. Al elegir, se cierra la hoja y sale la confirmación de siempre.
 - "Borrar" pasa a "Eliminar" (menú, confirmación y error), como la web.
 - `HojaInferior`: el título va en una línea, cortado si es largo.
 
@@ -959,17 +977,33 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 - **Web (F `ConvList.tsx`):** el mismo campo bajo "Conversaciones" (Escape lo borra) y la misma lista de resultados. Al abrir un resultado **no** se borra la búsqueda: la lista sigue a la vista. Las filas se pueden arrastrar, pero buscando no hay dónde soltarlas; para mover se usa el menú "⋯".
 - **Para más adelante:** buscar también en el contenido de los mensajes. Necesita un endpoint en el back y, para que sea rápido, guardar el texto en una columna con índice de texto completo (los mensajes están en `runs`, un JSON que `get_chats` evita leer por memoria).
 - Utilidad común en la app: `normalizeForSearch` sustituye a las copias de `SectorsZoneSection` y `mapas.ts`.
+- También en "Archivos generados": buscador por nombre ("No hay archivos que coincidan."); se vacía al cerrar la hoja.
+
+**Respuestas que siguen al cambiar de chat (solo app, 2026-10-14)**
+- `ChatScreen` mantiene montadas las conversaciones que están respondiendo (`ChatConversation`, la pantalla de antes) y oculta las que no se ven con `display: 'none'`. Al cambiar de chat, la que responde sigue recibiendo el stream; al terminar, si no es la visible, se desmonta. Volver a ella la enseña tal cual, sin recargar.
+- Cada conversación tiene una clave propia (`nextKeyRef`), no el `chatId`: una nueva no lo tiene hasta el evento `session`.
+- **Lista:** una conversación nueva se añade arriba al llegar su id (`addNewChatToList`, título con la pregunta) y se mantiene al recargar hasta que el back la devuelve. Mientras responde, su "⋯" pasa a spinner y no admite acciones (`respondingChatIds`).
+- Salir de la app o tenerla mucho rato en segundo plano sigue cortando la respuesta: ver "respuestas reanudables" en la fase 4.
+
+**Retoques del 2026-10-14**
+- **Skeletons:** `Spinners/ChatSkeleton` (al cargar un chat, en lugar del `ActivityIndicator`) y `Spinners/ConversationListSkeleton` (carga inicial de la lista), con bloques `bg-borde-medio` que laten (`usePulseStyle`). Hechos a mano: las librerías de skeleton no aportan nada para dos pantallas.
+- **Gráficas que crecían tras cargar:** `TarjetaGrafica` calcula el ancho con `useWindowDimensions` (lado corto menos los márgenes del chat) en vez de medirlo después de pintar.
+- **Chelu en la web:** PNG en lugar del SVG (`chelu-224.png` para burbujas, menú y panel; `chelu-112.png` y `chelu-224.png` con `srcSet` en la bienvenida). Se veía con bordes de sierra porque Chrome reduce mal una imagen dentro de una capa animada; se arregla con imágenes cuadradas del tamaño exacto. En la app, `assets/chelu.png` pasa a 336×342.
 
 **Visto de paso: archivos de todas las conversaciones**
 - En el mismo commit, el back añadió un índice de documentos por usuario (`chat_archivos_chelu`, B `:3703-3887`): `GET /archivos` (todos los del usuario, con el título de su chat), `DELETE /archivos/{id}` (los quita del listado, no de S3 ni del chat) y `POST /archivos/migrar` (rellena los anteriores; la web lo llama una vez por usuario y navegador). Sin la tabla, 409 y la web usa los que tiene en memoria.
 - Es justo lo que faltaba para el "Archivos generados" de la app (fase 2: "listar todas las conversaciones o borrar de verdad necesitaría endpoints nuevos"). No entra en la fase 5 salvo que se decida (pregunta 24).
 
-### Pantalla de Ajustes (pendiente)
+### Pantalla de Ajustes (en parte)
 
-Decidido el 2026-10-13 hacerla en lugar de cambiar el tema desde el menú lateral. Contenido previsto:
-- **Tema:** claro, oscuro e "igual que el sistema" (pendiente de D7). Al cambiarlo se recarga la app (o al menos el chat), porque hay estilos nativos que no se actualizan solos: la barra de scroll de las tablas del markdown en Android se queda con el color del tema anterior. Se quita la opción del menú lateral (o queda como atajo).
+Decidido el 2026-10-13 hacerla en lugar de cambiar el tema desde el menú lateral.
+
+**Hecho (2026-10-14):** `SettingsScreen` (ruta `Settings` del stack), abierta desde "Ajustes" en el menú lateral, que sustituye a "Modo oscuro/claro".
+- **Tema:** claro y oscuro, con ✓ en el actual. "Igual que el sistema" y la recarga por los estilos nativos (la barra de scroll de las tablas del markdown en Android se queda con el color anterior) siguen pendientes.
+- **Modelo (solo master, D10):** lista de `CHAT_MODELS` (`chat/models.ts`, los de la web) con proveedor, descripción y "por defecto". Cambiarlo empieza una conversación nueva. `ChatModelContext` lo guarda en AsyncStorage (`modelo_chat`) y lo borra al cerrar sesión o salir de la suplantación; fuera de master se usa siempre `deepseek-v4-flash`.
+
+**Pendiente:**
 - **Licencias de terceros:** obligatoria antes de publicar (ver "Licencias para la pantalla de licencias" y D8).
-- **Modelo:** selector solo en sesiones master (D10).
 - **Versión de la app** y, con EAS Update, buscar actualizaciones.
 - **Privacidad y aviso de IA:** enlace a la política y aviso de que los datos van a OpenAI/DeepSeek (pregunta 13).
 - **Datos guardados:** olvidar el usuario y la contraseña recordados y borrar los registros locales (correos enviados).
@@ -1076,7 +1110,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 18. **Rol en el back (aplazado, ver D9):** que `/chat-cex/*` compruebe que el rol es `administrador` o `jefeDeOperaciones`.
 19. **Correos ya enviados entre dispositivos:** que el back marque qué borrador se envió, para que web y app lo vean igual y no se pueda reenviar. Propuesta en el progreso de la fase 4.
 20. **Formato del cuerpo del correo:** que `cuerpo_a_html` del back convierta cursiva y subrayado, que hoy llegan con los símbolos visibles (web y app los ofrecen).
-21. **Optimizaciones en segundo plano y notificación al terminar:** que la optimización siga y se guarde aunque se cambie de chat o se salga de la app, con push al terminar y el chat marcado con "!" en la lista. Propuesta en el progreso de la fase 4.
+21. **Respuestas en segundo plano y notificación al terminar:** que cualquier respuesta (también las optimizaciones) siga y se guarde aunque se salga de la app, se pueda reanudar en directo, con push al terminar y el chat marcado con "!" en la lista. Diseño de respuestas reanudables en el progreso de la fase 4; falta elegir dónde guardar los eventos (MySQL o Redis).
 22. **Título renombrado en `get_chat`:** que `_chat_summary` devuelva la columna `titulo` (hoy da la primera pregunta y la cabecera no refleja el nombre puesto a mano). Afecta también a la web si usa ese título.
 23. **Qué clientes tienen las tablas de carpetas, archivos y la columna `titulo`:** se crean a mano por cliente. Carpetas: 92, 100 y 101 (comprobado el 2026-10-13; en la app van en `HAS_FOLDERS_CHAT_CHELU`, que hay que mantener a mano). Sin ellas, crear carpeta o renombrar dan 409 después de que el usuario lo intente. Valorar que `get_chats` diga si están activas para ocultar los botones.
 24. **"Archivos generados" de todas las conversaciones en la app** con `GET /archivos` (y quitar del listado con `DELETE`), como la web.
@@ -1163,6 +1197,10 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-13 | Fase 5: renombrar conversación, carpetas ("Guardar en carpeta") y notas de voz, como la web. Acciones de cada conversación en un menú "⋯" con hoja inferior; nombres en una hoja, no en línea; carpetas sin arrastrar; notas de voz con `expo-audio` (m4a), el texto al campo para revisarlo |
 | 2026-10-14 | Buscador de conversaciones en el menú (app y web): solo por título, filtrando en el cliente; buscando, lista plana sin carpetas. Buscar en el contenido, para más adelante (necesita back) |
 | 2026-10-14 | Release en Windows: con el proyecto en el escritorio, `armeabi-v7a` superaba los 260 caracteres de ruta (`react-native-enriched-html`). El proyecto pasa a `C:\Chelu-Govoy` |
+| 2026-10-14 | Pantalla de Ajustes con tema (claro/oscuro) y modelo (solo master); el modelo elegido se borra al cerrar sesión o salir de la suplantación |
+| 2026-10-14 | Skeletons propios para el chat y la lista; buscador en "Archivos generados"; gráficas con ancho calculado de la ventana; Chelu en PNG en la web con `srcSet` de tamaño exacto |
+| 2026-10-14 | Cambiar de chat no corta la respuesta (solo app): conversaciones respondiendo montadas y ocultas; nuevas arriba de la lista; sin acciones mientras responden |
+| 2026-10-14 | Segundo plano: respuestas reanudables (`generation_id`, eventos numerados, `?desde=N`, parar por endpoint). Eventos en MySQL (lotes borrados al terminar) o en Redis Streams, a elegir con el equipo. Descartados: tarea de ubicación, servicio en primer plano y paquetes de Stream |
 | 2026-10-13 | Etiqueta de flota "Escenarios" (antes "Múltiples escenarios") en la app, para que los tres chips quepan en una línea |
 | 2026-10-13 | Editor de sectores: indicador en "Editar" y en los chips "Por CP" / "Por proveedor" mientras se monta (cambio en el siguiente fotograma). Con el editor abierto, "Optimizar" y "¿Algo que afinar?" se desactivan, para que un toque en cola no lance nada. Memorizar a mano los chips y secciones se probó y se revirtió (no se notaba); el React Compiler se descartó |
 | 2026-10-09 | Fase 4, bloque 4c: demanda, aprovechamiento mínimo y tipo de optimización en una sola sección "Parámetros"; números limitados a lo que acepta el back (demanda 1–100, aprovechamiento 0–100) |
