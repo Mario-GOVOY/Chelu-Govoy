@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Dimensions, Pressable, Text, View } from 'react-native';
+import { Dimensions, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { Maximize2 } from 'lucide-react-native';
 import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts';
 import { Text as TextoSvg } from 'react-native-svg';
@@ -15,6 +15,10 @@ type Modo = { completa: boolean; alto?: number };
 
 // Hueco de cada etiqueta del eje X. Ampliada se ven todas; en el chat se salta alguna si no caben.
 const ANCHO_ETIQUETA = 64;
+
+// Lo que se come el ancho de pantalla hasta la gráfica: el margen de la lista del chat (px-6)
+// y el borde y el relleno de la tarjeta (border, p-3). Si cambian, hay que cambiarlo aquí.
+const MARGEN_GRAFICA_CHAT = 24 * 2 + 1 * 2 + 12 * 2;
 
 const color = (i: number) => PALETA_GRAFICAS[i % PALETA_GRAFICAS.length];
 
@@ -77,6 +81,9 @@ function etiquetaEjeX(texto: string, ancho: number, colores: Paleta) {
 export function TarjetaGrafica({ grafica, onAmpliar }: { grafica: Grafica; onAmpliar?: () => void }) {
     const colores = useColores();
     const datos = useMemo(() => leerGrafica(grafica), [grafica]);
+    // Con el ancho ya calculado se pinta a la primera, sin crecer después de medir el hueco.
+    const ventana = useWindowDimensions();
+    const anchoGrafica = Math.min(ventana.width, ventana.height) - MARGEN_GRAFICA_CHAT;
 
     return (
         <Pressable
@@ -93,7 +100,7 @@ export function TarjetaGrafica({ grafica, onAmpliar }: { grafica: Grafica; onAmp
             {datos ? (
                 // Sin toques dentro: el toque es de la tarjeta, no de las barras.
                 <View pointerEvents="none">
-                    <DibujoGrafica datos={datos} completa={false} />
+                    <DibujoGrafica datos={datos} completa={false} anchoConocido={anchoGrafica} />
                 </View>
             ) : (
                 <Text className="text-sm text-texto-tenue">No se puede mostrar esta gráfica.</Text>

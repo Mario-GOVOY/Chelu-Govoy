@@ -10,6 +10,7 @@ import { useChat } from '@/chat/useChat';
 import { ArchivosGenerados } from '@/components/ArchivosGenerados';
 import { BurbujaMensaje } from '@/components/BurbujaMensaje';
 import { CajaMensaje } from '@/components/CajaMensaje';
+import { ChatSkeleton } from '@/components/Spinners/ChatSkeleton';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { HojaValoracion, type Valorando } from '@/components/HojaValoracion';
 import { SectorsFormEditor, type SectorsFormEditing } from '@/components/SectorsFormEditor';
@@ -183,9 +184,7 @@ export default function ChatScreen({ navigation, route }: Props) {
                         <Boton texto="Reintentar" variante="secundario" onPress={recargar} />
                     </View>
                 ) : cargando ? (
-                    <View className="flex-1 items-center justify-center">
-                        <ActivityIndicator size="large" color={colores.primario} />
-                    </View>
+                    <ChatSkeleton />
                 ) : mensajes.length === 0 ? (
                     // Con scroll por si con el teclado abierto no cabe; si cabe, queda centrado.
                     <ScrollView

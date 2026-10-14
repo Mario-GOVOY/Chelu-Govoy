@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-nativ
 import { FlashList, FlashListRef } from '@shopify/flash-list';
 import { ChevronRight, Folder, FolderOpen, MessageSquare, MoreHorizontal, Search, X } from 'lucide-react-native';
 
+import { ConversationListSkeleton } from '@/components/Spinners/ConversationListSkeleton';
 import type { ChatFolder, ResumenChat } from '@/types/Chat';
 import { useColores } from '@/theme/ThemeProvider';
 import { fechaRelativa } from '@/utils/fechas';
@@ -130,7 +131,7 @@ export function ListaConversaciones({
                 </Pressable>
             );
         }
-        return <ActivityIndicator className="mt-4" color={colores.primario} />;
+        return <ConversationListSkeleton />;
     }
 
     const searchText = normalizeForSearch(query.trim());
