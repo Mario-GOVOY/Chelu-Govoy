@@ -24,7 +24,7 @@ import { useConversaciones } from '@/context/ConversacionesContext';
 import { useSesionActiva } from '@/context/SesionContext';
 import type { Documento, Mensaje } from '@/types/Chat';
 import type { SectorsForm } from '@/types/SectorsForm';
-import { esSesionMaster, HAS_FEEDBACK_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
+import { esSesionMaster, HAS_AUDIO_CHAT_CHELU, HAS_FEEDBACK_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
 
 // Del drawer y, por encima, del stack raíz (para abrir la gráfica ampliada).
 type Props = CompositeScreenProps<
@@ -65,9 +65,9 @@ export default function ChatScreen({ navigation, route }: Props) {
     const { chats, duplicateChat } = useConversaciones();
     // La lista va invertida: el desplazamiento 0 es el último mensaje.
     const listRef = useRef<FlatList<Mensaje>>(null);
-    const sendAndScroll = (pregunta: string) => {
+    const sendAndScroll = (pregunta: string, fromVoice = false) => {
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
-        enviar(pregunta);
+        enviar(pregunta, undefined, fromVoice);
     };
     const [editingSectorsForm, setEditingSectorsForm] = useState<SectorsFormEditing | null>(null);
     const closeSectorsFormEditor = useCallback(() => setEditingSectorsForm(null), []);
@@ -78,6 +78,7 @@ export default function ChatScreen({ navigation, route }: Props) {
     const [refiningSectorsForm, setRefiningSectorsForm] = useState<SectorsForm | null>(null);
     const closeRefineSheet = useCallback(() => setRefiningSectorsForm(null), []);
     const puedeValorar = validatorUserHasOption(HAS_FEEDBACK_CHAT_CHELU, sesion.empresaId, esSesionMaster(sesion));
+    const puedeDictar = validatorUserHasOption(HAS_AUDIO_CHAT_CHELU, sesion.empresaId, esSesionMaster(sesion));
     // Respuesta que se está valorando (su runId y el pulgar pulsado); null con la hoja cerrada.
     const [valorando, setValorando] = useState<(Valorando & { runId: string }) | null>(null);
     const cerrarValoracion = useCallback(() => setValorando(null), []);
@@ -253,6 +254,8 @@ export default function ChatScreen({ navigation, route }: Props) {
                     onParar={parar}
                     respondiendo={respondiendo}
                     desactivada={cargando || error}
+                    voiceNotes={puedeDictar}
+                    sessionId={chatId}
                 />
             </KeyboardAvoidingView>
             <ArchivosGenerados

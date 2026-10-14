@@ -25,7 +25,13 @@
       "expo-secure-store",
       "react-native-blob-util",
       "@maplibre/maplibre-react-native",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Chelu necesita el micrófono para que puedas dictarle tus preguntas."
+        }
+      ]
     ]
   }
 }

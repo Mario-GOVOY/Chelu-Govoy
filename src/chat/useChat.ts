@@ -74,7 +74,7 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
 
     // Con sectorsForm y sin pregunta se lanza la optimización de sectores y no se pinta mensaje del usuario.
     const enviar = useCallback(
-        async (pregunta: string, sectorsForm?: SectorsFormPayload) => {
+        async (pregunta: string, sectorsForm?: SectorsFormPayload, fromVoice = false) => {
             const controlador = new AbortController();
             abortRef.current = controlador;
             const idChelu = `chelu-${Date.now()}`;
@@ -130,6 +130,7 @@ export function useChat(chatId: string | undefined, onCreada: (id: string) => vo
                     pregunta,
                     sessionId: chatId,
                     sectorsForm,
+                    fromVoice,
                     signal: controlador.signal,
                     onEvento: (evento) => {
                         if (evento.tipo === 'session' && !chatId && !controlador.signal.aborted) {

@@ -1,4 +1,5 @@
 import { fetch as fetchStreaming } from 'expo/fetch';
+import { File } from 'expo-file-system';
 import { Linking, Platform } from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 
@@ -429,16 +430,30 @@ const toEvent = (evento: any): EventoChat | null => {
     }
 };
 
+/** Pasa a texto una nota de voz grabada en m4a. Devuelve '' si no se ha entendido nada. */
+export async function transcribeAudio(audio: File, sessionId?: string): Promise<string> {
+    const datos = new FormData();
+    // El fetch de Expo no admite archivos con { uri }: se adjunta un objeto con nombre, tipo y bytes().
+    datos.append('audio', { name: 'pregunta.m4a', type: 'audio/m4a', bytes: () => audio.bytes() } as unknown as Blob);
+    if (sessionId) datos.append('session_id', sessionId);
+    const respuesta = await authFetch(`${API_URL}chat-cex/transcribir`, { method: 'POST', body: datos });
+    const json = await respuesta.json().catch(() => null);
+    if (!respuesta.ok) throw new Error(json?.detail || 'No se pudo transcribir el audio.');
+    return (json.texto ?? '').trim();
+}
+
 /**
  * Manda una pregunta y va pasando a onEvento cada evento según llega.
  * Sin sessionId, el back crea una conversación nueva y devuelve su id en el evento 'session'.
  * Con sectorsForm y sin pregunta, el back lanza la optimización de sectores directamente.
  * Al abortar con signal, lanza un AbortError.
  */
-export async function enviarMensaje({ pregunta, sessionId, sectorsForm, signal, onEvento }: {
+export async function enviarMensaje({ pregunta, sessionId, sectorsForm, fromVoice = false, signal, onEvento }: {
     pregunta: string;
     sessionId?: string;
     sectorsForm?: SectorsFormPayload;
+    // La pregunta salió de una nota de voz: solo etiqueta la traza en el back.
+    fromVoice?: boolean;
     signal?: AbortSignal;
     onEvento: (evento: EventoChat) => void;
 }): Promise<void> {
@@ -454,6 +469,7 @@ export async function enviarMensaje({ pregunta, sessionId, sectorsForm, signal, 
                 modelo: MODELO,
                 incluir_herramientas: true,
                 incluir_metricas: false,
+                origen_audio: fromVoice,
             }),
             signal,
         },

@@ -471,6 +471,7 @@ Se trabaja en bloques pequeños, revisando cada uno antes de seguir.
   - El redondeo va en el marco y no en el contenido, así que el lado del corte también tiene esquinas.
   - Sombra degradada (`expo-linear-gradient`) en el lado por el que queda tabla: negra al 8 % en claro y al 40 % en oscuro.
   - Barra de desplazamiento nativa siempre visible (`persistentScrollbar`, solo Android). Se probó una barra propia con los colores del tema y se quitó.
+  - **Pendiente:** al cambiar de tema, la barra se queda con el color del tema anterior (negra en oscuro) hasta recargar la app. El color lo pone Android, no la app (`indicatorStyle` solo vale en iOS). Se probó volver a montar el markdown al cambiar el tema (`key={esquema}`) y no lo arregló: parece que sale del tema de la actividad, que no cambia hasta recargar. Se resolverá con la pantalla de Ajustes (ver "Pantalla de Ajustes").
 - **Streaming (`chatApi.enviarMensaje`):** `POST /chat-cex/stream` con `expo/fetch` (`authFetch` admite otro `fetch` como tercer parámetro). Se leen los eventos `data: {json}` separados por línea en blanco, guardando el trozo incompleto. Eventos usados: `session`, `delta`, `tool`, `sugerencias`, `documento`, `done` (`run_id`) y `error`. Se envía `incluir_herramientas: true` e `incluir_metricas: false`; modelo fijo `deepseek-v4-flash`.
 - **Envío (`useChat.enviar`):**
   - Mensaje del usuario y respuesta vacía en estado `escribiendo` al momento.
@@ -819,7 +820,7 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
 - Por huella y no por `run_id` + posición: el borrador llega antes de que acabe la respuesta, cuando aún no hay `run_id`. No hace falta tabla nueva.
 
 **Licencias para la pantalla de licencias (pendiente antes de publicar)**
-- Ya en la app: `@shopify/flash-list` (MIT); `@react-native-community/datetimepicker` (MIT); MapLibre y compañía (ver D8); falta revisar `leaflet-color-markers`.
+- Ya en la app: `@shopify/flash-list` (MIT); `@react-native-community/datetimepicker` (MIT); `expo-audio` (MIT); `expo-file-system` (MIT); MapLibre y compañía (ver D8); falta revisar `leaflet-color-markers`.
 - Con el bloque 3, lo que entra en la app de `react-native-enriched-html`: la propia librería (MIT, Software Mansion), **Gumbo** (analizador de HTML de Google, Apache-2.0, en Android e iOS) y **TagSoup** 1.2.1 (Apache-2.0, solo Android). Comprobado en el paquete: `index.native.js` solo importa la parte nativa.
 - Sus dependencias de web (TipTap, ProseMirror, `linkifyjs`, `fast-equals`, `use-sync-external-store`: MIT; `dompurify`: MPL-2.0 o Apache-2.0 a elegir) se instalan en `node_modules` pero no entran en la app; no van en la pantalla. No se pueden quitar de forma limpia (son `dependencies` del paquete) y no hace falta.
 
@@ -832,7 +833,7 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 | 1 | Menú de acciones por conversación: un botón "⋯" en cada fila que abre una hoja inferior (Renombrar, Duplicar, Guardar en carpeta, Eliminar), en lugar de los iconos sueltos de duplicar y borrar | Hecho con Duplicar y Eliminar (Renombrar y Guardar en carpeta entran con sus bloques), falta probar en el móvil |
 | 2 | Renombrar conversación | Hecho, falta probar en el móvil |
 | 3 | Carpetas, en sub-bloques: 3a datos y lista agrupada (carpetas plegables arriba, chats sueltos debajo); 3b crear, renombrar y eliminar carpeta; 3c guardar o sacar un chat de una carpeta | Hecho (3a, 3b y 3c), falta probar en el móvil |
-| 4 | Notas de voz, en sub-bloques: 4a grabar y transcribir (permiso, `expo-audio`, `/transcribir`, texto al campo); 4b barra de grabación con onda, tiempo, descartar y transcribir | Pendiente |
+| 4 | Notas de voz, en sub-bloques: 4a grabar y transcribir (permiso, `expo-audio`, `/transcribir`, texto al campo); 4b barra de grabación con onda, tiempo, descartar y transcribir | 4a hecho (con fila de grabación sencilla: tiempo, X y ✓), falta probar en el móvil |
 
 **Cómo funciona en la web y el back**
 
@@ -911,9 +912,29 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 - "Nueva carpeta…" abre la `NameSheet` de carpeta; al guardar crea la carpeta y mete en ella la conversación. Si falla la creación, no se mueve nada.
 - Al guardar en una carpeta plegada, la conversación desaparece de la vista y sube el número de la carpeta (salvo si es la abierta, que despliega su carpeta). Sin arrastrar, a diferencia de la web.
 
+**Hecho en el bloque 4a**
+- `expo-audio` 57.0.5 (MIT, sin dependencias de npm) instalada, con su plugin en `app.json` (`microphonePermission`; en Android añade `RECORD_AUDIO`). Recompilada.
+- **Permiso:** `HAS_AUDIO_CHAT_CHELU = ['92', '100', '101']` (la web además tiene `69-qa`, que no se traslada, D3).
+- `chatApi.transcribeAudio`: `POST /chat-cex/transcribir` con `FormData` (el audio y `session_id` si hay conversación); devuelve el texto o lanza el `detail`.
+  - **Ojo:** en el SDK 57 Expo sustituye el `fetch` global por el suyo (`expo/fetch`), que no admite la forma de React Native de adjuntar archivos (`{ uri, name, type }`): da "Unsupported FormDataPart implementation". El audio se adjunta como `{ name: 'pregunta.m4a', type: 'audio/m4a', bytes }`, leyendo los bytes con el `File` de `expo-file-system` (MIT; ya venía como dependencia de `expo`, se declara en `package.json`). `enviarMensaje` manda `origen_audio` (`fromVoice`), que `useChat.enviar` recibe como tercer parámetro.
+- `chat/useVoiceNote.ts`: `useAudioRecorder` con `RecordingPresets.HIGH_QUALITY` (m4a/AAC). `start` pide el permiso, pone `allowsRecording` (solo afecta a iOS) y graba; `finish` para y transcribe; `cancel` para y descarta. Tope de 2 minutos (para y transcribe sola, con `durationMillis` de `useAudioRecorderState`). Si la app pasa a segundo plano mientras graba, se descarta. Errores como la web ("No hay permiso para usar el micrófono.", "No se ha entendido nada. Prueba otra vez." o el `detail`), 5 s.
+- `CajaMensaje`: micro entre el campo y enviar (desactivado mientras Chelu responde). Grabando, una fila ocupa el sitio del campo y de enviar: punto rojo, "Chelu te escucha…", tiempo, X (descartar) y ✓ (transcribir). Transcribiendo, spinner en el micro y "Transcribiendo…" en el campo, que no se puede editar. El texto se añade tras lo escrito y no se envía solo; `fromVoice` se olvida al vaciar el campo o al enviar. El error, en una línea roja encima de la caja.
+- La grabación se borra del móvil al acabar (transcrita, con error o descartada) con `File.delete()`.
+
 **Visto de paso: archivos de todas las conversaciones**
 - En el mismo commit, el back añadió un índice de documentos por usuario (`chat_archivos_chelu`, B `:3703-3887`): `GET /archivos` (todos los del usuario, con el título de su chat), `DELETE /archivos/{id}` (los quita del listado, no de S3 ni del chat) y `POST /archivos/migrar` (rellena los anteriores; la web lo llama una vez por usuario y navegador). Sin la tabla, 409 y la web usa los que tiene en memoria.
 - Es justo lo que faltaba para el "Archivos generados" de la app (fase 2: "listar todas las conversaciones o borrar de verdad necesitaría endpoints nuevos"). No entra en la fase 5 salvo que se decida (pregunta 24).
+
+### Pantalla de Ajustes (pendiente)
+
+Decidido el 2026-10-13 hacerla en lugar de cambiar el tema desde el menú lateral. Contenido previsto:
+- **Tema:** claro, oscuro e "igual que el sistema" (pendiente de D7). Al cambiarlo se recarga la app (o al menos el chat), porque hay estilos nativos que no se actualizan solos: la barra de scroll de las tablas del markdown en Android se queda con el color del tema anterior. Se quita la opción del menú lateral (o queda como atajo).
+- **Licencias de terceros:** obligatoria antes de publicar (ver "Licencias para la pantalla de licencias" y D8).
+- **Modelo:** selector solo en sesiones master (D10).
+- **Versión de la app** y, con EAS Update, buscar actualizaciones.
+- **Privacidad y aviso de IA:** enlace a la política y aviso de que los datos van a OpenAI/DeepSeek (pregunta 13).
+- **Datos guardados:** olvidar el usuario y la contraseña recordados y borrar los registros locales (correos enviados).
+- Más adelante: notificaciones push, desbloqueo con huella (pregunta 16) y tamaño de letra del chat.
 
 ### Fase 0 en detalle (Back-Govoy)
 
