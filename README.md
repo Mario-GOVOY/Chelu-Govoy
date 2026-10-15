@@ -139,6 +139,8 @@ Los builds de release llevan el JavaScript dentro: no necesitan Metro ni el PC.
    - APK: `android\app\build\outputs\apk\release\app-release.apk`
    - AAB: `android\app\build\outputs\bundle\release\app-release.aab`
 
+   Para repartirlos se pueden copiar con otro nombre (p. ej. `Chelu-Govoy-1.0.0.apk`): la firma va dentro, no en el nombre. Mejor copiarlos fuera que renombrarlos ahí, porque cada build vuelve a generar `app-release.*`.
+
 Instalar el APK en el móvil conectado:
 
 ```powershell
@@ -147,9 +149,46 @@ adb install -r android\app\build\outputs\apk\release\app-release.apk
 
 Si un build falla por restos de uno anterior: `cd android; .\gradlew.bat clean; cd ..` y volver a compilar.
 
-**Firma:** de momento `prebuild` firma el release con la clave de debug (`android/app/debug.keystore`). Vale para instalar el APK a mano, pero **Google Play no admite un AAB firmado así**. Antes de la primera distribución hay que configurar la clave de release (plugin de configuración o EAS Build; ver el plan, D5). No subas keystores ni contraseñas al repo: `.gitignore` ya excluye `*.keystore`, `*.jks` y `credentials.json`.
+### Firma de release
 
-**Versión:** antes de publicar una versión nueva, sube `expo.version` en `app.json` (y el `versionCode` de Android cuando se configure).
+El plugin `plugins/withReleaseSigning.js` (registrado en `app.json`) hace que, en cada `prebuild`, el release se firme con la clave de Chelu: `chelu-release.jks`, alias `chelu-key`, con `CN=Govoy, OU=Govoy, O=Govoy, L=Lorca, ST=Murcia, C=ES`.
+
+**Para desarrollar y probar no hace falta la clave.** Sin ella, el release se firma con la clave de debug de cada PC (`android/app/debug.keystore`) y Gradle avisa con "Chelu: sin CHELU_UPLOAD_STORE_FILE…". Vale para instalar el APK a mano, pero **Google Play no admite un AAB firmado así**, y un APK firmado en un PC no se instala encima de otro firmado en otro PC.
+
+**Para sacar una versión que se reparta hace falta la clave**, y tiene que ser **ese mismo `.jks`**: Android solo instala una actualización firmada con la misma clave que la instalada. **No la vuelvas a crear con `keytool`**: saldría otra distinta aunque se pongan los mismos datos. El `.jks` y su contraseña están en el gestor de contraseñas del equipo; se pasan por ahí, nunca por el repo ni por chat. `.gitignore` ya excluye `*.keystore`, `*.jks` y `credentials.json`.
+
+Configurarla en un PC (una vez):
+
+1. Guarda el `.jks` fuera del repo, por ejemplo en `C:\Users\<usuario>\keys\chelu-release.jks`.
+
+2. Crea `C:\Users\<usuario>\.gradle\gradle.properties` (la carpeta `.gradle`, con el punto, puede existir ya; el fichero sin `.txt` al final) con:
+
+   ```properties
+   CHELU_UPLOAD_STORE_FILE=C:/Users/<usuario>/keys/chelu-release.jks
+   CHELU_UPLOAD_KEY_ALIAS=chelu-key
+   CHELU_UPLOAD_STORE_PASSWORD=<contraseña>
+   CHELU_UPLOAD_KEY_PASSWORD=<contraseña>
+   ```
+
+   - La ruta, con barras `/`: con `\` Gradle la lee mal.
+   - Las dos contraseñas son la misma (el formato PKCS12 solo admite una).
+   - Ese fichero es común a todos los proyectos de Gradle del PC; el prefijo `CHELU_` evita chocar con otros (AppGovoy usa `MYAPP_UPLOAD_*`).
+
+3. Regenera y compila como arriba (`npx expo prebuild --platform android` y `.\gradlew.bat assembleRelease`). No debe salir el aviso de la clave de debug.
+
+4. Comprueba con qué clave salió el APK (solo lee el APK, no cambia nada; la versión de `build-tools` puede ser otra):
+
+   ```powershell
+   & "$env:LOCALAPPDATA\Android\Sdk\build-tools\36.1.0\apksigner.bat" verify --verbose --print-certs android\app\build\outputs\apk\release\app-release.apk
+   ```
+
+   Tiene que salir `Verifies` y `Signer #1 certificate DN: CN=Govoy, ... L=Lorca ...`, con `Signer #1 certificate SHA-256 digest: 6cf8c506ffee84f0edfa94bb43d5b5871c1d9de7361e206838c4b7a2ee189c80`. Que solo salga `v2 scheme ... true` es lo normal (v1 solo hace falta para Android anterior al 7). Si sale `CN=Android Debug`, Gradle no está leyendo `gradle.properties`: revisa el nombre del fichero y la ruta. `keytool -printcert -jarfile` no sirve aquí: solo entiende la firma antigua (v1) y con esta app dice "No es un archivo jar firmado" aunque esté firmado.
+
+5. Si el móvil tiene una versión firmada con otra clave (la de debug), Android no deja instalar encima: `adb uninstall com.govoy.chelu` y luego `adb install`. Se pierde la sesión guardada. Pasa solo al cambiar de clave.
+
+### Versión nueva
+
+Sube `version` y `android.versionCode` en `app.json` (el `versionCode` es un entero que tiene que crecer en cada APK o AAB que se reparta), `npx expo prebuild --platform android` y compila. No se cambian en `android/app/build.gradle`: el prebuild los pisa.
 
 ## Atajos (opcional)
 
