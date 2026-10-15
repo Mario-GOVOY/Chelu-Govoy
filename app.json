@@ -23,6 +23,19 @@
     },
     "plugins": [
       "./plugins/withReleaseSigning",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#f4f6f9",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#0e1013"
+          }
+        }
+      ],
       "expo-secure-store",
       "react-native-blob-util",
       "@maplibre/maplibre-react-native",
