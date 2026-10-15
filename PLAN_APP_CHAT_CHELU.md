@@ -921,7 +921,7 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
   - Transcribe con `gpt-4o-mini-transcribe` (por defecto desde el 6-oct) o Whisper local, en español y con el vocabulario del perfil del cliente (`vocabulario_audio`).
   - El texto **no se envía solo**: se añade al campo de escribir (tras lo que hubiera) para revisarlo, porque un nombre mal transcrito acabaría en una consulta equivocada. Al enviarlo, `/stream` lleva `origen_audio: true` (solo etiqueta la traza); se olvida si se vacía el campo.
   - Web (F `useNotaVoz.ts`, `BotonNotaVoz.tsx`, `Composer.tsx`): micro junto a enviar (desactivado mientras Chelu responde). Grabando, la barra ocupa el sitio del campo: "Chelu está escuchando tu consulta…", onda con el volumen, tiempo, X (descartar) y ✓ (parar y transcribir). Tope de 2 minutos (para y transcribe sola). Transcribiendo: spinner en el micro y "Transcribiendo…" en el campo. Errores ("No hay permiso para usar el micrófono.", "No se ha entendido nada. Prueba otra vez." o el `detail`) 5 s en un tooltip.
-  - Solo para `HAS_AUDIO_CHAT_CHELU` = `["69-qa", "92", "100", "101"]` en la web. En la app: `['92', '100', '101']` (el `-qa` no se traslada, D3).
+  - Solo para `HAS_AUDIO_CHAT_CHELU` = `["69", "92", "100", "101"]`, en la web y en la app.
 
 **Planteamiento en la app**
 
@@ -981,7 +981,7 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 
 **Hecho en el bloque 4a**
 - `expo-audio` 57.0.5 (MIT, sin dependencias de npm) instalada, con su plugin en `app.json` (`microphonePermission`; en Android añade `RECORD_AUDIO`). Recompilada.
-- **Permiso:** `HAS_AUDIO_CHAT_CHELU = ['92', '100', '101']` (la web además tiene `69-qa`, que no se traslada, D3).
+- **Permiso:** `HAS_AUDIO_CHAT_CHELU = ['69', '92', '100', '101']`, como en la web.
 - `chatApi.transcribeAudio`: `POST /chat-cex/transcribir` con `FormData` (el audio y `session_id` si hay conversación); devuelve el texto o lanza el `detail`.
   - **Ojo:** en el SDK 57 Expo sustituye el `fetch` global por el suyo (`expo/fetch`), que no admite la forma de React Native de adjuntar archivos (`{ uri, name, type }`): da "Unsupported FormDataPart implementation". El audio se adjunta como `{ name: 'pregunta.m4a', type: 'audio/m4a', bytes }`, leyendo los bytes con el `File` de `expo-file-system` (MIT; ya venía como dependencia de `expo`, se declara en `package.json`). `enviarMensaje` manda `origen_audio` (`fromVoice`), que `useChat.enviar` recibe como tercer parámetro.
 - `chat/useVoiceNote.ts`: `useAudioRecorder` con `RecordingPresets.HIGH_QUALITY` (m4a/AAC). `start` pide el permiso, pone `allowsRecording` (solo afecta a iOS) y graba; `finish` para y transcribe; `cancel` para y descarta. Tope de 2 minutos (para y transcribe sola, con `durationMillis` de `useAudioRecorderState`). Si la app pasa a segundo plano mientras graba, se descarta. Errores como la web ("No hay permiso para usar el micrófono.", "No se ha entendido nada. Prueba otra vez." o el `detail`), 5 s.
