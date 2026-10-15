@@ -7,6 +7,11 @@ import { useVoiceNote } from '@/chat/useVoiceNote';
 import { useTecladoVisible } from '@/hooks/useTecladoVisible';
 import { useColores } from '@/theme/ThemeProvider';
 
+// Medidas de la onda en px. Van en style y no en clases: NativeWind usa rem de 14 px y no darían px exactos.
+const WAVE_BAR_WIDTH = 2;
+const WAVE_BAR_GAP = 2;
+const WAVE_HEIGHT = 20;
+
 const formatDuration = (millis: number) => {
     const seconds = Math.floor(millis / 1000);
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -41,6 +46,11 @@ export function CajaMensaje({ onEnviar, onParar, respondiendo = false, desactiva
     const recording = voiceNote.status === 'recording';
     const transcribing = voiceNote.status === 'transcribing';
 
+    // Barras que caben en la onda; se rellena por la izquierda con silencio para que entre por la derecha.
+    const [waveBarCount, setWaveBarCount] = useState(0);
+    const shownLevels = voiceNote.levels.slice(Math.max(0, voiceNote.levels.length - waveBarCount));
+    const waveLevels = [...Array<number>(Math.max(0, waveBarCount - shownLevels.length)).fill(0), ...shownLevels];
+
     const cambiarTexto = (nuevo: string) => {
         setTexto(nuevo);
         if (!nuevo) setFromVoice(false);
@@ -64,14 +74,38 @@ export function CajaMensaje({ onEnviar, onParar, respondiendo = false, desactiva
                 {recording ? (
                     // Mientras se graba, la fila de grabación ocupa el sitio del campo y de enviar.
                     <>
-                        <View className="h-10 flex-1 flex-row items-center gap-2">
-                            <View className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colores.peligro }} />
-                            <Text className="flex-1 text-base italic text-texto-secundario" numberOfLines={1}>
-                                Chelu te escucha…
-                            </Text>
-                            <Text className="text-sm text-texto-tenue" style={{ fontVariant: ['tabular-nums'] }}>
-                                {formatDuration(voiceNote.durationMillis)}
-                            </Text>
+                        <View className="h-10 flex-1 justify-center gap-1">
+                            <View className="flex-row items-center gap-1.5">
+                                <View className="h-2 w-2 rounded-full" style={{ backgroundColor: colores.peligro }} />
+                                <Text className="flex-1 text-xs italic text-texto-secundario" numberOfLines={1}>
+                                    Chelu te escucha…
+                                </Text>
+                            </View>
+                            <View className="flex-row items-center gap-2">
+                                <View
+                                    onLayout={(event) => setWaveBarCount(
+                                        Math.floor((event.nativeEvent.layout.width + WAVE_BAR_GAP) / (WAVE_BAR_WIDTH + WAVE_BAR_GAP)),
+                                    )}
+                                    className="flex-1 flex-row items-center justify-end overflow-hidden"
+                                    style={{ height: WAVE_HEIGHT, gap: WAVE_BAR_GAP }}
+                                >
+                                    {waveLevels.map((level, index) => (
+                                        // Silencio = punto; voz = barra proporcional al volumen.
+                                        <View
+                                            key={index}
+                                            className="rounded-full"
+                                            style={{
+                                                width: WAVE_BAR_WIDTH,
+                                                height: Math.max(2, Math.round(level * WAVE_HEIGHT)),
+                                                backgroundColor: level > 0.08 ? colores['texto-secundario'] : colores['borde-medio'],
+                                            }}
+                                        />
+                                    ))}
+                                </View>
+                                <Text className="text-xs text-texto-tenue" style={{ fontVariant: ['tabular-nums'] }}>
+                                    {formatDuration(voiceNote.durationMillis)}
+                                </Text>
+                            </View>
                         </View>
                         <Pressable
                             onPress={voiceNote.cancel}

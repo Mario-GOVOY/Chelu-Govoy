@@ -16,6 +16,16 @@ export type VoiceNoteStatus = 'idle' | 'recording' | 'transcribing';
 // Una pregunta no necesita más; al llegar, para y transcribe.
 const MAX_RECORDING_MS = 120_000;
 
+// Onda de la grabación: un nivel (0-1) cada 100 ms; se guardan los últimos MAX_LEVELS (los que caben en una
+// tablet a lo ancho), los más nuevos al final.
+const MAX_LEVELS = 300;
+
+// El volumen llega en dB (de -90 a 0). Se pasa a la altura de la barra (0-1): SILENCE_DB o menos es un punto
+// y LOUD_DB o más, la barra entera.
+const SILENCE_DB = -50;
+const LOUD_DB = -5;
+const getLevel = (metering: number) => Math.min(1, Math.max(0, (metering - SILENCE_DB) / (LOUD_DB - SILENCE_DB)));
+
 /**
  * Nota de voz: graba la pregunta en m4a, la pasa a texto en el back y la entrega con onText
  * para que se revise antes de enviarla. El audio no se guarda en el back.
@@ -25,10 +35,11 @@ export function useVoiceNote({ sessionId, onText }: {
     // Texto transcrito, nunca vacío.
     onText: (text: string) => void;
 }) {
-    const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+    const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
     const recorderState = useAudioRecorderState(recorder, 100);
     const [status, setStatus] = useState<VoiceNoteStatus>('idle');
     const [error, setError] = useState<string | null>(null);
+    const [levels, setLevels] = useState<number[]>([]);
     const statusRef = useRef(status);
     statusRef.current = status;
 
@@ -51,6 +62,7 @@ export function useVoiceNote({ sessionId, onText }: {
             await setAudioModeAsync({ allowsRecording: true });
             await recorder.prepareToRecordAsync();
             recorder.record();
+            setLevels([]);
             setStatus('recording');
         } catch {
             setError('No se pudo empezar a grabar.');
@@ -87,8 +99,15 @@ export function useVoiceNote({ sessionId, onText }: {
         new File(recorder.uri!).delete();
     };
 
+    // Cada lectura del estado (100 ms) añade un nivel a la onda.
     useEffect(() => {
-        if (status === 'recording' && recorderState.durationMillis >= MAX_RECORDING_MS) finish();
+        if (status !== 'recording') return;
+        if (recorderState.durationMillis >= MAX_RECORDING_MS) {
+            finish();
+            return;
+        }
+        const level = getLevel(recorderState.metering ?? SILENCE_DB);
+        setLevels((prev) => [...prev.slice(-(MAX_LEVELS - 1)), level]);
     }, [status, recorderState.durationMillis]);
 
     // Si la app pasa a segundo plano mientras se graba, se descarta.
@@ -99,5 +118,5 @@ export function useVoiceNote({ sessionId, onText }: {
         return () => subscription.remove();
     }, []);
 
-    return { status, error, durationMillis: recorderState.durationMillis, start, finish, cancel };
+    return { status, error, durationMillis: recorderState.durationMillis, levels, start, finish, cancel };
 }
