@@ -6,6 +6,7 @@ export const HAS_FEEDBACK_CHAT_CHELU = ['100', '92', '101', '69'];
 export const HAS_AUDIO_CHAT_CHELU = ['69', '92', '100', '101'];
 // Clientes con las tablas de carpetas en su base de datos (sin ellas el back responde 409).
 export const HAS_FOLDERS_CHAT_CHELU = ['92', '100', '101', '69'];
+export const FARMACIAS_EN_VEZ_DE_PUDOS = ['69'];
 
 const ROLES_CHAT = ['administrador', 'jefeDeOperaciones'];
 

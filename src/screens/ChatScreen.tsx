@@ -28,7 +28,7 @@ import { useConversaciones } from '@/context/ConversacionesContext';
 import { useSesionActiva } from '@/context/SesionContext';
 import type { Documento, Grafica, Mapa, Mensaje, Voto } from '@/types/Chat';
 import type { FormMap, SectorsForm } from '@/types/SectorsForm';
-import { esSesionMaster, HAS_AUDIO_CHAT_CHELU, HAS_FEEDBACK_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
+import { esSesionMaster, FARMACIAS_EN_VEZ_DE_PUDOS, HAS_AUDIO_CHAT_CHELU, HAS_FEEDBACK_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
 
 // Del drawer y, por encima, del stack raíz (para abrir la gráfica ampliada).
 type Props = CompositeScreenProps<
@@ -354,7 +354,7 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                             </View>
                             <Text className="mt-4 text-2xl font-bold text-texto">¿En qué te ayudo <Text className="text-primario">hoy</Text>?</Text>
                             <Text className="mt-2 text-center text-base text-texto-secundario">
-                                Pregúntame en chat CHELU sobre rutas, alertas, paradas, proveedores, depots, recogidas o PUDOS de {sesion.nombreEmpresa}.
+                                Pregúntame en chat CHELU sobre rutas, alertas, paradas, proveedores, depots, recogidas o {validatorUserHasOption(FARMACIAS_EN_VEZ_DE_PUDOS, sesion.empresaId) ? 'farmacias' : 'PUDOS'} de {sesion.nombreEmpresa}.
                             </Text>
                             <View className="mt-6 w-full gap-3">
                                 <Text className="text-xs font-bold uppercase tracking-wider text-primario">Prueba a preguntar</Text>
