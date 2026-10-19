@@ -188,7 +188,36 @@ Configurarla en un PC (una vez):
 
 ### Versión nueva
 
-Sube `version` y `android.versionCode` en `app.json` (el `versionCode` es un entero que tiene que crecer en cada APK o AAB que se reparta), `npx expo prebuild --platform android` y compila. No se cambian en `android/app/build.gradle`: el prebuild los pisa.
+Pasos para cada APK o AAB que se reparta:
+
+1. **Back subido.** Si la versión usa endpoints o campos nuevos del back, tienen que estar en producción antes de repartirla.
+
+2. **La app apunta a producción.**
+   - En `src/auth/Constants.ts`, `API_URL = 'https://api.govoy.es/'`.
+   - Ninguna llamada a `API_URL_LOCAL` en `src` (`git grep API_URL_LOCAL src` solo debe encontrar su definición en `Constants.ts`). En release ya va a `API_URL`, pero así se prueba lo mismo que se reparte.
+
+3. **Número de versión en `app.json`:**
+   - `version`: la que ve el usuario (`1.0.0` → `1.0.1` para arreglos, `1.1.0` para funciones nuevas).
+   - `android.versionCode`: entero que sube en 1 en cada APK o AAB que se reparta. Google Play y los MDM (Managed Google Play) solo aceptan la actualización si es mayor que el anterior. Con un APK a mano no es obligatorio (Android deja instalar encima uno con el mismo número; solo rechaza uno menor), pero subiéndolo siempre un APK antiguo abierto por error no se instala encima del nuevo.
+
+   No se cambian en `android/app/build.gradle`: el prebuild los pisa.
+
+4. **Regenerar y compilar** con la clave de Chelu (ver "Firma de release"):
+
+   ```powershell
+   npx expo prebuild --platform android
+   cd android
+   .\gradlew.bat assembleRelease
+   cd ..
+   ```
+
+   Comprueba con `apksigner` que salió firmado con `CN=Govoy` y no con la clave de debug.
+
+5. **Probar encima de la versión anterior** (`adb install -r …`, sin desinstalar), contra producción: que se conserve la sesión, enviar una pregunta, pararla y que llegue la notificación con la app en segundo plano.
+
+6. **Repartir** una copia con la versión en el nombre (p. ej. `Chelu-Govoy-1.0.1.apk`).
+
+7. **Commitear** el `app.json` con la versión nueva.
 
 ## Atajos (opcional)
 

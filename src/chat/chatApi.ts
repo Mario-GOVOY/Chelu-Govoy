@@ -472,10 +472,12 @@ export async function transcribeAudio(audio: File, sessionId?: string): Promise<
  * Con sectorsForm y sin pregunta, el back lanza la optimización de sectores directamente.
  * Al abortar con signal, lanza un AbortError.
  */
-export async function enviarMensaje({ pregunta, sessionId, model, sectorsForm, fromVoice = false, signal, onEvento }: {
+export async function enviarMensaje({ pregunta, sessionId, model, showTools, sectorsForm, fromVoice = false, signal, onEvento }: {
     pregunta: string;
     sessionId?: string;
     model: string;
+    // Sin ella, el back no manda los eventos 'tool'.
+    showTools: boolean;
     sectorsForm?: SectorsFormPayload;
     // La pregunta salió de una nota de voz: solo etiqueta la traza en el back.
     fromVoice?: boolean;
@@ -492,7 +494,7 @@ export async function enviarMensaje({ pregunta, sessionId, model, sectorsForm, f
                 session_id: sessionId,
                 formulario: sectorsForm,
                 modelo: model,
-                incluir_herramientas: true,
+                incluir_herramientas: showTools,
                 incluir_metricas: false,
                 origen_audio: fromVoice,
                 // Notificación push al terminar, si el móvil está registrado.

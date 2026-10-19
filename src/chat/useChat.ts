@@ -26,6 +26,7 @@ import type {
 } from '@/types/Chat';
 import type { SectorsForm, SectorsFormPayload } from '@/types/SectorsForm';
 import { etiquetaHerramienta } from '@/chat/herramientas';
+import { loadShowTools } from '@/chat/showToolsSetting';
 
 // Lectura de una respuesta: cada envío tiene la suya, para que una que acaba no pise a la siguiente.
 type StreamControl = {
@@ -108,13 +109,15 @@ export function useChat(chatId: string | undefined, onCreada: (id: string, pregu
     const followAnswer = useCallback(async ({ idChelu, generationId, send, onSession }: {
         idChelu: string;
         generationId?: string;
-        send: (signal: AbortSignal, onEvento: OnEvento) => Promise<void>;
+        send: (signal: AbortSignal, onEvento: OnEvento, showTools: boolean) => Promise<void>;
         onSession?: (evento: Extract<EventoChat, { tipo: 'session' }>) => void;
     }) => {
         const streamControl: StreamControl = { abortController: new AbortController(), generationId, lastSeq: 0, stopRequested: false };
         streamRef.current = streamControl;
         const { signal } = streamControl.abortController;
         setRespondiendo(true);
+        // Se toma al empezar: cambiarlo en Ajustes no afecta a la respuesta en curso.
+        const toolsShown = await loadShowTools();
 
         // Se actualiza por id: si entretanto se cambió de conversación, no encuentra nada que tocar.
         const actualizar = (cambios: Partial<Mensaje>) =>
@@ -210,7 +213,8 @@ export function useChat(chatId: string | undefined, onCreada: (id: string, pregu
                     requestAnimationFrame(reveal);
                 }
             } else if (evento.tipo === 'tool') {
-                herramienta(evento);
+                // Al retomar llegan los eventos del envío original, que pudo pedirlas (p. ej. desde la web).
+                if (toolsShown) herramienta(evento);
             } else if (evento.tipo === 'sugerencias') {
                 sugerencias = Array.isArray(evento.preguntas) ? evento.preguntas : [];
             } else if (evento.tipo === 'documento') {
@@ -252,7 +256,7 @@ export function useChat(chatId: string | undefined, onCreada: (id: string, pregu
         };
 
         try {
-            let read = () => send(signal, onEvento);
+            let read = () => send(signal, onEvento, toolsShown);
             while (true) {
                 try {
                     await read();
@@ -361,8 +365,8 @@ export function useChat(chatId: string | undefined, onCreada: (id: string, pregu
             ]);
             await followAnswer({
                 idChelu,
-                send: (signal, onEvento) =>
-                    enviarMensaje({ pregunta, sessionId: chatId, model, sectorsForm, fromVoice, signal, onEvento }),
+                send: (signal, onEvento, showTools) =>
+                    enviarMensaje({ pregunta, sessionId: chatId, model, showTools, sectorsForm, fromVoice, signal, onEvento }),
                 onSession: (evento) => {
                     if (chatId) return;
                     creadaRef.current = evento.session_id;

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { AppState, Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { AppState, Linking, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Notifications from 'expo-notifications';
-import { ArrowLeft, Bell, BellOff, Check, Moon, Sun } from 'lucide-react-native';
+import { ArrowLeft, Bell, BellOff, Check, Moon, Sun, Wrench } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from '@/chat/models';
 import { registerForPushNotifications } from '@/chat/pushNotifications';
+import { loadShowTools, saveShowTools } from '@/chat/showToolsSetting';
 import { useChosenModel } from '@/context/ChatModelContext';
 import { useSesionActiva } from '@/context/SesionContext';
 import { RootStackParamList } from '@/navigation/RootNavigator';
@@ -28,6 +29,7 @@ export default function SettingsScreen({ navigation }: Props) {
     const { sesion } = useSesionActiva();
     const isMaster = esSesionMaster(sesion);
     const { chosenModel, setChosenModel } = useChosenModel();
+    const [showTools, setShowTools] = useState(true);
     const [notificationPermissions, setNotificationPermissions] = useState<Notifications.NotificationPermissionsStatus | null>(null);
     const notificationsGrantedRef = useRef<boolean | null>(null);
 
@@ -52,6 +54,16 @@ export default function SettingsScreen({ navigation }: Props) {
         });
         return () => subscription.remove();
     }, []);
+
+    useEffect(() => {
+        const loadSettings = async () => setShowTools(await loadShowTools());
+        loadSettings();
+    }, []);
+
+    const changeShowTools = (show: boolean) => {
+        setShowTools(show);
+        saveShowTools(show);
+    };
 
     // Pide el permiso; si el sistema ya no deja preguntar, se abren sus ajustes.
     const enableNotifications = async () => {
@@ -106,6 +118,22 @@ export default function SettingsScreen({ navigation }: Props) {
                             </Pressable>
                         );
                     })}
+                </View>
+
+                <Text className="mb-2 ml-1 mt-6 text-xs font-bold uppercase tracking-wider text-texto-tenue">Chat</Text>
+                <View className="flex-row items-center gap-3 rounded-2xl bg-superficie px-4 py-3">
+                    <Wrench size={20} color={colores['texto-secundario']} />
+                    <View className="flex-1 gap-0.5">
+                        <Text className="text-base text-texto">Mostrar herramientas</Text>
+                        <Text className="text-sm text-texto-secundario">Muestra que consulta Chelu mientras responde</Text>
+                    </View>
+                    <Switch
+                        value={showTools}
+                        onValueChange={changeShowTools}
+                        accessibilityLabel="Mostrar herramientas"
+                        trackColor={{ false: colores['borde-fuerte'], true: colores.primario }}
+                        thumbColor={colores['sobre-primario']}
+                    />
                 </View>
 
                 {notificationPermissions && (

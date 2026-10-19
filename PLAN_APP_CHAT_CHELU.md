@@ -1170,10 +1170,22 @@ Decidido el 2026-10-13 hacerla en lugar de cambiar el tema desde el menú latera
   - **Nativo Android:** `./gradlew app:dependencies --configuration releaseRuntimeClasspath`, y se añaden a mano en un fichero aparte, agrupadas (AndroidX, OkHttp/Okio, Kotlin, MapLibre Native, Gumbo, TagSoup…).
   - **Lo que no es código:** los pines y la atribución de OpenStreetMap.
   - **Pantalla:** fila "Licencias de terceros" en Ajustes que abre la ruta `Licenses`, con la lista y el texto desplegable al pulsar cada una.
-- **Opciones de visualización, como en la web** (`ConfigModal.tsx:54-58`), guardadas en AsyncStorage (la web usa `localStorage`, no se comparten entre dispositivos):
-  - **Mostrar herramientas** y **Mostrar métricas** (todos): se filtran en el cliente. Se toma el valor al enviar, para que no cambie a mitad de respuesta.
-  - **Mostrar SQL ejecutado** (master o la empresa de "UsuarioPrueba1"): se manda como `incluir_sql` en `/stream` y en `get_chat`; lo filtra el back. Al reanudar no hace falta: llegan los eventos del POST original.
-  - **Mostrar chats de clientes** (solo master): en la lista de chats.
+- **Opciones de visualización, como en la web** (`ConfigModal.tsx:54-58`), guardadas en AsyncStorage (la web usa `localStorage`, no se comparten entre dispositivos). Revisado en la web el 2026-10-19:
+
+  | Opción | Quién la ve en la web | Por defecto | Cómo funciona | ¿Funciona? |
+  |---|---|---|---|---|
+  | **Mostrar herramientas** | Todos | Activada | Manda `incluir_herramientas` en `/stream` y el back emite eventos `tool`; el front además los ignora si está apagada (`handleEvent`). Se toma el valor al enviar | Sí, **solo en la respuesta en vivo**: al reabrir el chat (`get_chat`) las herramientas no vuelven (`chatHistoryApi.ts:72`, `tools: []`) |
+  | **Mostrar métricas** | Todos | Activada | Manda `incluir_metricas` y `done` trae `uso_tokens` (tokens y coste) | Igual: solo en vivo; al reabrir, `metrics: null` (`chatHistoryApi.ts:100`) |
+  | **Mostrar SQL ejecutado** | Master o empresa "UsuarioPrueba1" (`ConfigModal.tsx:57`) | Desactivada | Manda `incluir_sql` en `/stream` (eventos `sql`) y en `get_chat` (las SQL se reconstruyen de las tools guardadas) | Sí, también al reabrir. **Pero** el back no lo restringe (D2.3) y en el menú del panel de simulación (`ChatCheluPanel.tsx:491`) "Ver SQL" sale a todos |
+  | **Mostrar chats de clientes** | Solo master | Desactivada | Filtro en el front de la lista (`isDevs !== false`, `useChatChelu.ts:1562`); el back ya los devuelve | **Con un fallo:** el valor inicial lee `=== '0'` (`useChatChelu.ts:169`), así que al recargar la página queda al revés de como se dejó |
+
+  - **Para el cliente** (sin suplantación) salen herramientas y métricas, pero **las métricas solo se pintan en master** (`AsstBubble.tsx:218`, `metrics && isMaster`): al cliente el interruptor no le hace nada. Las cuatro, en sesiones master.
+  - **Hecho (2026-10-19): Mostrar herramientas**, para todos, en una sección "Chat" de Ajustes.
+    - Guardado en AsyncStorage (`mostrar_herramientas`, `chat/showToolsSetting.ts`), activado por defecto como en la web. No se borra al cerrar sesión (es una preferencia de pantalla, como el tema). Sin provider: nadie necesita enterarse del cambio al momento.
+    - Se manda como `incluir_herramientas` en `/stream` (antes iba siempre a `true`).
+    - `useChat` lo lee al empezar cada respuesta: cambiarlo a mitad no le afecta. Al retomar, los eventos `tool` se ignoran si está apagado (pueden venir de un envío desde la web que las pidió).
+  - **A futuro (solo master):** métricas (hoy la app manda `incluir_metricas: false` y no las pinta), SQL ejecutado (master o la empresa de "UsuarioPrueba1") y chats de clientes. Con los mismos valores por defecto que la web y sin el fallo de "chats de clientes".
+  - **Avisar a la web:** el fallo de `showClientChats` (`=== '0'` → `=== '1'`), "Ver SQL" visible a todos en el panel de simulación y "Mostrar métricas" visible al cliente sin efecto.
 - **Versión de la app** y, con las actualizaciones OTA (ver D3), buscar actualizaciones.
 - **Privacidad y aviso de IA:** enlace a la política y aviso de que los datos van a OpenAI/DeepSeek (pregunta 13). **Política (2026-10-14, pendiente):** se parte de la de AppGovoy, que hay que adaptar:
   - **Quitar:** ubicación (también en segundo plano), cámara, Google Maps y el seguimiento de trabajadores.
@@ -1391,6 +1403,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-19 | Push en la app (Android): EAS + Firebase (FCM V1 en EAS, keystore en local); aviso con título "Chelu" y el principio de la respuesta sin markdown ni tablas (100 caracteres); con la app abierta, aviso del sistema salvo en ese chat (sin tarjeta propia); tocarlo abre el chat, también con la app cerrada; sección de Ajustes como AppGovoy. Endpoints `save_push_token` y `delete_push_token` |
 | 2026-10-19 | Tokens de push: se registra en cada sesión y se borra al cerrarla (la tabla es por cliente); los que ya no valen se borran con el ticket o con los recibos a los 30 s. Filas sueltas por sesiones que caducan solas: se aceptan (solo importan entre empresas distintas en un mismo móvil) |
 | 2026-10-19 | App: todas las llamadas de vuelta a `API_URL` |
+| 2026-10-19 | Ajustes: "Mostrar herramientas" para todos (como la web); métricas, SQL y chats de clientes, a futuro (solo master) |
 | 2026-10-14 | Licencias de terceros: propuesta (bundle con source maps + dependencias nativas a mano, pantalla `Licenses`) pendiente de confirmar. "Datos guardados" descartado. Política de privacidad: partir de la de AppGovoy, cambios pendientes de lo legal |
 | 2026-10-14 | Release en Windows: con el proyecto en el escritorio, `armeabi-v7a` superaba los 260 caracteres de ruta (`react-native-enriched-html`). El proyecto pasa a `C:\Chelu-Govoy` |
 | 2026-10-14 | Pantalla de Ajustes con tema (claro/oscuro) y modelo (solo master); el modelo elegido se borra al cerrar sesión o salir de la suplantación |
