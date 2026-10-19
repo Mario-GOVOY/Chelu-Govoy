@@ -41,6 +41,7 @@ const ConversationRow = memo(function ConversationRow({
     titulo,
     actualizado,
     folderId,
+    inProgress,
     indented,
     activo,
     busy,
@@ -49,7 +50,7 @@ const ConversationRow = memo(function ConversationRow({
     onOpenActions,
 }: RowProps) {
     const colores = useColores();
-    const chat = { id, titulo, actualizado, folderId };
+    const chat = { id, titulo, actualizado, folderId, inProgress };
     return (
         <Pressable
             onPress={() => onAbrir(chat)}
@@ -140,18 +141,22 @@ export function ListaConversaciones({
     const searchText = normalizeForSearch(query.trim());
     const searching = searchText !== '';
 
-    const renderChat = (chat: ResumenChat) => (
-        <ConversationRow
-            key={chat.id}
-            {...chat}
-            indented={!searching && chat.folderId !== null}
-            activo={chat.id === activoId}
-            busy={busyChatId === chat.id || respondingChatIds.includes(chat.id)}
-            disabled={!!busyChatId || respondingChatIds.includes(chat.id)}
-            onAbrir={openChat}
-            onOpenActions={onOpenActions}
-        />
-    );
+    const renderChat = (chat: ResumenChat) => {
+        // La sigue la app o, según el back, responde en otro sitio (la app se cerró a mitad, o se lanzó desde la web).
+        const responding = chat.inProgress || respondingChatIds.includes(chat.id);
+        return (
+            <ConversationRow
+                key={chat.id}
+                {...chat}
+                indented={!searching && chat.folderId !== null}
+                activo={chat.id === activoId}
+                busy={busyChatId === chat.id || responding}
+                disabled={!!busyChatId || responding}
+                onAbrir={openChat}
+                onOpenActions={onOpenActions}
+            />
+        );
+    };
 
     // Buscando, una sola lista con todas las que coinciden, estén o no en una carpeta.
     const listChats = searching

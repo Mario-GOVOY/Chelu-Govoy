@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "128319358815",
+    "project_id": "chelu-govoy",
+    "storage_bucket": "chelu-govoy.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:128319358815:android:5590528d2817f68f3118ea",
+        "android_client_info": {
+          "package_name": "com.govoy.chelu"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCzCdujRX1hId1ZXyFbWkmX6Rx_chYXVFQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

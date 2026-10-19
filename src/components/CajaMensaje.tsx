@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { Check, Mic, Send, Square, X } from 'lucide-react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useVoiceNote } from '@/chat/useVoiceNote';
 import { useTecladoVisible } from '@/hooks/useTecladoVisible';
@@ -17,10 +17,12 @@ const formatDuration = (millis: number) => {
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 };
 
-export function CajaMensaje({ onEnviar, onParar, respondiendo = false, desactivada = false, voiceNotes = false, sessionId }: {
+export function CajaMensaje({ onEnviar, onParar, stopping = false, respondiendo = false, desactivada = false, voiceNotes = false, sessionId }: {
     // fromVoice: el texto salió (en parte) de una nota de voz.
     onEnviar: (texto: string, fromVoice: boolean) => void;
     onParar: () => void;
+    // Se ha pedido parar y aún no ha terminado: spinner en el botón y sin poder pulsarlo.
+    stopping?: boolean;
     respondiendo?: boolean;
     desactivada?: boolean;
     // Muestra el micro para dictar la pregunta (HAS_AUDIO_CHAT_CHELU).
@@ -29,7 +31,6 @@ export function CajaMensaje({ onEnviar, onParar, respondiendo = false, desactiva
     sessionId?: string;
 }) {
     const colores = useColores();
-    const insets = useSafeAreaInsets();
     const teclado = useTecladoVisible();
     const [texto, setTexto] = useState('');
     const [fromVoice, setFromVoice] = useState(false);
@@ -63,128 +64,136 @@ export function CajaMensaje({ onEnviar, onParar, respondiendo = false, desactiva
         setFromVoice(false);
     };
 
-    // Con el teclado abierto la barra de navegación queda debajo, así que sobra su margen.
+    // El margen de la barra de navegación lo pone el sistema al maquetar. Con el teclado abierto la barra queda debajo y sobra.
     return (
-        <View
-            className="border-t border-borde bg-superficie px-3 pt-2"
-            style={{ paddingBottom: (teclado ? 0 : insets.bottom) + 8 }}
+        <SafeAreaView
+            edges={teclado ? [] : ['bottom']}
+            style={{ backgroundColor: colores.superficie, borderTopWidth: 1, borderTopColor: colores.borde }}
         >
-            {voiceNote.error && <Text className="px-2 pb-1 text-xs text-peligro">{voiceNote.error}</Text>}
-            <View className="flex-row items-end gap-2 rounded-3xl bg-fondo py-1.5 pl-4 pr-1.5">
-                {recording ? (
-                    // Mientras se graba, la fila de grabación ocupa el sitio del campo y de enviar.
-                    <>
-                        <View className="h-10 flex-1 justify-center gap-1">
-                            <View className="flex-row items-center gap-1.5">
-                                <View className="h-2 w-2 rounded-full" style={{ backgroundColor: colores.peligro }} />
-                                <Text className="flex-1 text-xs italic text-texto-secundario" numberOfLines={1}>
-                                    Chelu te escucha…
-                                </Text>
+            <View className="px-3 py-2">
+                {voiceNote.error && <Text className="px-2 pb-1 text-xs text-peligro">{voiceNote.error}</Text>}
+                <View className="flex-row items-end gap-2 rounded-3xl bg-fondo py-1.5 pl-4 pr-1.5">
+                    {recording ? (
+                        // Mientras se graba, la fila de grabación ocupa el sitio del campo y de enviar.
+                        <>
+                            <View className="h-10 flex-1 justify-center gap-1">
+                                <View className="flex-row items-center gap-1.5">
+                                    <View className="h-2 w-2 rounded-full" style={{ backgroundColor: colores.peligro }} />
+                                    <Text className="flex-1 text-xs italic text-texto-secundario" numberOfLines={1}>
+                                        Chelu te escucha…
+                                    </Text>
+                                </View>
+                                <View className="flex-row items-center gap-2">
+                                    <View
+                                        onLayout={(event) => setWaveBarCount(
+                                            Math.floor((event.nativeEvent.layout.width + WAVE_BAR_GAP) / (WAVE_BAR_WIDTH + WAVE_BAR_GAP)),
+                                        )}
+                                        className="flex-1 flex-row items-center justify-end overflow-hidden"
+                                        style={{ height: WAVE_HEIGHT, gap: WAVE_BAR_GAP }}
+                                    >
+                                        {waveLevels.map((level, index) => (
+                                            // Silencio = punto; voz = barra proporcional al volumen.
+                                            <View
+                                                key={index}
+                                                className="rounded-full"
+                                                style={{
+                                                    width: WAVE_BAR_WIDTH,
+                                                    height: Math.max(2, Math.round(level * WAVE_HEIGHT)),
+                                                    backgroundColor: level > 0.08 ? colores['texto-secundario'] : colores['borde-medio'],
+                                                }}
+                                            />
+                                        ))}
+                                    </View>
+                                    <Text className="text-xs text-texto-tenue" style={{ fontVariant: ['tabular-nums'] }}>
+                                        {formatDuration(voiceNote.durationMillis)}
+                                    </Text>
+                                </View>
                             </View>
-                            <View className="flex-row items-center gap-2">
-                                <View
-                                    onLayout={(event) => setWaveBarCount(
-                                        Math.floor((event.nativeEvent.layout.width + WAVE_BAR_GAP) / (WAVE_BAR_WIDTH + WAVE_BAR_GAP)),
-                                    )}
-                                    className="flex-1 flex-row items-center justify-end overflow-hidden"
-                                    style={{ height: WAVE_HEIGHT, gap: WAVE_BAR_GAP }}
+                            <Pressable
+                                onPress={voiceNote.cancel}
+                                accessibilityRole="button"
+                                accessibilityLabel="Descartar nota de voz"
+                                className="h-10 w-10 items-center justify-center rounded-full bg-borde active:bg-borde-medio"
+                            >
+                                <X size={18} color={colores['texto-secundario']} />
+                            </Pressable>
+                            <Pressable
+                                onPress={voiceNote.finish}
+                                accessibilityRole="button"
+                                accessibilityLabel="Transcribir nota de voz"
+                                className="h-10 w-10 items-center justify-center rounded-full bg-primario active:bg-primario-presionado"
+                            >
+                                <Check size={18} color={colores['sobre-primario']} />
+                            </Pressable>
+                        </>
+                    ) : (
+                        <>
+                            <TextInput
+                                value={texto}
+                                onChangeText={cambiarTexto}
+                                multiline
+                                editable={!transcribing}
+                                placeholder={transcribing ? 'Transcribiendo…' : 'Pregunta a CHELU…'}
+                                accessibilityLabel="Mensaje para CHELU"
+                                placeholderTextColor={colores['texto-tenue']}
+                                cursorColor={colores.primario}
+                                selectionColor={colores.primario}
+                                textAlignVertical="center"
+                                className="max-h-32 flex-1 py-2 text-base text-texto"
+                            />
+                            {voiceNotes && (
+                                transcribing ? (
+                                    <View className="h-10 w-10 items-center justify-center">
+                                        <ActivityIndicator size="small" color={colores.primario} />
+                                    </View>
+                                ) : (
+                                    <Pressable
+                                        onPress={voiceNote.start}
+                                        disabled={respondiendo || desactivada}
+                                        accessibilityRole="button"
+                                        accessibilityLabel="Dictar la pregunta"
+                                        accessibilityState={{ disabled: respondiendo || desactivada }}
+                                        className="h-10 w-10 items-center justify-center rounded-full active:bg-borde"
+                                    >
+                                        <Mic size={20} color={respondiendo || desactivada ? colores['texto-tenue'] : colores['texto-secundario']} />
+                                    </Pressable>
+                                )
+                            )}
+                            {/* El fondo va en style: con la clase bg-peligro NativeWind lo dejaba gris. */}
+                            {respondiendo ? (
+                                <Pressable
+                                    key="parar"
+                                    onPress={onParar}
+                                    disabled={stopping}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Detener respuesta"
+                                    accessibilityState={{ disabled: stopping, busy: stopping }}
+                                    className="h-10 w-10 items-center justify-center rounded-full"
+                                    style={{ backgroundColor: colores.peligro }}
                                 >
-                                    {waveLevels.map((level, index) => (
-                                        // Silencio = punto; voz = barra proporcional al volumen.
-                                        <View
-                                            key={index}
-                                            className="rounded-full"
-                                            style={{
-                                                width: WAVE_BAR_WIDTH,
-                                                height: Math.max(2, Math.round(level * WAVE_HEIGHT)),
-                                                backgroundColor: level > 0.08 ? colores['texto-secundario'] : colores['borde-medio'],
-                                            }}
-                                        />
-                                    ))}
-                                </View>
-                                <Text className="text-xs text-texto-tenue" style={{ fontVariant: ['tabular-nums'] }}>
-                                    {formatDuration(voiceNote.durationMillis)}
-                                </Text>
-                            </View>
-                        </View>
-                        <Pressable
-                            onPress={voiceNote.cancel}
-                            accessibilityRole="button"
-                            accessibilityLabel="Descartar nota de voz"
-                            className="h-10 w-10 items-center justify-center rounded-full bg-borde active:bg-borde-medio"
-                        >
-                            <X size={18} color={colores['texto-secundario']} />
-                        </Pressable>
-                        <Pressable
-                            onPress={voiceNote.finish}
-                            accessibilityRole="button"
-                            accessibilityLabel="Transcribir nota de voz"
-                            className="h-10 w-10 items-center justify-center rounded-full bg-primario active:bg-primario-presionado"
-                        >
-                            <Check size={18} color={colores['sobre-primario']} />
-                        </Pressable>
-                    </>
-                ) : (
-                    <>
-                        <TextInput
-                            value={texto}
-                            onChangeText={cambiarTexto}
-                            multiline
-                            editable={!transcribing}
-                            placeholder={transcribing ? 'Transcribiendo…' : 'Pregunta a CHELU…'}
-                            accessibilityLabel="Mensaje para CHELU"
-                            placeholderTextColor={colores['texto-tenue']}
-                            cursorColor={colores.primario}
-                            selectionColor={colores.primario}
-                            textAlignVertical="center"
-                            className="max-h-32 flex-1 py-2 text-base text-texto"
-                        />
-                        {voiceNotes && (
-                            transcribing ? (
-                                <View className="h-10 w-10 items-center justify-center">
-                                    <ActivityIndicator size="small" color={colores.primario} />
-                                </View>
+                                    {stopping ? (
+                                        <ActivityIndicator size="small" color={colores['sobre-primario']} />
+                                    ) : (
+                                        <Square size={14} color={colores['sobre-primario']} fill={colores['sobre-primario']} />
+                                    )}
+                                </Pressable>
                             ) : (
                                 <Pressable
-                                    onPress={voiceNote.start}
-                                    disabled={respondiendo || desactivada}
+                                    key="enviar"
+                                    onPress={enviar}
+                                    disabled={sinEnvio}
                                     accessibilityRole="button"
-                                    accessibilityLabel="Dictar la pregunta"
-                                    accessibilityState={{ disabled: respondiendo || desactivada }}
-                                    className="h-10 w-10 items-center justify-center rounded-full active:bg-borde"
+                                    accessibilityLabel="Enviar"
+                                    accessibilityState={{ disabled: sinEnvio }}
+                                    className={`h-10 w-10 items-center justify-center rounded-full ${sinEnvio ? 'bg-borde' : 'bg-primario active:bg-primario-presionado'}`}
                                 >
-                                    <Mic size={20} color={respondiendo || desactivada ? colores['texto-tenue'] : colores['texto-secundario']} />
+                                    <Send size={18} color={sinEnvio ? colores['texto-tenue'] : colores['sobre-primario']} />
                                 </Pressable>
-                            )
-                        )}
-                        {/* El fondo va en style: con la clase bg-peligro NativeWind lo dejaba gris. */}
-                        {respondiendo ? (
-                            <Pressable
-                                key="parar"
-                                onPress={onParar}
-                                accessibilityRole="button"
-                                accessibilityLabel="Detener respuesta"
-                                className="h-10 w-10 items-center justify-center rounded-full"
-                                style={{ backgroundColor: colores.peligro }}
-                            >
-                                <Square size={14} color={colores['sobre-primario']} fill={colores['sobre-primario']} />
-                            </Pressable>
-                        ) : (
-                            <Pressable
-                                key="enviar"
-                                onPress={enviar}
-                                disabled={sinEnvio}
-                                accessibilityRole="button"
-                                accessibilityLabel="Enviar"
-                                accessibilityState={{ disabled: sinEnvio }}
-                                className={`h-10 w-10 items-center justify-center rounded-full ${sinEnvio ? 'bg-borde' : 'bg-primario active:bg-primario-presionado'}`}
-                            >
-                                <Send size={18} color={sinEnvio ? colores['texto-tenue'] : colores['sobre-primario']} />
-                            </Pressable>
-                        )}
-                    </>
-                )}
+                            )}
+                        </>
+                    )}
+                </View>
             </View>
-        </View>
+        </SafeAreaView>
     );
 }

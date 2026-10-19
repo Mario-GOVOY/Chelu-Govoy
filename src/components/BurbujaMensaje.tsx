@@ -1,7 +1,8 @@
+import { memo } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { createLucideIcon, ThumbsDown, ThumbsUp } from 'lucide-react-native';
 
-import type { BorradorCorreo, EditedEmail, Grafica, Mapa, Mensaje } from '@/types/Chat';
+import type { BorradorCorreo, EditedEmail, Grafica, Mapa, Mensaje, Voto } from '@/types/Chat';
 import type { FormMap, SectorsForm } from '@/types/SectorsForm';
 import { CheluAvatar } from '@/components/CheluAvatar';
 import { ComparisonCard } from '@/components/ComparisonCard';
@@ -24,7 +25,8 @@ const GitBranch = createLucideIcon('git-branch-web', [
     ['circle', { cx: '6', cy: '18', r: '3', key: 'fqmcym' }],
 ]);
 
-export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar, onValorar, onAmpliarGrafica, onAbrirMapa, onSendEmail, onLaunchSectorsForm, onRefineSectorsForm, onChangeSectorsFormMap, onEditSectorsForm }: {
+// Las funciones llegan estables (useCallback): así memo solo repinta la burbuja cuyo mensaje cambia.
+export const BurbujaMensaje = memo(function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, onPreguntar, onValorar, onAmpliarGrafica, onAbrirMapa, onSendEmail, onLaunchSectorsForm, onRefineSectorsForm, onChangeSectorsFormMap, onEditSectorsForm }: {
     mensaje: Mensaje;
     onSendEmail: (borrador: BorradorCorreo, edited: EditedEmail) => Promise<void>;
     onLaunchSectorsForm?: (form: SectorsForm) => void;
@@ -33,12 +35,12 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
     onEditSectorsForm: (form: SectorsForm, map: FormMap) => void;
     onAmpliarGrafica?: (grafica: Grafica) => void;
     onAbrirMapa?: (mapa: Mapa) => void;
-    onDuplicarDesde?: () => void;
+    onDuplicarDesde?: (runId: string) => void;
     duplicando?: boolean;
     // Envía una pregunta sugerida. Sin él no se pintan las sugerencias.
     onPreguntar?: (pregunta: string) => void;
     // Abre la valoración con ese pulgar. Sin él no se pintan los pulgares.
-    onValorar?: (valoracion: 1 | -1) => void;
+    onValorar?: (runId: string, valoracion: 1 | -1, anterior: Voto | null) => void;
 }) {
     const { sesion } = useSesionActiva();
     const colores = useColores();
@@ -64,6 +66,9 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
         );
     }
 
+    // Solo las respuestas guardadas y completas se valoran o duplican: las detenidas o con error no tienen turno en el back.
+    const savedRunId = mensaje.estado ? undefined : mensaje.runId;
+
     return (
         <View className="gap-1">
             <View className="-ml-2 flex-row items-center gap-2">
@@ -80,7 +85,7 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
                         <Text className="shrink text-[13px] font-medium text-primario">{mensaje.progress}</Text>
                     </View>
                 )}
-                {!!mensaje.texto && <TextoMarkdown texto={mensaje.texto} />}
+                {!!mensaje.texto && <TextoMarkdown texto={mensaje.texto} writing={mensaje.estado === 'escribiendo'} />}
                 {mensaje.graficas?.map((g, i) => (
                     <TarjetaGrafica key={i} grafica={g} onAmpliar={onAmpliarGrafica && (() => onAmpliarGrafica(g))} />
                 ))}
@@ -112,7 +117,9 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
                 )}
                 {mensaje.estado === 'error' && (
                     <View className="rounded-xl bg-peligro-suave px-3 py-2">
-                        <Text className="text-sm text-peligro">No se pudo completar la respuesta. Inténtalo de nuevo.</Text>
+                        <Text className="text-sm text-peligro">
+                            {mensaje.errorMessage ?? 'No se pudo completar la respuesta. Inténtalo de nuevo.'}
+                        </Text>
                     </View>
                 )}
                 {onPreguntar && !!mensaje.sugerencias?.length && (
@@ -129,7 +136,7 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
                         ))}
                     </View>
                 )}
-                {(onValorar || onDuplicarDesde) && (
+                {savedRunId !== undefined && (onValorar || onDuplicarDesde) && (
                     <View className="mt-1 flex-row items-center gap-1">
                         {onValorar && ([1, -1] as const).map((valoracion) => {
                             const Icono = valoracion === 1 ? ThumbsUp : ThumbsDown;
@@ -137,7 +144,7 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
                             return (
                                 <Pressable
                                     key={valoracion}
-                                    onPress={() => onValorar(valoracion)}
+                                    onPress={() => onValorar(savedRunId, valoracion, mensaje.voto ?? null)}
                                     accessibilityRole="button"
                                     accessibilityLabel={valoracion === 1 ? 'Buena respuesta' : 'Mala respuesta'}
                                     accessibilityState={{ selected: activo }}
@@ -154,7 +161,7 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
                         })}
                         {onDuplicarDesde && (
                             <Pressable
-                                onPress={onDuplicarDesde}
+                                onPress={() => onDuplicarDesde(savedRunId)}
                                 disabled={duplicando}
                                 hitSlop={8}
                                 accessibilityRole="button"
@@ -177,4 +184,4 @@ export function BurbujaMensaje({ mensaje, onDuplicarDesde, duplicando = false, o
             </View>
         </View>
     );
-}
+});

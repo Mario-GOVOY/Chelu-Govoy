@@ -1,4 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
 import {
     createFolder as createFolderApi,
@@ -10,6 +11,9 @@ import {
     renameFolder as renameFolderApi,
 } from '@/chat/chatApi';
 import type { ChatFolder, ResumenChat } from '@/types/Chat';
+
+// Cada cuánto se recarga la lista mientras alguna responde sin que la siga la app.
+const LIST_REFRESH_MS = 30_000;
 
 // Conversación de la que se duplica (puede no estar aún en la lista).
 type ChatSource = Pick<ResumenChat, 'id' | 'titulo'>;
@@ -52,24 +56,38 @@ export function ConversacionesProvider({ children }: { children: ReactNode }) {
     // Empezadas en la app que el back aún no devuelve: las guarda al terminar la primera respuesta.
     const newChatsRef = useRef(new Map<string, ResumenChat>());
 
+    // Pide la lista y la pone, con las nuevas que el back aún no devuelve. Si falla, lanza el error.
+    const fetchList = useCallback(async () => {
+        const lista = await obtenerChats();
+        const missing: ResumenChat[] = [];
+        for (const [id, chat] of newChatsRef.current) {
+            if (lista.chats.some((c) => c.id === id)) newChatsRef.current.delete(id);
+            else missing.push(chat);
+        }
+        setChats([...missing, ...lista.chats]);
+        setFolders(lista.folders);
+    }, []);
+
     const recargar = useCallback(async () => {
         setCargando(true);
         setError(false);
         try {
-            const lista = await obtenerChats();
-            const missing: ResumenChat[] = [];
-            for (const [id, chat] of newChatsRef.current) {
-                if (lista.chats.some((c) => c.id === id)) newChatsRef.current.delete(id);
-                else missing.push(chat);
-            }
-            setChats([...missing, ...lista.chats]);
-            setFolders(lista.folders);
+            await fetchList();
         } catch {
             setError(true);
         } finally {
             setCargando(false);
         }
-    }, []);
+    }, [fetchList]);
+
+    // Para las recargas automáticas: sin indicador ni error; si falla, se queda la lista que había.
+    const refreshQuietly = useCallback(async () => {
+        try {
+            await fetchList();
+        } catch {
+            // Se vuelve a intentar en la siguiente recarga.
+        }
+    }, [fetchList]);
 
     useEffect(() => {
         recargar();
@@ -94,7 +112,7 @@ export function ConversacionesProvider({ children }: { children: ReactNode }) {
         setChats((prev) => {
             if (!prev) return prev;
             const folderId = prev.find((c) => c.id === source.id)?.folderId ?? null;
-            return [{ id, titulo: source.titulo, actualizado: Date.now(), folderId }, ...prev];
+            return [{ id, titulo: source.titulo, actualizado: Date.now(), folderId, inProgress: false }, ...prev];
         });
         return id;
     }, []);
@@ -103,7 +121,8 @@ export function ConversacionesProvider({ children }: { children: ReactNode }) {
     // aunque siga respondiendo. El título es la pregunta, como el que pone el back.
     const addNewChatToList = useCallback((id: string, question: string) => {
         const text = question.trim();
-        const chat = { id, titulo: text ? text.charAt(0).toUpperCase() + text.slice(1) : 'Nueva conversación', actualizado: Date.now(), folderId: null };
+        // Que está respondiendo lo dice respondingChatIds.
+        const chat = { id, titulo: text ? text.charAt(0).toUpperCase() + text.slice(1) : 'Nueva conversación', actualizado: Date.now(), folderId: null, inProgress: false };
         newChatsRef.current.set(id, chat);
         setChats((prev) => prev && !prev.some((c) => c.id === id) ? [chat, ...prev] : prev);
     }, []);
@@ -112,9 +131,31 @@ export function ConversacionesProvider({ children }: { children: ReactNode }) {
     const [respondingChatIds, setRespondingChatIds] = useState<string[]>([]);
     const setChatResponding = useCallback((id: string, responding: boolean) => {
         setRespondingChatIds((prev) => (responding ? [...prev.filter((x) => x !== id), id] : prev.filter((x) => x !== id)));
-        // Al terminar, el back ya la tiene guardada: deja de hacer falta mantenerla al recargar.
-        if (!responding) newChatsRef.current.delete(id);
+        if (!responding) {
+            // Al terminar, el back ya la tiene guardada: deja de hacer falta mantenerla al recargar.
+            newChatsRef.current.delete(id);
+            // Lo que dijo get_chats ya no vale: la respuesta ha acabado.
+            setChats((prev) => prev && prev.map((c) => (c.id === id ? { ...c, inProgress: false } : c)));
+        }
     }, []);
+
+    // Al volver a primer plano se recarga: alguna respuesta puede haber empezado o acabado mientras tanto.
+    useEffect(() => {
+        const subscription = AppState.addEventListener('change', (state) => {
+            if (state === 'active') refreshQuietly();
+        });
+        return () => subscription.remove();
+    }, [refreshQuietly]);
+
+    // Mientras alguna responde sin que la siga la app (se cerró a mitad, o se lanzó desde la web), se recarga para ver cuándo acaba.
+    const hasUnfollowedAnswer = !!chats?.some((c) => c.inProgress && !respondingChatIds.includes(c.id));
+    useEffect(() => {
+        if (!hasUnfollowedAnswer) return;
+        const interval = setInterval(() => {
+            if (AppState.currentState === 'active') refreshQuietly();
+        }, LIST_REFRESH_MS);
+        return () => clearInterval(interval);
+    }, [hasUnfollowedAnswer, refreshQuietly]);
 
     const createFolder = useCallback(async (name: string) => {
         const folder = await createFolderApi(name);

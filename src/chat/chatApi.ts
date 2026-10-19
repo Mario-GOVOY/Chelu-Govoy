@@ -91,6 +91,7 @@ export async function obtenerChats(): Promise<{ chats: ResumenChat[]; folders: C
             titulo: c.title || 'Conversación',
             actualizado: aMs(c.updated_at ?? c.created_at),
             folderId: c.carpeta_id ?? null,
+            inProgress: !!c.en_curso,
         })),
         folders: folders.map((f) => ({ id: f.id, name: f.nombre })),
     };
@@ -109,6 +110,7 @@ export async function obtenerChat(id: string): Promise<Chat> {
     return {
         id,
         titulo: chat?.title || 'Conversación',
+        activeGenerationId: chat?.generacion_en_curso ?? null,
         mensajes: mensajes.flatMap((m, i): Mensaje[] => {
             const texto = typeof m.content === 'string' ? m.content : '';
             if (m.role === 'user') return texto && !esResumenFormulario(texto) ? [{ id: String(i), rol: 'usuario', texto }] : [];
@@ -371,7 +373,7 @@ export async function fetchSectorsProviders(mapId: number): Promise<FormProvider
 
 // Eventos del stream que usa la app por ahora; el resto se ignoran.
 export type EventoChat =
-    | { tipo: 'session'; session_id: string }
+    | { tipo: 'session'; session_id: string; generation_id: string; pregunta: string }
     | { tipo: 'delta'; texto: string }
     | { tipo: 'tool'; fase: 'inicio' | 'fin'; nombre: string; args?: Record<string, unknown> }
     | { tipo: 'sugerencias'; preguntas: string[] }
@@ -384,7 +386,11 @@ export type EventoChat =
     | { tipo: 'comparativa'; comparison: ScenarioComparison }
     | { tipo: 'progreso'; mensaje: string }
     | { tipo: 'done'; run_id?: string }
-    | { tipo: 'error'; detail?: string };
+    | { tipo: 'error'; detail?: string }
+    // Parada con "Parar"; el back guarda el turno como interrumpido.
+    | { tipo: 'detenida' }
+    // Al retomar, dejó de estar en curso sin mandar su final: ya está en el historial.
+    | { tipo: 'terminada' };
 
 // Los que traen tarjetas se convierten antes de pasarlos; se descartan si no traen nada que pintar.
 const toEvent = (evento: any): EventoChat | null => {
@@ -395,6 +401,8 @@ const toEvent = (evento: any): EventoChat | null => {
         case 'sugerencias':
         case 'done':
         case 'error':
+        case 'detenida':
+        case 'terminada':
             return evento;
         case 'documento':
             return evento.file_id ? { tipo: 'documento', documento: aDocumento(evento) } : null;
@@ -427,6 +435,25 @@ const toEvent = (evento: any): EventoChat | null => {
     }
 };
 
+/** Registra el móvil para recibir un aviso cuando termina una respuesta. Si ya estaba con otro usuario, pasa a este. */
+export async function savePushToken(token: string, platform: 'android' | 'ios'): Promise<void> {
+    const respuesta = await authFetch(`${API_URL_LOCAL}chat-cex/save_push_token`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, plataforma: platform }),
+    });
+    if (!respuesta.ok) throw new Error(`save_push_token ${respuesta.status}`);
+}
+
+/** Deja de avisar a este móvil. */
+export async function deletePushToken(token: string): Promise<void> {
+    const respuesta = await authFetch(
+        `${API_URL_LOCAL}chat-cex/delete_push_token?push_token=${encodeURIComponent(token)}`,
+        { method: 'DELETE' },
+    );
+    if (!respuesta.ok) throw new Error(`delete_push_token ${respuesta.status}`);
+}
+
 /** Pasa a texto una nota de voz grabada en m4a. Devuelve '' si no se ha entendido nada. */
 export async function transcribeAudio(audio: File, sessionId?: string): Promise<string> {
     const datos = new FormData();
@@ -453,10 +480,10 @@ export async function enviarMensaje({ pregunta, sessionId, model, sectorsForm, f
     // La pregunta salió de una nota de voz: solo etiqueta la traza en el back.
     fromVoice?: boolean;
     signal?: AbortSignal;
-    onEvento: (evento: EventoChat) => void;
+    onEvento: (evento: EventoChat, seq?: number) => void;
 }): Promise<void> {
     const respuesta = await authFetch(
-        `${API_URL}chat-cex/stream`,
+        `${API_URL_LOCAL}chat-cex/stream`,
         {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -468,14 +495,61 @@ export async function enviarMensaje({ pregunta, sessionId, model, sectorsForm, f
                 incluir_herramientas: true,
                 incluir_metricas: false,
                 origen_audio: fromVoice,
+                // Notificación push al terminar, si el móvil está registrado.
+                avisar_al_terminar: true,
             }),
             signal,
         },
         fetchStreaming,
     );
-    if (!respuesta.ok || !respuesta.body) throw new Error(`stream ${respuesta.status}`);
+    if (respuesta.status === 409) {
+        const json = await respuesta.json().catch(() => null);
+        throw new ChatBusyError(json?.detail || 'Chelu todavía está respondiendo en esta conversación.');
+    }
+    if (!respuesta.ok) throw new Error(`stream ${respuesta.status}`);
+    await readEvents(respuesta, onEvento);
+}
 
-    // Cada evento llega como "data: {json}\n\n"; un trozo puede traer varios o cortar uno a medias.
+/** La conversación ya tiene una respuesta en curso (409); el mensaje es el del back, para mostrarlo. */
+export class ChatBusyError extends Error {}
+
+/**
+ * Retoma una respuesta en curso: pasa a onEvento los eventos posteriores a fromSeq y los que vayan llegando.
+ * Si ya no está en curso (404), pasa un evento 'terminada'. Al abortar con signal, lanza un AbortError.
+ */
+export async function resumeAnswer({ generationId, fromSeq, signal, onEvento }: {
+    generationId: string;
+    fromSeq: number;
+    signal?: AbortSignal;
+    onEvento: (evento: EventoChat, seq?: number) => void;
+}): Promise<void> {
+    const respuesta = await authFetch(
+        `${API_URL_LOCAL}chat-cex/stream/${encodeURIComponent(generationId)}?desde=${fromSeq}`,
+        { signal },
+        fetchStreaming,
+    );
+    if (respuesta.status === 404) {
+        onEvento({ tipo: 'terminada' });
+        return;
+    }
+    if (!respuesta.ok) throw new Error(`stream ${respuesta.status}`);
+    await readEvents(respuesta, onEvento);
+}
+
+/** Pide parar una respuesta en curso; su stream termina con 'detenida'. Si ya había terminado (404), no hace nada. */
+export async function stopAnswer(generationId: string): Promise<void> {
+    const respuesta = await authFetch(`${API_URL_LOCAL}chat-cex/stream/${encodeURIComponent(generationId)}/parar`, {
+        method: 'POST',
+    });
+    if (!respuesta.ok && respuesta.status !== 404) throw new Error(`parar ${respuesta.status}`);
+}
+
+/**
+ * Lee el stream y pasa a onEvento cada evento con su número (seq), para retomar desde él.
+ * Cada evento llega como "id: N\ndata: {json}\n\n"; un trozo puede traer varios o cortar uno a medias.
+ */
+async function readEvents(respuesta: Response, onEvento: (evento: EventoChat, seq?: number) => void): Promise<void> {
+    if (!respuesta.body) throw new Error('stream sin cuerpo');
     const lector = respuesta.body.getReader();
     const decodificador = new TextDecoder();
     let pendiente = '';
@@ -486,11 +560,14 @@ export async function enviarMensaje({ pregunta, sessionId, model, sectorsForm, f
         const bloques = pendiente.split('\n\n');
         pendiente = bloques.pop() ?? '';
         for (const bloque of bloques) {
-            const linea = bloque.split('\n').find((l) => l.startsWith('data:'));
+            const lineas = bloque.split('\n');
+            const linea = lineas.find((l) => l.startsWith('data:'));
             if (!linea) continue;
+            const lineaId = lineas.find((l) => l.startsWith('id:'));
+            const seq = lineaId ? Number(lineaId.slice(3)) : undefined;
             try {
                 const evento = toEvent(JSON.parse(linea.slice(5)));
-                if (evento) onEvento(evento);
+                if (evento) onEvento(evento, seq);
             } catch {
                 // Línea mal formada: se salta, como en la web.
             }

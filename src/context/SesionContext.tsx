@@ -5,6 +5,7 @@ import { ErrorAuth } from '@/auth/authApi';
 import { registerAuthHandlers } from '@/auth/authManager';
 import { SIN_ACCESO_CHAT } from '@/auth/mensajesError';
 import { borrarRenovaciones, guardarCredenciales, guardarRenovacion, leerRenovaciones } from '@/auth/tokenStorage';
+import { registerForPushNotifications, unregisterFromPushNotifications } from '@/chat/pushNotifications';
 import { Sesion } from '@/types/Sesion';
 import { esStaffSinSuplantar, puedeUsarChat } from '@/utils/ControlOpcionesUsuarios';
 
@@ -98,6 +99,7 @@ export function SesionProvider({ children }: { children: ReactNode }) {
     }, [cambiarEstado]);
 
     const cerrarSesion = useCallback(async () => {
+        unregisterFromPushNotifications();
         // Solo en el móvil (D1): se borran los tokens, el back no se entera.
         await borrarRenovaciones();
         cambiarEstado({ tipo: 'fuera' });
@@ -105,6 +107,7 @@ export function SesionProvider({ children }: { children: ReactNode }) {
 
     const salirDeSuplantacion = useCallback(async () => {
         const actual = estadoRef.current;
+        unregisterFromPushNotifications();
         await guardarRenovacion('usuario', null);
         if (actual.tipo === 'dentro' && actual.staff) {
             cambiarEstado({ tipo: 'staff', staff: actual.staff });
@@ -181,6 +184,15 @@ export function SesionProvider({ children }: { children: ReactNode }) {
         });
         restaurar();
     }, [cambiarEstado, restaurar, salirDeSuplantacion]);
+
+    // Al entrar con una sesión (iniciarla, restaurarla o suplantar), el móvil se registra para los avisos.
+    const sessionKey = estado.tipo === 'dentro' ? `${estado.sesion.empresaId}:${estado.sesion.username}` : null;
+    useEffect(() => {
+        if (!sessionKey) return;
+        registerForPushNotifications().catch(() => {
+            // Sin avisos en este móvil; el chat funciona igual.
+        });
+    }, [sessionKey]);
 
     return (
         <SesionContext.Provider

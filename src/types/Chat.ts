@@ -8,6 +8,8 @@ export type ResumenChat = {
     actualizado: number;
     // Carpeta en la que la tiene el usuario; null si está suelta.
     folderId: number | null;
+    // Chelu está respondiendo en ella (en este dispositivo o en otro).
+    inProgress: boolean;
 };
 
 // Carpeta de conversaciones del usuario (un solo nivel).
@@ -20,6 +22,8 @@ export type Chat = {
     id: string;
     titulo: string;
     mensajes: Mensaje[];
+    // Respuesta que sigue en curso; se retoma desde el principio, porque los mensajes solo traen los turnos guardados.
+    activeGenerationId: string | null;
 };
 
 export type Mensaje = {
@@ -30,6 +34,8 @@ export type Mensaje = {
     runId?: string;
     // Solo en la respuesta que se está recibiendo o que se acaba de recibir.
     estado?: 'escribiendo' | 'detenida' | 'error';
+    // Con estado 'error', el motivo si lo da el back (p. ej. que ya está respondiendo).
+    errorMessage?: string;
     herramientas?: Herramienta[];
     // Preguntas que propone Chelu al acabar la respuesta.
     sugerencias?: string[];

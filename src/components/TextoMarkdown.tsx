@@ -1,4 +1,4 @@
-import { Children, cloneElement, isValidElement, useMemo, useState, type ReactNode } from 'react';
+import { Children, cloneElement, isValidElement, memo, useMemo, useState, type ReactNode } from 'react';
 import { Platform, ScrollView, View, type StyleProp, type TextStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Renderer, useMarkdown, type useMarkdownHookOptions } from 'react-native-marked';
@@ -109,7 +109,54 @@ class RendererChelu extends Renderer {
     }
 }
 
-export function TextoMarkdown({ texto }: { texto: string }) {
+const LIST_ITEM = /^\s*([-*+]|\d+[.)])\s/;
+
+// Parte el texto por las líneas en blanco. No corta dentro de un bloque de código, antes de una línea
+// sangrada (sigue el elemento de lista anterior) ni entre elementos de una misma lista.
+function splitIntoBlocks(texto: string): string[] {
+    const blocks: string[] = [];
+    let current: string[] = [];
+    let insideCode = false;
+    let afterBlankLine = false;
+    for (const line of texto.split('\n')) {
+        if (!insideCode && line.trim() === '') {
+            afterBlankLine = current.length > 0;
+            continue;
+        }
+        if (afterBlankLine) {
+            const continuesBlock = /^\s/.test(line) || (LIST_ITEM.test(line) && LIST_ITEM.test(current[0]));
+            if (continuesBlock) {
+                current.push('');
+            } else {
+                blocks.push(current.join('\n'));
+                current = [];
+            }
+            afterBlankLine = false;
+        }
+        if (line.trimStart().startsWith('```')) insideCode = !insideCode;
+        current.push(line);
+    }
+    if (current.length) blocks.push(current.join('\n'));
+    return blocks;
+}
+
+// Cierra la negrita y el código en línea que aún no se han cerrado (**ejemp → **ejemp**) y quita los
+// asteriscos o comillas sueltos del final. Los bloques de código se dejan como están.
+function closeOpenMarkers(block: string): string {
+    if (block.includes('```')) return block;
+    const text = block.replace(/[*`]+$/, '');
+    const code = (text.match(/`/g) ?? []).length % 2 ? '`' : '';
+    const bold = (text.match(/\*\*/g) ?? []).length % 2 ? '**' : '';
+    return text + code + bold;
+}
+
+// Mientras Chelu escribe solo cambia el último bloque: los anteriores no se vuelven a analizar.
+const MarkdownBlock = memo(function MarkdownBlock({ texto, opciones }: { texto: string; opciones: useMarkdownHookOptions }) {
+    return <>{useMarkdown(texto, opciones)}</>;
+});
+
+// writing: el texto se está escribiendo; en el último bloque se cierra lo que quedó abierto.
+export function TextoMarkdown({ texto, writing = false }: { texto: string; writing?: boolean }) {
     const colores = useColores();
     const esquema = useEsquema();
 
@@ -141,5 +188,14 @@ export function TextoMarkdown({ texto }: { texto: string }) {
         },
     }), [colores, esquema]);
 
-    return <View>{useMarkdown(texto, opciones)}</View>;
+    const blocks = useMemo(() => {
+        const split = splitIntoBlocks(texto);
+        return split.map((block, i) => (writing && i === split.length - 1 ? closeOpenMarkers(block) : block));
+    }, [texto, writing]);
+
+    return (
+        <View>
+            {blocks.map((block, i) => <MarkdownBlock key={i} texto={block} opciones={opciones} />)}
+        </View>
+    );
 }

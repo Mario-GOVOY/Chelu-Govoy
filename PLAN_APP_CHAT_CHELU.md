@@ -818,7 +818,7 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
   1. **Back, trabajo propio:** la optimización se registra como trabajo (en curso / terminada / error) y se ejecuta aunque se corte la conexión. Al terminar, guarda en el historial la tarjeta (`sectores` o `comparativa`) y el comentario de Chelu. Para sobrevivir a un reinicio o despliegue, el trabajo va en una tabla (o una cola) y se retoma o se marca como fallido.
   2. **Push:** la app pide permiso con `expo-notifications` y manda su token al back (tabla de tokens por usuario y endpoint nuevos; se puede partir de `utilsNotifications.tsx` de AppGovoy). Al terminar, el back envía la notificación con la API de Expo. Configuración: FCM (Android) y APNs (iOS) con EAS, build nueva. La notificación lleva el `chatId` y al tocarla se abre esa conversación.
   3. **App:** con la app abierta en otro chat, aviso dentro de la app ("La optimización de X ha terminado · Ver"). Al volver a un chat con una optimización en curso, "Optimización en proceso…" hasta que termine (consultando el estado o con el aviso).
-  4. **Lista de conversaciones:** el chat cuya optimización ha terminado y aún no se ha abierto sale resaltado con un "!" hasta abrirlo. Hace falta saberlo al cargar la lista: un campo en `get_chats` (p. ej. resultado sin ver) o, solo en el móvil, apuntarlo al recibir la notificación.
+  4. ~~**Lista de conversaciones:** el chat cuya optimización ha terminado y aún no se ha abierto sale resaltado con un "!" hasta abrirlo.~~ Descartado (2026-10-16), como en la web: basta con el spinner mientras responde y la push al terminar.
 - No sirve que la app se avise sola al acabar el stream: en segundo plano Android e iOS cortan la conexión o la app en pocos minutos.
 - **Cualquier respuesta, no solo las optimizaciones:** el mecanismo es el mismo.
 - **Infraestructura (investigado el 2026-10-14):**
@@ -835,25 +835,134 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
   - **Servicio en primer plano de Android** (notifee, `react-native-background-actions`): solo Android, y lo que importa es que el back no pare.
   - **iOS:** `BGContinuedProcessingTask` (iOS 26) es para tareas que inicia el usuario con progreso visible; `URLSession` en segundo plano no admite streaming.
   - **Paquetes de Stream** (`@stream-io/chat-ai-sdk`, `@stream-io/chat-react-native-ai`): necesitan Stream Chat (SaaS) y un agente en Node; no encajan.
-- **Decidido (no se hace todavía): respuestas reanudables.** Explicado con esquemas y ejemplos en el artifact "Respuestas reanudables" (https://claude.ai/artifact/TUGtV83uaWbtmgLk61PD9w):
+- **En curso: respuestas reanudables. Back hecho (2026-10-15, `main` de Back-Govoy, en el stage para commitear), web hecha (2026-10-16, `main` de Front-Govoy, commiteada y sin subir) y app hecha (2026-10-16, bloques 7-9, sin probar en el móvil). Back, web y app se suben a la vez. Faltan el chat nuevo en `get_chats` mientras responde su primera pregunta (back) y las push (bloque 10).** Explicado con esquemas y ejemplos en el artifact "Respuestas reanudables" (https://claude.ai/artifact/TUGtV83uaWbtmgLk61PD9w); el flujo del código, paso a paso, en "Flujo del stream reanudable" (https://claude.ai/artifact/7r3yK2yxb9jpMvKv3yT1nh, del bloque 2a):
   - **Idea:**
     - Cada respuesta es una "generación" con su `generation_id`, que corre en el back aunque se corte la conexión.
     - Los eventos que manda (los mismos de hoy) se guardan numerados (`seq`).
     - Al volver, la app pide los eventos desde el último que recibió y sigue viéndola en directo.
   - **Endpoints:**
-    - `POST /chat-cex/stream` se mantiene; el evento `session` añade `generation_id`. 409 si ese chat ya tiene una generación en curso.
-    - `GET /chat-cex/stream/{generation_id}?desde=N` (nuevo): reenvía los eventos posteriores a `N` y sigue con los que lleguen (SSE con `id:`). Si ya terminó, lo dice y la app recarga con `get_chat`.
-    - `POST /chat-cex/stream/{generation_id}/parar` (nuevo): marca la generación para parar; la comprueba entre trozos, esté en el worker que esté. Cerrar la conexión deja de significar parar.
-    - `get_chat` devuelve `generacion_en_curso` (id y último `seq`); `get_chats`, `en_curso` por chat (más adelante `sin_ver`, para el "!").
+    - `POST /chat-cex/stream` se mantiene; el evento `session` añade `generation_id` y cada bloque SSE lleva `id: <seq>` (la app y la web solo leen la línea `data:`, no les afecta). 409 "Chelu todavía está respondiendo en esta conversación…" si ese chat ya tiene una generación en curso.
+    - `GET /chat-cex/stream/{generation_id}?desde=N` (nuevo): reenvía los eventos posteriores a `N` y sigue con los que lleguen. Termina con `done`, con `detenida` si se ha parado o, si deja de estar en curso sin verlos (los últimos eventos no llegan a guardarse), con `{"tipo": "terminada"}`: la app recarga con `get_chat`. 404 si no está en curso o no es del usuario.
+    - `POST /chat-cex/stream/{generation_id}/parar` (nuevo): marca `parar`; el worker que la genera lo ve en menos de un segundo, la cancela, guarda el turno como interrumpido y su stream termina con `{"tipo": "detenida"}`. Cerrar la conexión deja de significar parar. 404 como el anterior.
+    - `get_chat` devuelve `generacion_en_curso` (solo el `generation_id`, o `null`; se retoma con `desde=0`, porque los mensajes solo traen los turnos guardados); `get_chats`, `en_curso` por chat.
   - **Reglas:**
-    - Latido cada ~15 s; más de 2 min sin latido = muerta, se marca como error.
-    - Las peticiones del panel con `contexto_pantalla` no se guardan como generación.
-    - Al desplegar, revisar `--graceful-timeout` de Gunicorn para no matar las que están en curso.
+    - Latido cada 15 s; más de 2 min sin latido (con la hora de MySQL) = muerta: no cuenta como en curso y se borra con sus eventos al crear la siguiente generación del cliente (hace de limpieza, sin proceso aparte). Su respuesta a medias se pierde, como hoy; se podría guardar el texto de sus lotes como turno interrumpido.
+    - Las peticiones del panel con `contexto_pantalla` no son generación: van ligadas a la conexión, como antes.
+    - Al desplegar, revisar `--graceful-timeout` de Gunicorn para no matar las que están en curso. La configuración de la API principal no está en Back-Govoy ni en AWS-Govoy (solo la de geolocalización, 30 s): preguntar a quien lleve el despliegue.
+  - **Hecho en el back (bloques 0-6):**
+
+    | # | Bloque | Dónde |
+    |---|---|---|
+    | 0 | Tablas y `GRANT` en todos los clientes (ver opción A) | MySQL |
+    | 1 | Acceso a datos con el ORM (`get_history_session_factory`) | B `tools_chat/generaciones.py`; getters en `models/db_cliente.py` |
+    | 2a | `/stream` en dos tareas de fondo: `_consume` tira del generador y `read_events` lo sirve; `_event_stream` emite diccionarios y `_sse` añade el `id` | `LiveGeneration`; `chat_cex_stream` |
+    | 2b | `create_generation` justo antes de arrancar (409); `_save` guarda lotes cada 0,4 s y el latido cada 15 s, y al terminar se despierta al momento y borra | `LiveGeneration._save` |
+    | 3 | Reconexión: de memoria si corre en este worker (`_live_generations`), de la tabla si no (`read_saved_events`, consulta cada 0,4 s) | `chat_cex_stream_reanudar` |
+    | 4 | Parar: `_save` mira `parar` en cada vuelta y cancela `_consume`; el `except CancelledError` de `_event_stream` guarda el turno interrumpido | `chat_cex_stream_parar` |
+    | 5 | Generaciones muertas por el latido | `_is_alive`, `delete_dead_generations` |
+    | 6 | `generacion_en_curso` y `en_curso` | `get_chat`, `get_chats`, `get_user_generations` |
+
+    - Las consultas de generaciones van en un pool de 4 hilos propio por worker (`run_in_db_thread`), no en el de `asyncio.to_thread`: ese lo comparten las tools de Agno (`agno/models/base.py:1436`) y el solver, y con 12 hilos por worker (8 vCPU) unas cuantas optimizaciones largas (el semáforo de `opti.py` se espera dentro del hilo) podían retrasar el latido más de 2 min y dar por muerta una generación viva.
+    - Probado contra MySQL en local: respuesta guardada en el historial con el `/stream` nuevo y guardado por lotes (en una optimización, un lote al principio y nada durante el solver; más al acabar). Probados con una base de datos falsa la reconexión, el parar (~250 ms) y el borrado.
+    - **Probado desde la web contra MySQL (2026-10-16, back local):** salir a mitad y volver (engancha y sigue en directo; termina con la respuesta completa), parar, `en_curso` en la lista y el 409 (salió por un fallo de la web, ya arreglado: parar antes del evento `session`).
+    - **Falta probar contra MySQL:** generación muerta (reiniciar el back a mitad y escribir en ese chat pasados 2 min), 409 desde otra pestaña y tablas vacías al terminar.
+    - **Chat nuevo mientras responde su primera pregunta (visto desde la app, 2026-10-16; se arregla al final):** no sale en `get_chats` hasta que termina, porque Agno no guarda la fila de `chat_agno_chelu` hasta el final de la run; y `get_chat` da 404. Si se cierra la app a mitad (o se lanza desde la web), no se puede abrir para retomarla. Arreglo propuesto, solo en el back y sin tablas nuevas:
+      - `get_chats`: por cada generación en curso del usuario (`get_user_generations`) cuyo chat no está en la lista, una entrada arriba con `en_curso: true`, sin carpeta y con el título de la `pregunta` del evento `session` (el primero que se guarda; función nueva en `generaciones.py` para leer el primer evento). Sin eventos todavía, o con la pregunta vacía (formulario sin texto), "Nueva conversación". Quitar la salida temprana de `if not session_ids`.
+      - `get_chat`: sin fila pero con generación en curso del usuario en ese chat, chat vacío (título, `messages: []`, `generacion_en_curso`) en vez del 404.
+      - La app y la web no cambian: al abrirlo, `generacion_en_curso` y se retoma desde 0.
+    - **Limitaciones:** parar la ruta rápida del formulario mientras el solver calcula no guarda turno (esa espera está fuera del `try` de `_event_stream`) y el hilo del solver sigue hasta acabar, como antes; el formulario se puede volver a lanzar. La app nueva no funciona contra el back de producción (no manda `generation_id`: su "Parar" se queda esperando el id y no para): **back, web y app salen juntos.**
+  - **Clientes:**
+
+    | # | Bloque | Web | App |
+    |---|---|---|---|
+    | 7 | Leer `generation_id` y el `id:` de cada evento; cambiar de chat ya no aborta; "Parar" llama al endpoint nuevo y trata `detenida` | Hecho | Hecho (2026-10-16) |
+    | 8 | Reanudar: al abrir un chat con `generacion_en_curso` y al volver la app a primer plano (`AppState`), `GET .../stream/{id}?desde=N`; `terminada` y 404 recargan con `get_chat` | Hecho, con el texto que llega de golpe mostrado poco a poco | Hecho (2026-10-16), con texto poco a poco según el tiempo |
+    | 9 | Indicador de "respondiendo" en la lista con `en_curso` | Hecho: spinner en la fila, en curso primero, `get_chats` cada 10 s mientras responde en un chat que no se lee | Hecho (2026-10-16): spinner, sin "en curso primero" |
+    | 10 | Notificaciones push (`sin_ver` y el "!" descartados el 2026-10-16) | No aplica | Pendiente; necesita back, tablas y build |
+
+    Detalle de la web en "Web, cómo queda" y de la app en "App, cómo queda", más abajo.
+
+  - **Web, cómo queda (2026-10-16, F `useChatChelu.ts`, `chatHistoryApi.ts`, `ConvList.tsx`, `Composer.tsx`, `ChatCheluBody.tsx`):**
+    - **Un solo stream a la vez (opción A):** al cambiar de chat se suelta la lectura (`detachStream`) sin parar la respuesta y se apunta su `generation_id` en la conversación (`generacionEnCurso`). Al volver, `resumeAnswer` pide `GET /stream/{id}?desde=0`. Cada lectura tiene su `StreamControl` (`abort`, `generationId`, `detached`, `reanudable`, `stopRequested`), para que una soltada no pise a la siguiente.
+    - **Soltada antes del evento `session`:** sin id, se vacía la copia en memoria; al volver, `get_chat` trae `generacion_en_curso` y la pregunta llega en el evento `session` (`pregunta`, añadida al back para esto), que la web pinta (`addQuestion`).
+    - **`terminada` o 404 al retomar:** la respuesta ya está en el historial; se recarga con `get_chat` (`reloadConv`).
+    - **Parar:** `POST /stream/{id}/parar` y la respuesta termina con `detenida`. Si se pulsa antes del evento `session`, se apunta (`stopRequested`) y se para al llegar el id: cortar la conexión ya no para una reanudable (era lo que daba el 409). Botón con spinner y desactivado mientras para (`stopping`). En el panel de simulación (no reanudable) se sigue cortando la conexión.
+    - **Texto poco a poco (8b):** se separa lo recibido (`streamTextRef`) de lo que se ve (`shownLengthRef`); cada frame enseña 1/12 de lo que falta (mínimo 2 caracteres). Lo que llega de golpe al retomar, o en lotes desde la tabla, se ve escribirse en menos de un segundo; en el stream normal va unos 200 ms por detrás. El `finally` espera a que se vea todo (`waitForReveal`, no espera con la pestaña oculta). Aplicado a todas las respuestas.
+    - **Scroll:** se despega del fondo solo si el usuario sube (antes, el contenido que crecía entre el scroll y su evento lo despegaba y la vista se quedaba en la pregunta); un `ResizeObserver` mantiene la vista abajo cuando el contenido crece (`keepAtBottom`).
+    - **Lista:** `enCurso` por conversación (de `get_chats`, y `true` al empezar a leer o al soltar); spinner en lugar de la fecha y en curso primero (dentro de su carpeta o entre las sueltas). Mientras responde en un chat que no se lee, `get_chats` cada 10 s con la pestaña visible; si `enCurso` cambia, `mergeChatList` descarta la copia en memoria (para retomar la de otro dispositivo o ver la respuesta terminada).
+    - **Al desmontar el chat** se suelta la lectura: la reanudable sigue en el back y la del panel de simulación se cancela (así sus eventos no actúan sobre una pantalla que ya no está). Plegar el panel no lo desmonta: la respuesta sigue y se ve al abrirlo.
+    - **Descartado de momento:** socket o SSE de aviso en lugar del sondeo (con varios workers e instancias hace falta un canal entre procesos, p. ej. Redis; si se hace, el aviso de fin podría ir por FCM, el mismo de las push). En la web no hay bloque 10: `sin_ver` y el "!" se descartan (2026-10-16) y las notificaciones del navegador no se hacen; el spinner cubre el "en curso".
+  - **App, cómo queda (2026-10-16, bloques 7-9; `tsc` limpio, sin probar en el móvil).** La app ya mantenía montadas las conversaciones que responden (`ChatScreen`, ver "Respuestas que siguen al cambiar de chat" en la fase 5): no hace falta soltar y retomar al cambiar de chat, como en la web. Lo que corta la lectura es el segundo plano y cerrar la app. No tiene panel de simulación: todas sus respuestas son reanudables.
+    - **7a. `chatApi.ts`:**
+      - `readEvents`: la lectura SSE, común a enviar y retomar; pasa a `onEvento` cada evento con su `seq` (línea `id:`).
+      - `resumeAnswer({ generationId, fromSeq, signal, onEvento })`: `GET chat-cex/stream/{id}?desde=N`. El 404 (ya no está en curso) se pasa como un evento `terminada`, así quien llama trata igual los dos casos.
+      - `stopAnswer(generationId)`: `POST chat-cex/stream/{id}/parar`; el 404 (ya había terminado) no hace nada.
+      - 409 en `/stream`: lanza `ChatBusyError` con el `detail` del back; la burbuja lo muestra (`errorMessage` en `Mensaje`). Otros fallos, error genérico.
+      - `EventoChat`: `session` con `generation_id` y `pregunta`; `detenida`; `terminada`. `obtenerChat` devuelve `activeGenerationId` (de `chat.generacion_en_curso`); `obtenerChats`, `inProgress` por chat (de `en_curso`).
+    - **7b. `useChat.ts`:**
+      - `StreamControl` por respuesta (`abortController`, `generationId`, `lastSeq`, `stopRequested`); `streamRef` apunta a la que se está leyendo.
+      - `parar`: con id, `stopAnswer` y la respuesta termina con `detenida`. Sin id, se apunta (`stopRequested`) y se para al llegar el evento `session`. Si `stopAnswer` falla, se corta la conexión (`requestStop`). `stopping` pone el spinner en el botón (`CajaMensaje`) y lo desactiva.
+      - Al desmontar la pantalla solo se deja de leer; la respuesta sigue en el back.
+    - **8a. `followAnswer` (enviar y retomar comparten la lectura):**
+      - Lee hasta el último evento (`done`, `error`, `detenida` o `terminada`). Lo recibido (texto, tarjetas, herramientas) vive en la función, así que se conserva entre conexiones.
+      - Si la lectura se corta sin el último evento (error de red o conexión cerrada), espera a primer plano (`waitUntilActive`; con la app abierta, 2 s) y retoma con `resumeAnswer` desde `lastSeq`: sigue en la misma burbuja sin repetir.
+      - No retoma si el corte es a propósito (`signal.aborted`: salir de la pantalla, cambiar de conversación), con el 409, sin `generationId` (cortada antes del `session`) ni tras 5 cortes seguidos sin recibir nada (`MAX_FAILED_READS`; cada evento pone el contador a 0): error.
+      - `terminada` (o 404 al retomar): la respuesta ya está guardada, `recargar()` vuelve a cargar el chat.
+      - Un corte que no viene de "Parar" ya no se marca como detenido ni como error: se retoma.
+    - **8b. `resumeActiveAnswer`:** al abrir un chat con `activeGenerationId` (app cerrada a mitad o respuesta lanzada desde la web), añade la burbuja de Chelu y la sigue desde 0; la `pregunta` del evento `session` se mete delante (sin pregunta, formulario sin texto, no se pinta).
+    - **8c. Texto poco a poco:**
+      - Se separa lo recibido (`texto`) de lo que se ve (`shownLength`). `reveal` avanza **según el tiempo pasado**: por cada fotograma de 60 fps transcurrido, 1/12 de lo que falta (mínimo 2 caracteres). Pinta como mucho cada 33 ms (unas 30 veces por segundo) y cuenta como mucho 100 ms por paso (tras una pausa no enseña todo de golpe). Así, si se pierden fotogramas, el texto no se frena.
+      - Antes de cerrar la burbuja con las sugerencias espera a que se vea todo (`waitForReveal`; en segundo plano no espera). Con error, se enseña todo de golpe.
+      - La web sigue avanzando por fotogramas; se puede pasar esta versión (sin el límite de 30) si se quiere igualar.
+    - **Rendimiento del texto mientras escribe** (se notaba a tirones, sobre todo en la build de desarrollo):
+      - `BurbujaMensaje` con `memo` y las funciones de `ChatScreen` estables (`useCallback`); duplicar y valorar reciben el `runId`, y "solo respuestas guardadas y completas" se decide en la burbuja (`savedRunId`). Así solo se repinta la burbuja que escribe.
+      - `TextoMarkdown` parte el texto en bloques por las líneas en blanco (`splitIntoBlocks`: no corta dentro de un bloque de código, antes de una línea sangrada ni entre elementos de una misma lista) y cada bloque es un `MarkdownBlock` memorizado: solo se vuelve a analizar el último. Se aplica siempre, no solo mientras escribe.
+      - Mientras escribe (`writing`), en el último bloque se cierran la negrita y el código en línea abiertos y se quitan los `*` o `` ` `` sueltos del final (`closeOpenMarkers`: `**ejemp` → `**ejemp**`). No cubre la cursiva con un solo `*` (se confunde con las viñetas) ni los enlaces a medias.
+    - **9. Lista (`ConversacionesContext`, `ListaConversaciones`):**
+      - Una fila sale como respondiendo (spinner y sin acciones) con `inProgress` (de `get_chats`) o si está en `respondingChatIds`.
+      - Al acabar una respuesta que sigue la app, `setChatResponding(id, false)` pone su `inProgress` a `false`.
+      - Recarga la lista al volver a primer plano y, mientras haya alguna en curso que la app no sigue, cada 10 s (`LIST_REFRESH_MS`, solo en primer plano). Las recargas automáticas son silenciosas (`refreshQuietly`: sin spinner del botón ni error; `fetchList` separado de `recargar`).
+      - Sin "en curso primero" como en la web. Una respuesta nueva lanzada desde otro dispositivo, sin ninguna en curso en la lista, se ve al abrir el menú, al volver a primer plano o al recargar.
+    - **De paso: caja de mensaje (`CajaMensaje`).** Al volver de la gráfica ampliada (horizontal y sin barras del sistema) la caja quedaba un momento debajo de la barra de navegación: `useSafeAreaInsets` llegaba tarde. Ahora es un `SafeAreaView` de `react-native-safe-area-context` con `edges={['bottom']}` (ninguno con el teclado abierto), que pone el margen al maquetar.
+    - **A vigilar al probar:** una conexión que al volver de segundo plano parece abierta pero no recibe nada (posible en iOS tras una suspensión larga) dejaría la burbuja escribiendo, porque no se lanza ningún error. Si pasa, cortar la lectura siempre al volver a primer plano y retomar desde `lastSeq`.
+    - **Casos a probar (contra el back local):** parar a mitad y antes del `session`; escribir en el mismo chat justo después (sin 409); 409 con una respuesta lanzada desde la web; segundo plano a mitad (sigue) y hasta que acabe (recarga); modo avión unos segundos (sigue) y más de 15 s (error); cerrar la app a mitad y abrir el chat; abrir en el móvil un chat que responde desde la web (también el formulario sin texto); parar una retomada; spinner en la lista al abrir la app y que se quite al acabar.
+    - **10. Notificaciones push** (solo en la app). Sin `sin_ver` ni "!" en la lista, como en la web (decidido el 2026-10-16): el spinner cubre el "en curso" y la push el "ha terminado".
+      - **Back:**
+        - **Tabla `chat_push_tokens_chelu`, creada el 2026-10-16** en los 24 clientes con chat (los 23 de `inicio_sesion.aplicar_sql_a_clientes`, que se salta la empresa 1, y `cliente_1` a mano), con DML para `chelu_hist`:
+          ```sql
+          CREATE TABLE IF NOT EXISTS {{db_name}}.chat_push_tokens_chelu (
+            token varchar(255) NOT NULL,        -- ExponentPushToken[...]
+            user_id varchar(128) NOT NULL,      -- a quién avisar (usuario_id de inicio_sesion.Users)
+            plataforma varchar(10) NOT NULL,    -- 'android' | 'ios'
+            PRIMARY KEY (token),
+            KEY idx_user (user_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON {{db_name}}.chat_push_tokens_chelu TO 'chelu_hist'@'%';
+          ```
+          - Clave el token: una fila por móvil; si entra otro usuario en ese móvil, la fila pasa a él (`INSERT … ON DUPLICATE KEY UPDATE`). Un usuario con varios móviles, varias filas.
+          - Sin fecha de actualización: los tokens que dejan de valer se borran cuando Expo responde `DeviceNotRegistered`.
+        - **Staff suplantando (decidido el 2026-10-16):** se avisa al staff, no al usuario suplantado. El token de suplantación lleva `is_impersonation` e `impersonated_by` (username del staff, `routes/login.py`): al registrar el token y al lanzar una respuesta, el `user_id` "a quién avisar" es el `usuario_id` del staff. Se guarda en memoria con la generación (el aviso lo manda el mismo worker al terminar), sin columna nueva. El staff solo recibe avisos de lo que lanza él; el usuario real, no los de lo que lanza el staff.
+        - Endpoints para registrar el token (al iniciar sesión) y borrarlo (al cerrarla).
+        - **Solo avisa de lo lanzado desde la app (decidido el 2026-10-16):** `POST /stream` con `avisar_al_terminar: true`, que manda la app y la web no. Si no, quien mira la respuesta en la web recibiría una push en el móvil por cada pregunta. Si un día la web lo quiere (p. ej. al salir de la pestaña mientras responde), se manda el mismo campo.
+        - Al terminar una generación, notificación con la API de Expo: `routes/notifications.py` ya usa `exp.host`, pero guarda los tokens por conductor (AppGovoy). Va con el `chatId`, desde el `finally` de `_save`, en un hilo o con un cliente HTTP asíncrono.
+        - Alta de clientes: crear también esta tabla.
+      - **App:**
+        - `expo-notifications`: pedir permiso y mandar el token.
+        - Canal de Android; credenciales de FCM y APNs en EAS, y una build nueva.
+        - Tocar la notificación abre ese chat. En primer plano, con ese chat abierto, no se muestra; en otro chat, un aviso dentro de la app ("Chelu ha terminado en X · Ver").
+      - **Pregunta 14 relacionada:** monitorización de errores (Sentry) si se monta FCM.
+    - **Orden:** ~~7 y 8 juntos, luego 9~~ (hechos el 2026-10-16); queda el 10 aparte, porque necesita back, tablas y build.
+  - **Bug de la web arreglado de paso (2026-10-15, F `useChatChelu.ts`, commit `39f2b225`):** al cambiar de chat mientras respondía, el `finally` de `streamAnswer` leía `sessionIdRef` (ya el del chat abierto): la respuesta cortada se pintaba en el otro chat, la conversación original tomaba el id del otro (con su carpeta) y desaparecía de la lista hasta recargar. Pasaba en producción. Ahora `streamAnswer` guarda su propio `streamSessionId` y solo toca la vista (`setMsgs`, `sessionIdRef`, `setCurConvId`) si su chat sigue abierto (`openReqRef`). Puede ir a producción por su cuenta. La app no lo tenía (mantiene montada cada conversación que responde).
+  - **Para probar en local:** `STREAM_URL` (F `useChatChelu.ts`), `get_chat` y `get_chats` (`fetchChatDetail` y `fetchChatList` en F `chatHistoryApi.ts`, más su import) se apuntan a `API_URL_LOCAL`, porque producción no devuelve `generacion_en_curso` ni `en_curso` hasta desplegar el back. Devueltos a `API_URL` el 2026-10-16; la web tiene que subir a la vez que el back. En la app, lo más sencillo es poner `API_URL = 'http://127.0.0.1:8000/'` en `src/auth/Constants.ts` (con `adb reverse tcp:8000 tcp:8000`) y volver a iniciar sesión; devolverlo al terminar. No arrancar el back con el depurador (con `sys.gettrace()` el dueño es el usuario 1). Tras cambiar el back, reiniciarlo: el ORM mapea las tablas al arrancar.
+  - **Alta de un cliente nuevo con chat:** además de `chat_agno_chelu` y `chat_feedback_chelu`, crear `chat_generaciones_chelu`, `chat_generaciones_eventos_chelu` y `chat_push_tokens_chelu` con su `GRANT` a `chelu_hist` (como con `inicio_sesion.aplicar_sql_a_clientes`, que recorre `inicio_sesion.Empresa` menos la 1, ejecuta una sentencia por llamada y no avisa si falla en algún cliente: comprobar después contando en `information_schema.TABLES`).
   - **Dónde guardar los eventos: dos opciones, se elige con el equipo de infraestructura:**
     - **Opción A, MySQL (lo que ya hay):**
-      - Tabla `chat_generaciones_chelu` por cliente con el estado (`generation_id`, `session_id`, estado, `parar`, `latido`) y tabla `chat_generaciones_eventos_chelu` con los eventos en lotes (`generation_id`, `seq`, eventos en JSON), en el esquema del historial y con el usuario `chelu_hist`.
+      - **Creadas (2026-10-15)** en todos los `cliente_{id}` con `inicio_sesion.aplicar_sql_a_clientes` (y en `cliente_1`, que el procedimiento se salta, también están), y con DML para `chelu_hist`:
+        - `chat_generaciones_chelu`: `generation_id` (clave), `session_id` (`UNIQUE`: el 409), `user_id`, `parar`, `latido`. Solo hay fila mientras la generación está en curso; al terminar, detenerse o fallar se borra con sus eventos. Sin `estado`: que exista ya es "en curso".
+        - `chat_generaciones_eventos_chelu`: `generation_id`, `seq` (el del último evento del lote) y `eventos` (JSON), con clave `(generation_id, seq)`.
+        - Collation `utf8mb4_0900_ai_ci`, como `chat_agno_chelu`. El 100 las tiene aunque solo use el panel (sus peticiones no son generaciones).
       - Un `INSERT` por lote cada ~400 ms y solo si hay eventos nuevos (no una fila por token ni `UPDATE` con `CONCAT` de un texto largo).
-      - Los lotes de una generación se borran al terminar, detenerse o fallar: la tabla de eventos solo tiene lo que está en curso. Si una reconexión llega después, la respuesta ya está en el historial. Las filas de estado se limpian cada día o semana.
+      - Los lotes de una generación se borran al terminar, detenerse o fallar: las dos tablas solo tienen lo que está en curso. Si una reconexión llega después, la respuesta ya está en el historial. La limpieza solo borra las generaciones con el latido viejo (muertas) y sus eventos.
       - Quien se reconecta consulta los lotes nuevos cada ~400 ms: un poco de retraso, que apenas se nota.
       - A favor: sin infraestructura nueva. En contra: limpieza y consultas periódicas hechas a mano.
     - **Opción B, Redis (ElastiCache o Valkey):**
@@ -863,6 +972,7 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
       - Coste: el software es gratis; ElastiCache gestionado, unos 12–15 $/mes la instancia más pequeña (o *serverless* por uso). Alternativa: Redis en un contenedor propio, sin coste extra pero con mantenimiento.
       - En contra: infraestructura nueva (servidor, security group, `REDIS_URL`, vigilancia) y decidir qué hacer si se cae.
     - Los endpoints y la app son iguales en las dos: solo cambia dónde se guardan los eventos. Se puede empezar con A y pasar a B.
+    - **Se empieza con A (2026-10-15).**
     - **Carga con varias optimizaciones a la vez (revisado el 2026-10-15):**
       - **MySQL no es el cuello de botella.** Mientras el solver calcula apenas hay eventos (el latido cada ~15 s); escribiendo texto, como mucho un `INSERT` cada ~400 ms por generación y una consulta cada ~400 ms por cada reconexión. 20 respuestas a la vez son unas 50 escrituras y 50 lecturas por segundo de filas pequeñas por clave, nada para Aurora. A vigilar: el pool de conexiones (5 + 5 por worker, `history_db.py:84-91`, por 4 workers y por instancia) y no bloquear el worker con `pymysql` síncrono dentro del stream (pasarlo a un hilo).
       - **Lo que se satura es la CPU de las instancias de la API**, igual con MySQL que con Redis. El solver corre dentro de la API (`asyncio.to_thread`, B `:1716`; un hilo por escenario en `opti.py:726`). Ya hay un tope: `CEX_MAX_OPT_CONCURRENTES` = 3, un `BoundedSemaphore` **por worker** (no por chat ni por máquina) que cuenta escenarios (solves), no peticiones; las peticiones entran todas (workers asíncronos) y lo que hace cola son los solves. Con 4 workers son hasta 12 solves por instancia sobre 8 vCPU (`c6a.2xlarge`); análisis en `agentes/chat_CEX/README.md:408-449`.
@@ -870,10 +980,10 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
       - Con respuestas reanudables las optimizaciones terminan siempre (hoy el resultado se tira si el usuario se va), así que hay algo más de trabajo vivo a la vez. Posibles mejoras: un evento "En cola…" mientras espera el semáforo (se vería también al reconectar), una optimización en curso por usuario (ampliando el 409 por chat) y, solo si crece el uso, un límite por instancia o global (contando las generaciones en curso en MySQL) o sacar el solver a workers aparte con una cola.
   - **Push:** tabla de tokens por usuario del chat. `routes/notifications.py` ya envía con `exp.host`, pero guarda el token por conductor (AppGovoy).
   - **Orden:**
-    1. Back: generaciones, eventos guardados, reanudar y parar.
-    2. App y web: no cancelar al salir, reanudar al volver (con `generacion_en_curso`) y el nuevo parar.
-    3. `en_curso`/`sin_ver` y el "!" en la lista.
-    4. Notificaciones.
+    1. ~~Back: generaciones, eventos guardados, reanudar y parar.~~ Hecho (bloques 0-6).
+    2. App y web: no cancelar al salir, reanudar al volver (con `generacion_en_curso`) y el nuevo parar. ~~Web~~ hecha (2026-10-16); ~~app~~ hecha (2026-10-16, bloques 7-8), sin probar en el móvil.
+    3. `en_curso` en la lista: hecho en la web; en la app, bloque 9. `sin_ver` y el "!" descartados (2026-10-16).
+    4. Notificaciones (bloque 10 de la app).
 
 **Pendiente de hablar con el equipo: "ya enviado" entre dispositivos**
 - **Problema:** el registro de enviados es de cada dispositivo (AsyncStorage en el móvil, `localStorage` en la web). Un correo enviado desde el móvil sigue saliendo como enviable en la web, y al revés. Pasa también en la web entre navegadores.
@@ -1000,7 +1110,7 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 - `ChatScreen` mantiene montadas las conversaciones que están respondiendo (`ChatConversation`, la pantalla de antes) y oculta las que no se ven con `display: 'none'`. Al cambiar de chat, la que responde sigue recibiendo el stream; al terminar, si no es la visible, se desmonta. Volver a ella la enseña tal cual, sin recargar.
 - Cada conversación tiene una clave propia (`nextKeyRef`), no el `chatId`: una nueva no lo tiene hasta el evento `session`.
 - **Lista:** una conversación nueva se añade arriba al llegar su id (`addNewChatToList`, título con la pregunta) y se mantiene al recargar hasta que el back la devuelve. Mientras responde, su "⋯" pasa a spinner y no admite acciones (`respondingChatIds`).
-- Salir de la app o tenerla mucho rato en segundo plano sigue cortando la respuesta: ver "respuestas reanudables" en la fase 4.
+- ~~Salir de la app o tenerla mucho rato en segundo plano sigue cortando la respuesta.~~ Con las respuestas reanudables (2026-10-16) la respuesta sigue en el back y la app la retoma al volver o al abrir el chat: ver "App, cómo queda" en la fase 4.
 
 **Retoques del 2026-10-14**
 - **Skeletons:** `Spinners/ChatSkeleton` (al cargar un chat, en lugar del `ActivityIndicator`) y `Spinners/ConversationListSkeleton` (carga inicial de la lista), con bloques `bg-borde-medio` que laten (`usePulseStyle`). Hechos a mano: las librerías de skeleton no aportan nada para dos pantallas.
@@ -1047,6 +1157,10 @@ Decidido el 2026-10-13 hacerla en lugar de cambiar el tema desde el menú latera
   - **Nativo Android:** `./gradlew app:dependencies --configuration releaseRuntimeClasspath`, y se añaden a mano en un fichero aparte, agrupadas (AndroidX, OkHttp/Okio, Kotlin, MapLibre Native, Gumbo, TagSoup…).
   - **Lo que no es código:** los pines y la atribución de OpenStreetMap.
   - **Pantalla:** fila "Licencias de terceros" en Ajustes que abre la ruta `Licenses`, con la lista y el texto desplegable al pulsar cada una.
+- **Opciones de visualización, como en la web** (`ConfigModal.tsx:54-58`), guardadas en AsyncStorage (la web usa `localStorage`, no se comparten entre dispositivos):
+  - **Mostrar herramientas** y **Mostrar métricas** (todos): se filtran en el cliente. Se toma el valor al enviar, para que no cambie a mitad de respuesta.
+  - **Mostrar SQL ejecutado** (master o la empresa de "UsuarioPrueba1"): se manda como `incluir_sql` en `/stream` y en `get_chat`; lo filtra el back. Al reanudar no hace falta: llegan los eventos del POST original.
+  - **Mostrar chats de clientes** (solo master): en la lista de chats.
 - **Versión de la app** y, con las actualizaciones OTA (ver D3), buscar actualizaciones.
 - **Privacidad y aviso de IA:** enlace a la política y aviso de que los datos van a OpenAI/DeepSeek (pregunta 13). **Política (2026-10-14, pendiente):** se parte de la de AppGovoy, que hay que adaptar:
   - **Quitar:** ubicación (también en segundo plano), cámara, Google Maps y el seguimiento de trabajadores.
@@ -1157,7 +1271,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 18. **Rol en el back (aplazado, ver D9):** que `/chat-cex/*` compruebe que el rol es `administrador` o `jefeDeOperaciones`.
 19. **Correos ya enviados entre dispositivos:** que el back marque qué borrador se envió, para que web y app lo vean igual y no se pueda reenviar. Propuesta en el progreso de la fase 4.
 20. **Formato del cuerpo del correo:** que `cuerpo_a_html` del back convierta cursiva y subrayado, que hoy llegan con los símbolos visibles (web y app los ofrecen).
-21. **Respuestas en segundo plano y notificación al terminar:** que cualquier respuesta (también las optimizaciones) siga y se guarde aunque se salga de la app, se pueda reanudar en directo, con push al terminar y el chat marcado con "!" en la lista. Diseño de respuestas reanudables en el progreso de la fase 4; falta elegir dónde guardar los eventos (MySQL o Redis).
+21. **Respuestas en segundo plano y notificación al terminar:** que cualquier respuesta (también las optimizaciones) siga y se guarde aunque se salga de la app, se pueda reanudar en directo, con push al terminar (el "!" en la lista se descarta el 2026-10-16). Diseño de respuestas reanudables en el progreso de la fase 4; eventos en MySQL (opción A), back hecho el 2026-10-15, web y app el 2026-10-16 (app sin probar en el móvil); faltan el chat nuevo en `get_chats` durante su primera respuesta (back) y las notificaciones.
 22. **Título renombrado en `get_chat`:** que `_chat_summary` devuelva la columna `titulo` (hoy da la primera pregunta y la cabecera no refleja el nombre puesto a mano). Afecta también a la web si usa ese título.
 23. **Qué clientes tienen las tablas de carpetas, archivos y la columna `titulo`:** se crean a mano por cliente. Carpetas: 92, 100 y 101 (comprobado el 2026-10-13; en la app van en `HAS_FOLDERS_CHAT_CHELU`, que hay que mantener a mano). Comprobado el 2026-10-15: solo 69, 92, 100 y 101 tienen el chat (`chat_agno_chelu`); los cuatro tienen la columna `titulo` (y `num_runs`) y `chat_archivos_chelu`; el 69 es el único sin carpetas. Sin ellas, crear carpeta o renombrar dan 409 después de que el usuario lo intente. Valorar que `get_chats` diga si están activas para ocultar los botones.
 24. **"Archivos generados" de todas las conversaciones en la app** con `GET /archivos` (y quitar del listado con `DELETE`), como la web.
@@ -1246,9 +1360,21 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-15 | Mejoras de UX: indicador al crear carpeta (desde "Guardar en carpeta" y desde la cabecera); "Ir a una pregunta" en el chat con salto sin animación tapado por el skeleton; skeleton del chat más uniforme, con avatar del usuario y gráficas |
 | 2026-10-15 | Actualizaciones OTA: propuesta de servidor propio en Back-Govoy con las actualizaciones en S3 (protocolo de Expo Updates, manifest firmado), en lugar de EAS Update; pendiente de hablar con el equipo del back |
 | 2026-10-15 | Respuestas reanudables: MySQL aguanta la carga de los eventos; lo que limita con varias optimizaciones a la vez es la CPU, ya acotada por `CEX_MAX_OPT_CONCURRENTES` (3 solves por worker) |
+| 2026-10-15 | Respuestas reanudables, back hecho con MySQL (opción A): tablas `chat_generaciones_chelu` (sin `estado`: solo hay fila mientras está en curso) y `chat_generaciones_eventos_chelu` en todos los clientes; `/stream` en tareas de fondo con eventos numerados, lotes cada 0,4 s, latido cada 15 s; reconexión (`terminada`), parar (`detenida`), muertas a los 2 min, `generacion_en_curso`/`en_curso`. Consultas en un pool de hilos propio. Sin campo de compatibilidad: la web se actualiza a la vez y la app aún no es pública |
+| 2026-10-15 | App: el 69 entra en el chat, con audio, valoración y carpetas (listas igualadas con la web) |
+| 2026-10-15 | Web: arreglado el cambio de chat mientras responde (la respuesta y el id iban al chat abierto) |
 | 2026-10-15 | Firma de release con un keystore propio de Chelu (no el de AppGovoy) mediante el config plugin `withReleaseSigning` y `CHELU_UPLOAD_*` en `~/.gradle/gradle.properties`; primer APK firmado y comprobado con `apksigner`. Versión en `app.json` (`version` y `android.versionCode`) |
 | 2026-10-15 | Icono de la app: robot de Chelu de cerca sobre blanco, con adaptable y monocromo para Android. PNG del robot de la app (ahora cuadrado) y de la web rehechos opacos y sin píxeles sueltos |
 | 2026-10-15 | Pines del mapa: se quedan en `@1.5x` (se ven bien); si hiciera falta, la versión 2x de `leaflet-color-markers` |
+| 2026-10-16 | Respuestas reanudables en la web: un solo stream a la vez (opción A), texto que llega de golpe mostrado poco a poco, parar antes del `session` apuntado hasta tener el id, spinner y en curso primero en la lista con `get_chats` cada 10 s mientras responde en otro chat |
+| 2026-10-16 | Aviso de fin: se sigue con el sondeo; socket o SSE de aviso descartados de momento (hace falta un canal entre procesos, p. ej. Redis). Si se monta FCM para las push, podría servir también de aviso en la web |
+| 2026-10-16 | Bloque 10 (`sin_ver`, "!" y notificaciones) aplazado en la web; se hace con la app |
+| 2026-10-16 | Bloque 10 solo con las notificaciones push en la app: `sin_ver` y el "!" en la lista descartados, en la app y en la web |
+| 2026-10-16 | Plan de la app para respuestas reanudables (bloques 7-10): retomar desde el último `seq` al volver del segundo plano, `desde=0` al abrir un chat en curso, y las lecciones de la web (parar antes del id, texto poco a poco) |
+| 2026-10-16 | App, bloques 7-9 hechos: `followAnswer` común a enviar y retomar (retoma tras un corte al volver a primer plano; 2 s con la app abierta; error tras 5 cortes sin recibir nada), 404 al retomar tratado como `terminada`, spinner en la lista con `en_curso` y recarga silenciosa cada 10 s mientras haya alguna que la app no sigue |
+| 2026-10-16 | App, texto poco a poco según el tiempo (no por fotogramas), pintando unas 30 veces por segundo; burbujas con `memo` y markdown partido en bloques memorizados; negrita y código en línea cerrados mientras escribe |
+| 2026-10-16 | App: `CajaMensaje` con `SafeAreaView` nativo en vez de `useSafeAreaInsets`, para que no quede bajo la barra al volver de la gráfica |
+| 2026-10-16 | Chat nuevo invisible en `get_chats` (y 404 en `get_chat`) mientras responde su primera pregunta: se arregla en el back al final, con una entrada por generación en curso sin fila (título de la `pregunta` del evento `session`) |
 | 2026-10-14 | Licencias de terceros: propuesta (bundle con source maps + dependencias nativas a mano, pantalla `Licenses`) pendiente de confirmar. "Datos guardados" descartado. Política de privacidad: partir de la de AppGovoy, cambios pendientes de lo legal |
 | 2026-10-14 | Release en Windows: con el proyecto en el escritorio, `armeabi-v7a` superaba los 260 caracteres de ruta (`react-native-enriched-html`). El proyecto pasa a `C:\Chelu-Govoy` |
 | 2026-10-14 | Pantalla de Ajustes con tema (claro/oscuro) y modelo (solo master); el modelo elegido se borra al cerrar sesión o salir de la suplantación |

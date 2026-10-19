@@ -26,8 +26,8 @@ import { useColores } from '@/theme/ThemeProvider';
 import { useChatModel } from '@/context/ChatModelContext';
 import { useConversaciones } from '@/context/ConversacionesContext';
 import { useSesionActiva } from '@/context/SesionContext';
-import type { Documento, Mensaje } from '@/types/Chat';
-import type { SectorsForm } from '@/types/SectorsForm';
+import type { Documento, Grafica, Mapa, Mensaje, Voto } from '@/types/Chat';
+import type { FormMap, SectorsForm } from '@/types/SectorsForm';
 import { esSesionMaster, HAS_AUDIO_CHAT_CHELU, HAS_FEEDBACK_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
 
 // Del drawer y, por encima, del stack raíz (para abrir la gráfica ampliada).
@@ -137,6 +137,7 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
         recargar,
         enviar,
         parar,
+        stopping,
         respondiendo,
         votar,
         sendEmail,
@@ -153,15 +154,20 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
     const { chats, duplicateChat } = useConversaciones();
     // La lista va invertida: el desplazamiento 0 es el último mensaje.
     const listRef = useRef<FlatList<Mensaje>>(null);
-    const sendAndScroll = (pregunta: string, fromVoice = false) => {
+    const sendAndScroll = useCallback((pregunta: string, fromVoice = false) => {
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
         enviar(pregunta, undefined, fromVoice);
-    };
+    }, [enviar]);
     const [editingSectorsForm, setEditingSectorsForm] = useState<SectorsFormEditing | null>(null);
+    const openSectorsFormEditor = useCallback((form: SectorsForm, map: FormMap) => setEditingSectorsForm({ form, map }), []);
     const closeSectorsFormEditor = useCallback(() => setEditingSectorsForm(null), []);
     // Con el editor abierto, los botones de las tarjetas se desactivan: así un toque que se quedó
     // en cola mientras se montaba el editor no lanza nada al llegar.
     const sectorsFormBusy = respondiendo || !!editingSectorsForm;
+    // Sin texto: se optimiza tal cual.
+    const launchSectorsFormAsIs = useCallback((form: SectorsForm) => launchSectorsForm(form, ''), [launchSectorsForm]);
+    const openChart = useCallback((grafica: Grafica) => navigation.navigate('Grafica', { grafica }), [navigation]);
+    const openMap = useCallback((mapa: Mapa) => navigation.navigate('Mapa', { mapa }), [navigation]);
     // Formulario que se manda a revisar con texto; null con la hoja cerrada.
     const [refiningSectorsForm, setRefiningSectorsForm] = useState<SectorsForm | null>(null);
     const closeRefineSheet = useCallback(() => setRefiningSectorsForm(null), []);
@@ -169,6 +175,10 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
     const puedeDictar = validatorUserHasOption(HAS_AUDIO_CHAT_CHELU, sesion.empresaId, esSesionMaster(sesion));
     // Respuesta que se está valorando (su runId y el pulgar pulsado); null con la hoja cerrada.
     const [valorando, setValorando] = useState<(Valorando & { runId: string }) | null>(null);
+    const openRating = useCallback(
+        (runId: string, valoracion: 1 | -1, anterior: Voto | null) => setValorando({ runId, valoracion, anterior }),
+        [],
+    );
     const cerrarValoracion = useCallback(() => setValorando(null), []);
     // La lista va invertida para que empiece abajo, en el último mensaje.
     const invertidos = useMemo(() => [...mensajes].reverse(), [mensajes]);
@@ -233,7 +243,12 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
     // La copia la hace el back; aquí solo se abre. La conversación actual no cambia.
     // Respuesta desde la que se está duplicando, para pintar su botón cargando.
     const [duplicando, setDuplicando] = useState<string | null>(null);
-    const duplicarDesde = (runId: string) => {
+
+    // Primero el de la lista, que tiene el nombre puesto a mano (get_chat devuelve la primera pregunta).
+    const listTitle = chats?.find((chat) => chat.id === chatId)?.titulo;
+    const cabecera = chatId ? listTitle ?? titulo ?? '' : 'Nueva conversación';
+
+    const duplicarDesde = useCallback((runId: string) => {
         if (!chatId || duplicando) return;
         Alert.alert('Duplicar desde aquí', 'Se creará una conversación nueva hasta esta respuesta.', [
             { text: 'Cancelar', style: 'cancel' },
@@ -251,11 +266,7 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                 },
             },
         ]);
-    };
-
-    // Primero el de la lista, que tiene el nombre puesto a mano (get_chat devuelve la primera pregunta).
-    const listTitle = chats?.find((chat) => chat.id === chatId)?.titulo;
-    const cabecera = chatId ? listTitle ?? titulo ?? '' : 'Nueva conversación';
+    }, [chatId, duplicando, navigation, duplicateChat, cabecera]);
 
     return (
         <View style={{ flex: 1, display: visible ? 'flex' : 'none' }}>
@@ -380,22 +391,16 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                                         mensaje={item}
                                         // Sugerencias solo en la última respuesta (la lista va invertida: es la 0).
                                         onPreguntar={index === 0 && !respondiendo ? sendAndScroll : undefined}
-                                        // Solo respuestas guardadas y completas: las detenidas o con error no tienen turno en el back.
-                                        onDuplicarDesde={item.runId && !item.estado && !respondiendo
-                                            ? () => duplicarDesde(item.runId!)
-                                            : undefined}
+                                        onDuplicarDesde={respondiendo ? undefined : duplicarDesde}
                                         duplicando={!!item.runId && item.runId === duplicando}
-                                        // Igual que duplicar: solo respuestas con turno guardado en el back.
-                                        onValorar={puedeValorar && item.runId && !item.estado
-                                            ? (valoracion) => setValorando({ runId: item.runId!, valoracion, anterior: item.voto ?? null })
-                                            : undefined}
-                                        onAmpliarGrafica={(grafica) => navigation.navigate('Grafica', { grafica })}
-                                        onAbrirMapa={(mapa) => navigation.navigate('Mapa', { mapa })}
+                                        onValorar={puedeValorar ? openRating : undefined}
+                                        onAmpliarGrafica={openChart}
+                                        onAbrirMapa={openMap}
                                         onSendEmail={sendEmail}
-                                        onLaunchSectorsForm={sectorsFormBusy ? undefined : (form) => launchSectorsForm(form, '')}
+                                        onLaunchSectorsForm={sectorsFormBusy ? undefined : launchSectorsFormAsIs}
                                         onRefineSectorsForm={sectorsFormBusy ? undefined : setRefiningSectorsForm}
                                         onChangeSectorsFormMap={changeSectorsFormMap}
-                                        onEditSectorsForm={(form, map) => setEditingSectorsForm({ form, map })}
+                                        onEditSectorsForm={openSectorsFormEditor}
                                     />
                                 )}
                             />
@@ -409,6 +414,7 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                     <CajaMensaje
                         onEnviar={sendAndScroll}
                         onParar={parar}
+                        stopping={stopping}
                         respondiendo={respondiendo}
                         desactivada={cargando || error}
                         voiceNotes={puedeDictar}

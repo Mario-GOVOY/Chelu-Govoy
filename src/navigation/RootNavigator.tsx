@@ -1,5 +1,5 @@
 import { ActivityIndicator, Text, View } from 'react-native';
-import { DarkTheme, DefaultTheme, NavigationContainer, Theme } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer, NavigatorScreenParams, Theme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { navigationRef } from '@/auth/RootNavigation';
@@ -7,7 +7,7 @@ import { LogoChelu } from '@/components/LogoChelu';
 import { Boton } from '@/components/ui/Boton';
 import { Pantalla } from '@/components/ui/Pantalla';
 import { useSesion } from '@/context/SesionContext';
-import { AppNavigator } from '@/navigation/AppNavigator';
+import { AppDrawerParamList, AppNavigator } from '@/navigation/AppNavigator';
 import GraficaScreen from '@/screens/GraficaScreen';
 import LoginScreen from '@/screens/LoginScreen';
 import MapaScreen from '@/screens/MapaScreen';
@@ -19,7 +19,7 @@ import type { Grafica, Mapa } from '@/types/Chat';
 export type RootStackParamList = {
     Login: undefined;
     Suplantar: undefined;
-    App: undefined;
+    App: NavigatorScreenParams<AppDrawerParamList> | undefined;
     Grafica: { grafica: Grafica };
     Mapa: { mapa: Mapa };
     Settings: undefined;
