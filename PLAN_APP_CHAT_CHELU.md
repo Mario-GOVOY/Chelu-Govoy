@@ -1,7 +1,7 @@
 # App móvil Chat Chelu — Definición del proyecto
 
 > Documento vivo: se actualiza a medida que se toman decisiones.
-> Última actualización: 2026-10-13
+> Última actualización: 2026-10-19
 
 ## Objetivo
 
@@ -835,7 +835,7 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
   - **Servicio en primer plano de Android** (notifee, `react-native-background-actions`): solo Android, y lo que importa es que el back no pare.
   - **iOS:** `BGContinuedProcessingTask` (iOS 26) es para tareas que inicia el usuario con progreso visible; `URLSession` en segundo plano no admite streaming.
   - **Paquetes de Stream** (`@stream-io/chat-ai-sdk`, `@stream-io/chat-react-native-ai`): necesitan Stream Chat (SaaS) y un agente en Node; no encajan.
-- **En curso: respuestas reanudables. Back hecho (2026-10-15, `main` de Back-Govoy, en el stage para commitear), web hecha (2026-10-16, `main` de Front-Govoy, commiteada y sin subir) y app hecha (2026-10-16, bloques 7-9, sin probar en el móvil). Back, web y app se suben a la vez. Faltan el chat nuevo en `get_chats` mientras responde su primera pregunta (back) y las push (bloque 10).** Explicado con esquemas y ejemplos en el artifact "Respuestas reanudables" (https://claude.ai/artifact/TUGtV83uaWbtmgLk61PD9w); el flujo del código, paso a paso, en "Flujo del stream reanudable" (https://claude.ai/artifact/7r3yK2yxb9jpMvKv3yT1nh, del bloque 2a):
+- **En curso: respuestas reanudables. Back hecho (2026-10-15, `main` de Back-Govoy, en el stage para commitear), web hecha (2026-10-16, `main` de Front-Govoy, commiteada y sin subir) y app hecha (2026-10-16, bloques 7-9; push del bloque 10 el 2026-10-19, con su parte del back). Back, web y app se suben a la vez. Falta el chat nuevo en `get_chats` mientras responde su primera pregunta (back).** Explicado con esquemas y ejemplos en el artifact "Respuestas reanudables" (https://claude.ai/artifact/TUGtV83uaWbtmgLk61PD9w); el flujo del código, paso a paso, en "Flujo del stream reanudable" (https://claude.ai/artifact/7r3yK2yxb9jpMvKv3yT1nh, del bloque 2a):
   - **Idea:**
     - Cada respuesta es una "generación" con su `generation_id`, que corre en el back aunque se corte la conexión.
     - Los eventos que manda (los mismos de hoy) se guardan numerados (`seq`).
@@ -878,7 +878,7 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
     | 7 | Leer `generation_id` y el `id:` de cada evento; cambiar de chat ya no aborta; "Parar" llama al endpoint nuevo y trata `detenida` | Hecho | Hecho (2026-10-16) |
     | 8 | Reanudar: al abrir un chat con `generacion_en_curso` y al volver la app a primer plano (`AppState`), `GET .../stream/{id}?desde=N`; `terminada` y 404 recargan con `get_chat` | Hecho, con el texto que llega de golpe mostrado poco a poco | Hecho (2026-10-16), con texto poco a poco según el tiempo |
     | 9 | Indicador de "respondiendo" en la lista con `en_curso` | Hecho: spinner en la fila, en curso primero, `get_chats` cada 10 s mientras responde en un chat que no se lee | Hecho (2026-10-16): spinner, sin "en curso primero" |
-    | 10 | Notificaciones push (`sin_ver` y el "!" descartados el 2026-10-16) | No aplica | Pendiente; necesita back, tablas y build |
+    | 10 | Notificaciones push (`sin_ver` y el "!" descartados el 2026-10-16) | No aplica | Hecho (2026-10-19), Android; iOS pendiente |
 
     Detalle de la web en "Web, cómo queda" y de la app en "App, cómo queda", más abajo.
 
@@ -939,21 +939,33 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
           GRANT SELECT, INSERT, UPDATE, DELETE ON {{db_name}}.chat_push_tokens_chelu TO 'chelu_hist'@'%';
           ```
-          - Clave el token: una fila por móvil; si entra otro usuario en ese móvil, la fila pasa a él (`INSERT … ON DUPLICATE KEY UPDATE`). Un usuario con varios móviles, varias filas.
+          - Clave el token: una fila por móvil; si entra otro usuario en ese móvil, la fila pasa a él (`session.merge`). Un usuario con varios móviles, varias filas.
           - Sin fecha de actualización: los tokens que dejan de valer se borran cuando Expo responde `DeviceNotRegistered`.
-        - **Staff suplantando (decidido el 2026-10-16):** se avisa al staff, no al usuario suplantado. El token de suplantación lleva `is_impersonation` e `impersonated_by` (username del staff, `routes/login.py`): al registrar el token y al lanzar una respuesta, el `user_id` "a quién avisar" es el `usuario_id` del staff. Se guarda en memoria con la generación (el aviso lo manda el mismo worker al terminar), sin columna nueva. El staff solo recibe avisos de lo que lanza él; el usuario real, no los de lo que lanza el staff.
-        - Endpoints para registrar el token (al iniciar sesión) y borrarlo (al cerrarla).
+        - **Staff suplantando (decidido el 2026-10-16):** se avisa al staff, no al usuario suplantado. El token de suplantación lleva `is_impersonation` e `impersonated_by` (username del staff, `routes/login.py`): al registrar el token y al lanzar una respuesta, el `user_id` "a quién avisar" es el `usuario_id` del staff (`_notify_user_id`, busca en `inicio_sesion`; con el depurador, `sys.gettrace()`, devuelve el del token). Se guarda en memoria con la generación (el aviso lo manda el mismo worker al terminar), sin columna nueva. El staff solo recibe avisos de lo que lanza él; el usuario real, no los de lo que lanza el staff.
         - **Solo avisa de lo lanzado desde la app (decidido el 2026-10-16):** `POST /stream` con `avisar_al_terminar: true`, que manda la app y la web no. Si no, quien mira la respuesta en la web recibiría una push en el móvil por cada pregunta. Si un día la web lo quiere (p. ej. al salir de la pestaña mientras responde), se manda el mismo campo.
-        - Al terminar una generación, notificación con la API de Expo: `routes/notifications.py` ya usa `exp.host`, pero guarda los tokens por conductor (AppGovoy). Va con el `chatId`, desde el `finally` de `_save`, en un hilo o con un cliente HTTP asíncrono.
-        - Alta de clientes: crear también esta tabla.
-      - **App:**
-        - `expo-notifications`: pedir permiso y mandar el token.
-        - Canal de Android; credenciales de FCM y APNs en EAS, y una build nueva.
-        - Tocar la notificación abre ese chat. En primer plano, con ese chat abierto, no se muestra; en otro chat, un aviso dentro de la app ("Chelu ha terminado en X · Ver").
-      - **Pregunta 14 relacionada:** monitorización de errores (Sentry) si se monta FCM.
-    - **Orden:** ~~7 y 8 juntos, luego 9~~ (hechos el 2026-10-16); queda el 10 aparte, porque necesita back, tablas y build.
+        - **Hecho (2026-10-19, `main` de Back-Govoy, sin subir):**
+          - `tools_chat/notifications_chelu.py`: guardar, leer y borrar tokens, y envío con la API de Expo (`exp.host/--/api/v2/push/send`, sin access token de Expo). Getter `get_chat_push_tokens_chelu_class` en `models/db_cliente.py`.
+          - `PUT /chat-cex/save_push_token` (`token`, `plataforma`) y `DELETE /chat-cex/delete_push_token?push_token=`, fuera de Swagger.
+          - `LiveGeneration` acepta `on_done`: si la generación termina con `done` (no si se para o falla), lo llama en un hilo con el texto de la respuesta (los `delta` juntos). `/stream` se lo pasa (`partial(notify_answer_finished, …)`) solo con `avisar_al_terminar`. Sin ese campo (web, panel de simulación) todo funciona como antes.
+          - **El aviso:** título "Chelu" y, de texto, el principio de la respuesta (100 caracteres, con "…"): sin markdown (negrita, código, títulos, viñetas, enlaces), sin filas de tabla ni separadores `---`. Sin texto (solo tarjetas), "Tu respuesta está lista.". Lleva `data: { chatId }`, canal `default`, prioridad alta y sonido. Los fallos solo van al log (`warning`).
+          - **Tokens que ya no valen:** Expo suele aceptar el aviso (*ticket* "ok") y el `DeviceNotRegistered` llega después, en el recibo. Los `DeviceNotRegistered` del ticket se borran al momento; a los 30 s (`threading.Timer`) se piden los recibos (`getReceipts`) y se borran los demás. Si el recibo aún no está, se mira en el siguiente aviso de ese usuario.
+        - **Cuándo queda una fila suelta (revisado el 2026-10-19, se acepta):** al cerrar sesión la app borra el token, pero si la sesión se cierra sola (caduca la suplantación a las 6 h, más de ~10 h sin abrir la app, empresa desactivada) la llamada falla por el token caducado y la fila se queda. Si después entra en ese móvil alguien de la misma empresa, la fila pasa a él; si es de otra empresa, no (la tabla es por cliente) y ese móvil seguiría recibiendo los avisos de lo que el anterior lance desde la app en otro móvil. Si molestara: una sola tabla en `inicio_sesion` con `empresa_id`. Reinstalar la app deja el token viejo, que se borra con los recibos en el siguiente aviso de ese usuario.
+      - **App (hecho el 2026-10-19, Android; sin probar del todo en el móvil):**
+        - **Configuración:** proyecto de EAS (owner `govoy`, `extra.eas.projectId` en `app.json`) y `eas.json` mínimo; proyecto de Firebase `chelu-govoy` con `google-services.json` (`android.googleServicesFile`, no es secreto); clave de la cuenta de servicio de FCM V1 subida a EAS con `eas credentials` (no está en el repo). El keystore no se sube a EAS: la firma sigue en local (`withReleaseSigning`). Hace falta `npx expo prebuild` y una build nueva.
+        - **Icono:** plugin de `expo-notifications` con `assets/notification-icon.png` (blanco sobre transparente, el monocromo recortado como el icono de la app y sin el texto "CHELU") y color `#128bec`. En Android el icono pequeño siempre es monocromo: el de la app a color no se puede poner.
+        - **`chat/pushNotifications.ts`:**
+          - `registerForPushNotifications`: crea el canal `default` ("Respuestas de Chelu", importancia alta), pone el `setNotificationHandler`, pide permiso solo si no está concedido (pedirlo hace que la app pase por segundo plano y vuelva: con el permiso ya dado y Ajustes escuchando `AppState` daba un bucle), saca el `ExponentPushToken` y lo manda (`savePushToken`).
+          - `unregisterFromPushNotifications`: borra el token, sin esperar.
+          - **Con la app abierta**, el handler enseña el aviso del sistema como siempre, salvo que ya estés en ese chat (`navigationRef.getCurrentRoute()`). Se probó una tarjeta propia dentro de la app ("Chelu ha terminado en X · Ver") y se quitó: el aviso del sistema es más sencillo y se ve también sobre la gráfica, el mapa o Ajustes.
+        - **`SesionContext`:** registra al entrar con una sesión (iniciarla, restaurarla al abrir la app o suplantar; un PUT cada vez) y borra al cerrar sesión o salir de la suplantación.
+        - **`AppNavigator`:** tocar el aviso abre ese chat, también con la app cerrada (`useLastNotificationResponse`, que recoge el toque que abre la app; luego `clearLastNotificationResponse` para no volver a abrirlo al iniciar sesión otra vez). La ruta `App` del stack admite los parámetros del drawer (`NavigatorScreenParams<AppDrawerParamList>`).
+        - **Ajustes, sección "Notificaciones"** (como AppGovoy): estado "Activadas" o "Desactivadas". Desactivadas, "Activar" saca el diálogo de permisos y registra el móvil; si el sistema ya no deja preguntar, lo dice y "Abrir ajustes" lleva a los del móvil. Activadas, sin acción (desde la app no se puede quitar un permiso). Al volver a la app se vuelve a mirar el permiso y, si se acaba de conceder en los ajustes del sistema, se registra.
+        - `enviarMensaje` manda `avisar_al_terminar: true`.
+      - **Pendiente:** iOS (clave de APNs en EAS); probar en el móvil el toque con la app cerrada, el aviso en otro chat y la sección de Ajustes. Quitar el PUT al restaurar la sesión (guardando el último token y sesión registrados) se descartó de momento: es una llamada ligera al abrir la app.
+      - **Pregunta 14 relacionada:** monitorización de errores (Sentry) ahora que hay FCM.
+    - **Orden:** ~~7 y 8 juntos, luego 9~~ (hechos el 2026-10-16); ~~10~~ (hecho el 2026-10-19, Android).
   - **Bug de la web arreglado de paso (2026-10-15, F `useChatChelu.ts`, commit `39f2b225`):** al cambiar de chat mientras respondía, el `finally` de `streamAnswer` leía `sessionIdRef` (ya el del chat abierto): la respuesta cortada se pintaba en el otro chat, la conversación original tomaba el id del otro (con su carpeta) y desaparecía de la lista hasta recargar. Pasaba en producción. Ahora `streamAnswer` guarda su propio `streamSessionId` y solo toca la vista (`setMsgs`, `sessionIdRef`, `setCurConvId`) si su chat sigue abierto (`openReqRef`). Puede ir a producción por su cuenta. La app no lo tenía (mantiene montada cada conversación que responde).
-  - **Para probar en local:** `STREAM_URL` (F `useChatChelu.ts`), `get_chat` y `get_chats` (`fetchChatDetail` y `fetchChatList` en F `chatHistoryApi.ts`, más su import) se apuntan a `API_URL_LOCAL`, porque producción no devuelve `generacion_en_curso` ni `en_curso` hasta desplegar el back. Devueltos a `API_URL` el 2026-10-16; la web tiene que subir a la vez que el back. En la app, lo más sencillo es poner `API_URL = 'http://127.0.0.1:8000/'` en `src/auth/Constants.ts` (con `adb reverse tcp:8000 tcp:8000`) y volver a iniciar sesión; devolverlo al terminar. No arrancar el back con el depurador (con `sys.gettrace()` el dueño es el usuario 1). Tras cambiar el back, reiniciarlo: el ORM mapea las tablas al arrancar.
+  - **Para probar en local:** `STREAM_URL` (F `useChatChelu.ts`), `get_chat` y `get_chats` (`fetchChatDetail` y `fetchChatList` en F `chatHistoryApi.ts`, más su import) se apuntan a `API_URL_LOCAL`, porque producción no devuelve `generacion_en_curso` ni `en_curso` hasta desplegar el back. Devueltos a `API_URL` el 2026-10-16; la web tiene que subir a la vez que el back. En la app, todas las llamadas vuelven a `API_URL` desde el 2026-10-19 (`stream`, retomar, parar y los dos de `push_token` estuvieron en `API_URL_LOCAL`, que en release ya cae en `API_URL`); para probar contra el back local, lo más sencillo es poner `API_URL = 'http://127.0.0.1:8000/'` en `src/auth/Constants.ts` (con `adb reverse tcp:8000 tcp:8000`) y volver a iniciar sesión; devolverlo al terminar. No arrancar el back con el depurador (con `sys.gettrace()` el dueño es el usuario 1). Tras cambiar el back, reiniciarlo: el ORM mapea las tablas al arrancar.
   - **Alta de un cliente nuevo con chat:** además de `chat_agno_chelu` y `chat_feedback_chelu`, crear `chat_generaciones_chelu`, `chat_generaciones_eventos_chelu` y `chat_push_tokens_chelu` con su `GRANT` a `chelu_hist` (como con `inicio_sesion.aplicar_sql_a_clientes`, que recorre `inicio_sesion.Empresa` menos la 1, ejecuta una sentencia por llamada y no avisa si falla en algún cliente: comprobar después contando en `information_schema.TABLES`).
   - **Dónde guardar los eventos: dos opciones, se elige con el equipo de infraestructura:**
     - **Opción A, MySQL (lo que ya hay):**
@@ -978,12 +990,12 @@ Rutas cortas: **F** = `Front-Govoy/src/routes/components/ChatChelu/`, **B** = `B
       - **Lo que se satura es la CPU de las instancias de la API**, igual con MySQL que con Redis. El solver corre dentro de la API (`asyncio.to_thread`, B `:1716`; un hilo por escenario en `opti.py:726`). Ya hay un tope: `CEX_MAX_OPT_CONCURRENTES` = 3, un `BoundedSemaphore` **por worker** (no por chat ni por máquina) que cuenta escenarios (solves), no peticiones; las peticiones entran todas (workers asíncronos) y lo que hace cola son los solves. Con 4 workers son hasta 12 solves por instancia sobre 8 vCPU (`c6a.2xlarge`); análisis en `agentes/chat_CEX/README.md:408-449`.
       - Ejemplo: 5 comparativas de 3 escenarios a la vez en una instancia. Cada comparativa va entera a un worker y el sistema operativo las reparte (lo típico, 2-1-1-1): en el worker con dos, corren 3 escenarios y esperan 3 (de cualquiera de las dos); los demás no esperan. Si cayeran todas en el mismo worker, pasarían de 3 en 3 con los otros parados. En todos los casos, más solves que núcleos hacen que todos vayan más lentos.
       - Con respuestas reanudables las optimizaciones terminan siempre (hoy el resultado se tira si el usuario se va), así que hay algo más de trabajo vivo a la vez. Posibles mejoras: un evento "En cola…" mientras espera el semáforo (se vería también al reconectar), una optimización en curso por usuario (ampliando el 409 por chat) y, solo si crece el uso, un límite por instancia o global (contando las generaciones en curso en MySQL) o sacar el solver a workers aparte con una cola.
-  - **Push:** tabla de tokens por usuario del chat. `routes/notifications.py` ya envía con `exp.host`, pero guarda el token por conductor (AppGovoy).
+  - **Push:** hecho en el bloque 10 (tabla `chat_push_tokens_chelu` por cliente y `notifications_chelu.py`; no se reutiliza `routes/notifications.py`, que guarda el token por conductor de AppGovoy).
   - **Orden:**
     1. ~~Back: generaciones, eventos guardados, reanudar y parar.~~ Hecho (bloques 0-6).
     2. App y web: no cancelar al salir, reanudar al volver (con `generacion_en_curso`) y el nuevo parar. ~~Web~~ hecha (2026-10-16); ~~app~~ hecha (2026-10-16, bloques 7-8), sin probar en el móvil.
     3. `en_curso` en la lista: hecho en la web; en la app, bloque 9. `sin_ver` y el "!" descartados (2026-10-16).
-    4. Notificaciones (bloque 10 de la app).
+    4. ~~Notificaciones (bloque 10 de la app).~~ Hecho (2026-10-19), Android.
 
 **Pendiente de hablar con el equipo: "ya enviado" entre dispositivos**
 - **Problema:** el registro de enviados es de cada dispositivo (AsyncStorage en el móvil, `localStorage` en la web). Un correo enviado desde el móvil sigue saliendo como enviable en la web, y al revés. Pasa también en la web entre navegadores.
@@ -1148,6 +1160,7 @@ Decidido el 2026-10-13 hacerla en lugar de cambiar el tema desde el menú latera
 
 **Hecho (2026-10-14):** `SettingsScreen` (ruta `Settings` del stack), abierta desde "Ajustes" en el menú lateral, que sustituye a "Modo oscuro/claro".
 - **Tema:** claro y oscuro, con ✓ en el actual. "Igual que el sistema" y la recarga por los estilos nativos (la barra de scroll de las tablas del markdown en Android se queda con el color anterior) siguen pendientes.
+- **Notificaciones (2026-10-19):** estado del permiso y "Activar" o "Abrir ajustes", como AppGovoy (detalle en el bloque 10 de las respuestas reanudables).
 - **Modelo (solo master, D10):** lista de `CHAT_MODELS` (`chat/models.ts`, los de la web) con proveedor, descripción y "por defecto". Cambiarlo empieza una conversación nueva. `ChatModelContext` lo guarda en AsyncStorage (`modelo_chat`) y lo borra al cerrar sesión o salir de la suplantación; fuera de master se usa siempre `deepseek-v4-flash`.
 
 **Pendiente:**
@@ -1166,7 +1179,7 @@ Decidido el 2026-10-13 hacerla en lugar de cambiar el tema desde el menú latera
   - **Quitar:** ubicación (también en segundo plano), cámara, Google Maps y el seguimiento de trabajadores.
   - **Añadir:** conversaciones guardadas en los servidores de Govoy; mensajes procesados por DeepSeek (por defecto) y OpenAI; micrófono y notas de voz (transcritas con `gpt-4o-mini-transcribe` de OpenAI), y el permiso de micrófono en "Control y gestión de permisos"; envío de borradores de correo con adjuntos; documentos descargados al móvil; teselas de OpenStreetMap (recibe la IP); datos en el móvil (usuario y contraseña cifrados en SecureStore, preferencias, registro de correos enviados).
   - **A revisar por quien lleve lo legal:** transferencia internacional a DeepSeek (China) y OpenAI (EE. UU.), ver D10; base legal (los usuarios son empleados de clientes: probablemente ejecución del contrato y Govoy como encargado del tratamiento, no consentimiento); plazos de conservación de conversaciones, audios y documentos; nombre de la app y URL donde se publicará.
-- Más adelante: notificaciones push, desbloqueo con huella (pregunta 16) y tamaño de letra del chat.
+- Más adelante: desbloqueo con huella (pregunta 16) y tamaño de letra del chat.
 
 **Descartado (2026-10-14): "Datos guardados"** (olvidar usuario y contraseña, borrar el registro de correos enviados). No es obligatorio: el RGPD no exige un botón para borrar datos locales (se borran desinstalando o borrando los datos de la app) y las tiendas solo piden eliminar la cuenta si la app permite crearla. Borrar el registro de correos haría que los borradores ya enviados volvieran a mostrar el botón de enviar.
 
@@ -1375,6 +1388,9 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-16 | App, texto poco a poco según el tiempo (no por fotogramas), pintando unas 30 veces por segundo; burbujas con `memo` y markdown partido en bloques memorizados; negrita y código en línea cerrados mientras escribe |
 | 2026-10-16 | App: `CajaMensaje` con `SafeAreaView` nativo en vez de `useSafeAreaInsets`, para que no quede bajo la barra al volver de la gráfica |
 | 2026-10-16 | Chat nuevo invisible en `get_chats` (y 404 en `get_chat`) mientras responde su primera pregunta: se arregla en el back al final, con una entrada por generación en curso sin fila (título de la `pregunta` del evento `session`) |
+| 2026-10-19 | Push en la app (Android): EAS + Firebase (FCM V1 en EAS, keystore en local); aviso con título "Chelu" y el principio de la respuesta sin markdown ni tablas (100 caracteres); con la app abierta, aviso del sistema salvo en ese chat (sin tarjeta propia); tocarlo abre el chat, también con la app cerrada; sección de Ajustes como AppGovoy. Endpoints `save_push_token` y `delete_push_token` |
+| 2026-10-19 | Tokens de push: se registra en cada sesión y se borra al cerrarla (la tabla es por cliente); los que ya no valen se borran con el ticket o con los recibos a los 30 s. Filas sueltas por sesiones que caducan solas: se aceptan (solo importan entre empresas distintas en un mismo móvil) |
+| 2026-10-19 | App: todas las llamadas de vuelta a `API_URL` |
 | 2026-10-14 | Licencias de terceros: propuesta (bundle con source maps + dependencias nativas a mano, pantalla `Licenses`) pendiente de confirmar. "Datos guardados" descartado. Política de privacidad: partir de la de AppGovoy, cambios pendientes de lo legal |
 | 2026-10-14 | Release en Windows: con el proyecto en el escritorio, `armeabi-v7a` superaba los 260 caracteres de ruta (`react-native-enriched-html`). El proyecto pasa a `C:\Chelu-Govoy` |
 | 2026-10-14 | Pantalla de Ajustes con tema (claro/oscuro) y modelo (solo master); el modelo elegido se borra al cerrar sesión o salir de la suplantación |
