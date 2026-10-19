@@ -1,0 +1,3 @@
+Android Software Development Kit License Agreement
+
+https://developer.android.com/studio/terms

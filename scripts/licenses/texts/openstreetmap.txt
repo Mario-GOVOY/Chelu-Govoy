@@ -1,0 +1,5 @@
+© OpenStreetMap contributors
+
+Los mapas usan datos y teselas de OpenStreetMap. Los datos están disponibles bajo la Open Database License (ODbL).
+
+https://www.openstreetmap.org/copyright

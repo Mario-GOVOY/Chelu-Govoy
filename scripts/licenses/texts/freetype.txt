@@ -1,0 +1,3 @@
+Portions of this software are copyright © 2024 The FreeType Project (https://freetype.org). All rights reserved.
+
+FreeType 2.13.3, dentro de MapLibre Native, bajo The FreeType License (FTL). El texto completo de la licencia está en "MapLibre Native: componentes de terceros".

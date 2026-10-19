@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState, Linking, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Notifications from 'expo-notifications';
-import { ArrowLeft, Bell, BellOff, Check, Moon, Sun, Wrench } from 'lucide-react-native';
+import { ArrowLeft, Bell, BellOff, Check, ChevronRight, FileText, Moon, Sun, Wrench } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from '@/chat/models';
@@ -206,6 +206,17 @@ export default function SettingsScreen({ navigation }: Props) {
                         </Text>
                     </>
                 )}
+
+                <Text className="mb-2 ml-1 mt-6 text-xs font-bold uppercase tracking-wider text-texto-tenue">Información</Text>
+                <Pressable
+                    onPress={() => navigation.navigate('Licenses')}
+                    accessibilityRole="button"
+                    className="flex-row items-center gap-3 rounded-2xl bg-superficie px-4 py-4 active:bg-superficie-alt"
+                >
+                    <FileText size={20} color={colores['texto-secundario']} />
+                    <Text className="flex-1 text-base text-texto">Licencias de terceros</Text>
+                    <ChevronRight size={20} color={colores['texto-tenue']} />
+                </Pressable>
             </ScrollView>
         </View>
     );

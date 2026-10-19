@@ -9,6 +9,7 @@ import { Pantalla } from '@/components/ui/Pantalla';
 import { useSesion } from '@/context/SesionContext';
 import { AppDrawerParamList, AppNavigator } from '@/navigation/AppNavigator';
 import GraficaScreen from '@/screens/GraficaScreen';
+import LicensesScreen from '@/screens/LicensesScreen';
 import LoginScreen from '@/screens/LoginScreen';
 import MapaScreen from '@/screens/MapaScreen';
 import SettingsScreen from '@/screens/SettingsScreen';
@@ -23,6 +24,7 @@ export type RootStackParamList = {
     Grafica: { grafica: Grafica };
     Mapa: { mapa: Mapa };
     Settings: undefined;
+    Licenses: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -98,6 +100,7 @@ export function RootNavigator() {
                         />
                         <Stack.Screen name="Mapa" component={MapaScreen} options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="Settings" component={SettingsScreen} />
+                        <Stack.Screen name="Licenses" component={LicensesScreen} />
                     </>
                 )}
             </Stack.Navigator>

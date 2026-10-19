@@ -1,0 +1,16 @@
+// Aplica AboutLibraries al módulo app solo en la ejecución que lo usa (generateAndroidLicenses.js), sin tocar android/.
+// Va en el buildscript del proyecto raíz, junto al plugin de Android: desde el del init script no ve sus clases.
+gradle.beforeProject { project ->
+    if (project != project.rootProject) return
+    project.buildscript.repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+    project.buildscript.dependencies {
+        classpath('com.mikepenz.aboutlibraries.plugin:aboutlibraries-plugin:13.1.0')
+    }
+}
+
+gradle.afterProject { project ->
+    if (project.path == ':app') project.apply(plugin: 'com.mikepenz.aboutlibraries.plugin')
+}

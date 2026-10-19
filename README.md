@@ -202,14 +202,18 @@ Pasos para cada APK o AAB que se reparta:
 
    No se cambian en `android/app/build.gradle`: el prebuild los pisa.
 
-4. **Regenerar y compilar** con la clave de Chelu (ver "Firma de release"):
+4. **Regenerar, actualizar las licencias y compilar** con la clave de Chelu (ver "Firma de release"):
 
    ```powershell
    npx expo prebuild --platform android
+   npm run licenses:js
+   npm run licenses:android
    cd android
    .\gradlew.bat assembleRelease
    cd ..
    ```
+
+   Los dos `licenses:*` rehacen `src/licenses/*.json` (pantalla "Licencias de terceros") con lo que lleva esta versión; `licenses:android` necesita `android/`, por eso va después del prebuild. Si alguno avisa de una librería sin texto, se añade su `LICENSE` a `scripts/licenses/texts/` y una línea en la tabla que indica el script.
 
    Comprueba con `apksigner` que salió firmado con `CN=Govoy` y no con la clave de debug.
 
@@ -217,7 +221,7 @@ Pasos para cada APK o AAB que se reparta:
 
 6. **Repartir** una copia con la versión en el nombre (p. ej. `Chelu-Govoy-1.0.1.apk`).
 
-7. **Commitear** el `app.json` con la versión nueva.
+7. **Commitear** el `app.json` con la versión nueva y `src/licenses/*.json` si han cambiado.
 
 ## Atajos (opcional)
 
