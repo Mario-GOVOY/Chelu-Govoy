@@ -1,9 +1,12 @@
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ArrowLeft, Check, Moon, Sun } from 'lucide-react-native';
+import * as Notifications from 'expo-notifications';
+import { ArrowLeft, Bell, BellOff, Check, Moon, Sun } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from '@/chat/models';
+import { registerForPushNotifications } from '@/chat/pushNotifications';
 import { useChosenModel } from '@/context/ChatModelContext';
 import { useSesionActiva } from '@/context/SesionContext';
 import { RootStackParamList } from '@/navigation/RootNavigator';
@@ -25,6 +28,46 @@ export default function SettingsScreen({ navigation }: Props) {
     const { sesion } = useSesionActiva();
     const isMaster = esSesionMaster(sesion);
     const { chosenModel, setChosenModel } = useChosenModel();
+    const [notificationPermissions, setNotificationPermissions] = useState<Notifications.NotificationPermissionsStatus | null>(null);
+    const notificationsGrantedRef = useRef<boolean | null>(null);
+
+    // Se vuelve a mirar al volver a la app: el permiso se puede haber cambiado en los ajustes del sistema.
+    // Si se acaba de conceder ahí, el móvil se registra en el back.
+    useEffect(() => {
+        const refresh = async () => {
+            const permissions = await Notifications.getPermissionsAsync();
+            const justGranted = notificationsGrantedRef.current === false && permissions.granted;
+            notificationsGrantedRef.current = permissions.granted;
+            setNotificationPermissions(permissions);
+            if (!justGranted) return;
+            try {
+                await registerForPushNotifications();
+            } catch {
+                // Sin avisos en este móvil; el chat funciona igual.
+            }
+        };
+        refresh();
+        const subscription = AppState.addEventListener('change', (state) => {
+            if (state === 'active') refresh();
+        });
+        return () => subscription.remove();
+    }, []);
+
+    // Pide el permiso; si el sistema ya no deja preguntar, se abren sus ajustes.
+    const enableNotifications = async () => {
+        if (!notificationPermissions?.canAskAgain) {
+            await Linking.openSettings();
+            return;
+        }
+        try {
+            await registerForPushNotifications();
+        } catch {
+            // Sin avisos en este móvil; el chat funciona igual.
+        }
+        const permissions = await Notifications.getPermissionsAsync();
+        notificationsGrantedRef.current = permissions.granted;
+        setNotificationPermissions(permissions);
+    };
 
     return (
         <View className="flex-1 bg-fondo">
@@ -64,6 +107,42 @@ export default function SettingsScreen({ navigation }: Props) {
                         );
                     })}
                 </View>
+
+                {notificationPermissions && (
+                    <>
+                        <Text className="mb-2 ml-1 mt-6 text-xs font-bold uppercase tracking-wider text-texto-tenue">
+                            Notificaciones
+                        </Text>
+                        <Pressable
+                            onPress={enableNotifications}
+                            disabled={notificationPermissions.granted}
+                            accessibilityRole="button"
+                            className="flex-row items-center gap-3 rounded-2xl bg-superficie px-4 py-3 active:bg-superficie-alt"
+                        >
+                            {notificationPermissions.granted ? (
+                                <Bell size={20} color={colores['texto-secundario']} />
+                            ) : (
+                                <BellOff size={20} color={colores['texto-secundario']} />
+                            )}
+                            <View className="flex-1 gap-0.5">
+                                <Text className="text-base text-texto">Avisar cuando Chelu termine</Text>
+                                <Text className="text-sm text-texto-secundario">
+                                    {notificationPermissions.granted ? 'Activadas' : 'Desactivadas'}
+                                </Text>
+                            </View>
+                            {!notificationPermissions.granted && (
+                                <Text className="text-sm font-semibold text-primario">
+                                    {notificationPermissions.canAskAgain ? 'Activar' : 'Abrir ajustes'}
+                                </Text>
+                            )}
+                        </Pressable>
+                        {!notificationPermissions.granted && !notificationPermissions.canAskAgain && (
+                            <Text className="ml-1 mt-2 text-xs text-texto-tenue">
+                                El sistema no deja volver a preguntar. Actívalas en los ajustes del móvil.
+                            </Text>
+                        )}
+                    </>
+                )}
 
                 {isMaster && (
                     <>

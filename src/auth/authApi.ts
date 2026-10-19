@@ -1,4 +1,4 @@
-import { API_URL, API_URL_LOCAL } from '@/auth/Constants';
+import { API_URL } from '@/auth/Constants';
 import { Sesion } from '@/types/Sesion';
 
 export type TipoErrorAuth = 'credenciales' | 'sin-acceso' | 'no-encontrado' | 'red' | 'servidor';

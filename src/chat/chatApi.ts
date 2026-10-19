@@ -4,7 +4,7 @@ import { Linking, Platform } from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 
 import { authFetch } from '@/auth/authManager';
-import { API_URL, API_URL_LOCAL } from '@/auth/Constants';
+import { API_URL } from '@/auth/Constants';
 import { getSentMessageId, markEmailSent, readSentEmails } from '@/chat/correosEnviados';
 import { aMapa } from '@/chat/mapas';
 import type {
@@ -437,7 +437,7 @@ const toEvent = (evento: any): EventoChat | null => {
 
 /** Registra el móvil para recibir un aviso cuando termina una respuesta. Si ya estaba con otro usuario, pasa a este. */
 export async function savePushToken(token: string, platform: 'android' | 'ios'): Promise<void> {
-    const respuesta = await authFetch(`${API_URL_LOCAL}chat-cex/save_push_token`, {
+    const respuesta = await authFetch(`${API_URL}chat-cex/save_push_token`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, plataforma: platform }),
@@ -448,7 +448,7 @@ export async function savePushToken(token: string, platform: 'android' | 'ios'):
 /** Deja de avisar a este móvil. */
 export async function deletePushToken(token: string): Promise<void> {
     const respuesta = await authFetch(
-        `${API_URL_LOCAL}chat-cex/delete_push_token?push_token=${encodeURIComponent(token)}`,
+        `${API_URL}chat-cex/delete_push_token?push_token=${encodeURIComponent(token)}`,
         { method: 'DELETE' },
     );
     if (!respuesta.ok) throw new Error(`delete_push_token ${respuesta.status}`);
@@ -483,7 +483,7 @@ export async function enviarMensaje({ pregunta, sessionId, model, sectorsForm, f
     onEvento: (evento: EventoChat, seq?: number) => void;
 }): Promise<void> {
     const respuesta = await authFetch(
-        `${API_URL_LOCAL}chat-cex/stream`,
+        `${API_URL}chat-cex/stream`,
         {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -524,7 +524,7 @@ export async function resumeAnswer({ generationId, fromSeq, signal, onEvento }: 
     onEvento: (evento: EventoChat, seq?: number) => void;
 }): Promise<void> {
     const respuesta = await authFetch(
-        `${API_URL_LOCAL}chat-cex/stream/${encodeURIComponent(generationId)}?desde=${fromSeq}`,
+        `${API_URL}chat-cex/stream/${encodeURIComponent(generationId)}?desde=${fromSeq}`,
         { signal },
         fetchStreaming,
     );
@@ -538,7 +538,7 @@ export async function resumeAnswer({ generationId, fromSeq, signal, onEvento }: 
 
 /** Pide parar una respuesta en curso; su stream termina con 'detenida'. Si ya había terminado (404), no hace nada. */
 export async function stopAnswer(generationId: string): Promise<void> {
-    const respuesta = await authFetch(`${API_URL_LOCAL}chat-cex/stream/${encodeURIComponent(generationId)}/parar`, {
+    const respuesta = await authFetch(`${API_URL}chat-cex/stream/${encodeURIComponent(generationId)}/parar`, {
         method: 'POST',
     });
     if (!respuesta.ok && respuesta.status !== 404) throw new Error(`parar ${respuesta.status}`);

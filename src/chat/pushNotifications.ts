@@ -35,8 +35,10 @@ export async function registerForPushNotifications(): Promise<void> {
             };
         },
     });
-    const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') return;
+    // Solo se pide si aún no está concedido: pedirlo hace que la app pase por segundo plano y vuelva.
+    const permissions = await Notifications.getPermissionsAsync();
+    const { granted } = permissions.granted ? permissions : await Notifications.requestPermissionsAsync();
+    if (!granted) return;
     const { data: token } = await Notifications.getExpoPushTokenAsync({
         projectId: Constants.expoConfig?.extra?.eas?.projectId,
     });
