@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, FlatList, Keyboard, KeyboardAvoidingView, Pre
 import { DrawerScreenProps } from '@react-navigation/drawer';
 import { CompositeScreenProps } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { BarChart3, FileText, ListOrdered, Menu, RefreshCw, TrendingUp, TriangleAlert, Truck } from 'lucide-react-native';
+import { BarChart3, FileText, ListOrdered, MapPin, Menu, RefreshCw, TrendingUp, TriangleAlert, Truck } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useChat } from '@/chat/useChat';
@@ -28,7 +28,7 @@ import { useConversaciones } from '@/context/ConversacionesContext';
 import { useSesionActiva } from '@/context/SesionContext';
 import type { Documento, Grafica, Mapa, Mensaje, Voto } from '@/types/Chat';
 import type { FormMap, SectorsForm } from '@/types/SectorsForm';
-import { esSesionMaster, FARMACIAS_EN_VEZ_DE_PUDOS, HAS_AUDIO_CHAT_CHELU, HAS_FEEDBACK_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
+import { DEMO_REVISORES, esSesionMaster, FARMACIAS_EN_VEZ_DE_PUDOS, HAS_AUDIO_CHAT_CHELU, HAS_FEEDBACK_CHAT_CHELU, validatorUserHasOption } from '@/utils/ControlOpcionesUsuarios';
 
 // Del drawer y, por encima, del stack raíz (para abrir la gráfica ampliada).
 type Props = CompositeScreenProps<
@@ -42,6 +42,14 @@ const EJEMPLOS = [
     { pregunta: 'Dame las 5 rutas con mayor RAIS en Sevilla esta semana', icono: TrendingUp },
     { pregunta: 'Reparto de alertas por delegación en una gráfica', icono: BarChart3 },
     { pregunta: '¿Qué proveedores acumulan más incidencias este mes?', icono: Truck },
+];
+
+// Empresa demo (DEMO_REVISORES): solo tiene datos del 14 al 25 de septiembre de 2026.
+const EJEMPLOS_DEMO = [
+    { pregunta: '¿Qué ruta tuvo más incidencias la semana del 21 de septiembre?', icono: TriangleAlert },
+    { pregunta: 'Evolución diaria de servicios del 14 al 25 de septiembre en una gráfica', icono: BarChart3 },
+    { pregunta: 'Mapa de las paradas de la ruta VN01 el 15 de septiembre', icono: MapPin },
+    { pregunta: 'Compara la calidad de los proveedores', icono: Truck },
 ];
 
 // Saltar a una pregunta: espera sin cambios de tamaño para quitar el skeleton, y tope de recolocaciones.
@@ -173,6 +181,7 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
     const closeRefineSheet = useCallback(() => setRefiningSectorsForm(null), []);
     const puedeValorar = validatorUserHasOption(HAS_FEEDBACK_CHAT_CHELU, sesion.empresaId, esSesionMaster(sesion));
     const puedeDictar = validatorUserHasOption(HAS_AUDIO_CHAT_CHELU, sesion.empresaId, esSesionMaster(sesion));
+    const esDemo = validatorUserHasOption(DEMO_REVISORES, sesion.empresaId);
     // Respuesta que se está valorando (su runId y el pulgar pulsado); null con la hoja cerrada.
     const [valorando, setValorando] = useState<(Valorando & { runId: string }) | null>(null);
     const openRating = useCallback(
@@ -354,11 +363,13 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                             </View>
                             <Text className="mt-4 text-2xl font-bold text-texto">¿En qué te ayudo <Text className="text-primario">hoy</Text>?</Text>
                             <Text className="mt-2 text-center text-base text-texto-secundario">
-                                Pregúntame en chat CHELU sobre rutas, alertas, paradas, proveedores, depots, recogidas o {validatorUserHasOption(FARMACIAS_EN_VEZ_DE_PUDOS, sesion.empresaId) ? 'farmacias' : 'PUDOS'} de {sesion.nombreEmpresa}.
+                                {esDemo
+                                    ? `Pregúntame en chat CHELU sobre rutas, paradas, proveedores, depósitos o recogidas de ${sesion.nombreEmpresa}. Hay datos del 14 al 25 de septiembre de 2026.`
+                                    : `Pregúntame en chat CHELU sobre rutas, alertas, paradas, proveedores, depots, recogidas o ${validatorUserHasOption(FARMACIAS_EN_VEZ_DE_PUDOS, sesion.empresaId) ? 'farmacias' : 'PUDOS'} de ${sesion.nombreEmpresa}.`}
                             </Text>
                             <View className="mt-6 w-full gap-3">
                                 <Text className="text-xs font-bold uppercase tracking-wider text-primario">Prueba a preguntar</Text>
-                                {EJEMPLOS.map(({ pregunta, icono: Icono }) => (
+                                {(esDemo ? EJEMPLOS_DEMO : EJEMPLOS).map(({ pregunta, icono: Icono }) => (
                                     <Pressable
                                         key={pregunta}
                                         onPress={() => enviar(pregunta)}

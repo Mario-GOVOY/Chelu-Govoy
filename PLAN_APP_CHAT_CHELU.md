@@ -1,7 +1,7 @@
 # App móvil Chat Chelu — Definición del proyecto
 
 > Documento vivo: se actualiza a medida que se toman decisiones.
-> Última actualización: 2026-10-19
+> Última actualización: 2026-10-20
 
 ## Objetivo
 
@@ -27,10 +27,11 @@ Crear una app móvil para usar el chatbot **Chat Chelu** (hoy solo en la web, `/
 | GET | `/chat-cex/archivos` · DELETE `/archivos/{id}` · POST `/archivos/migrar` | Por decidir (archivos de todas las conversaciones, ver "Funciones nuevas de la web") |
 | GET | `/chat-cex/archivo/{file_id}` | Sí, descarga de documentos generados |
 | POST | `/chat-cex/correo/enviar` | Fase 4 |
+| POST | `/chat-cex/agente/crear` · GET `/tareas-chelu/config` · GET `/tareas-chelu/triggers/catalogo` | Sí, crear agentes autónomos desde el chat (ver "Agentes autónomos desde el chat") |
 | GET | `/chat-cex/optimizacion/{id}`, POST `/resumen-optimizacion`, GET `/formulario-sectores` | Fase 4: los que necesite el formulario de sectores (ver abajo); abrir la optimización, no |
 | GET | `/chat-cex/syncronize_data` | No (migración puntual de la web) |
 
-Eventos del stream: `session, delta, tool, progreso, sugerencias, done, error, documento, grafica, mapa, sql, sectores, comparativa, correo_borrador, formulario_sectores, acciones_editor, carga_simulacion, orden_optimizacion`.
+Eventos del stream: `session, delta, tool, progreso, sugerencias, done, error, documento, grafica, mapa, sql, sectores, comparativa, correo_borrador, agente_borrador, formulario_sectores, acciones_editor, carga_simulacion, orden_optimizacion`.
 
 - **Fases 2–3:** `session`, `delta`, `tool`/`progreso`, `sugerencias`, `done`, `error`, `documento`, `grafica`, `mapa`.
 - **Fase 4:** `correo_borrador`, `sectores`, `comparativa`, `formulario_sectores`.
@@ -1043,7 +1044,7 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
   - Transcribe con `gpt-4o-mini-transcribe` (por defecto desde el 6-oct) o Whisper local, en español y con el vocabulario del perfil del cliente (`vocabulario_audio`).
   - El texto **no se envía solo**: se añade al campo de escribir (tras lo que hubiera) para revisarlo, porque un nombre mal transcrito acabaría en una consulta equivocada. Al enviarlo, `/stream` lleva `origen_audio: true` (solo etiqueta la traza); se olvida si se vacía el campo.
   - Web (F `useNotaVoz.ts`, `BotonNotaVoz.tsx`, `Composer.tsx`): micro junto a enviar (desactivado mientras Chelu responde). Grabando, la barra ocupa el sitio del campo: "Chelu está escuchando tu consulta…", onda con el volumen, tiempo, X (descartar) y ✓ (parar y transcribir). Tope de 2 minutos (para y transcribe sola). Transcribiendo: spinner en el micro y "Transcribiendo…" en el campo. Errores ("No hay permiso para usar el micrófono.", "No se ha entendido nada. Prueba otra vez." o el `detail`) 5 s en un tooltip.
-  - Solo para `HAS_AUDIO_CHAT_CHELU` = `["69", "92", "100", "101"]`, en la web y en la app.
+  - Solo para `HAS_AUDIO_CHAT_CHELU` = `["69", "92", "100", "101", "104"]`, en la web y en la app.
 
 **Planteamiento en la app**
 
@@ -1089,7 +1090,7 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 - No se filtran los chats con una carpeta que no está en la lista: el back solo manda `carpeta_id` de carpetas vivas.
 
 **Hecho en el bloque 3b**
-- **Permiso:** `HAS_FOLDERS_CHAT_CHELU = ['92', '100', '101']` en `ControlOpcionesUsuarios.ts`: los clientes que tienen las tablas de carpetas (comprobado en la base de datos el 2026-10-13). Sin él no salen "Nueva carpeta" ni el "⋯" de las carpetas (la web no tiene permiso: enseña los botones y da 409). Las carpetas que haya se siguen viendo.
+- **Permiso:** `HAS_FOLDERS_CHAT_CHELU = ['92', '100', '101', '69', '104']` en `ControlOpcionesUsuarios.ts`: los clientes que tienen las tablas de carpetas (comprobado en la base de datos el 2026-10-13; el 104 el 2026-10-20). Sin él no salen "Nueva carpeta" ni el "⋯" de las carpetas (la web no tiene permiso: enseña los botones y da 409). Las carpetas que haya se siguen viendo.
 - `chatApi`: `createFolder`, `renameFolder` y `deleteFolder` (`POST /carpetas`, `PATCH /carpetas/{id}`, `DELETE /carpetas/{id}?con_chats=…`); si fallan, lanzan el `detail` del back.
 - Contexto: crear y eliminar esperan al back (sin el id temporal negativo de la web); renombrar es optimista como el de las conversaciones. Al eliminar, las conversaciones que quedan pasan a sueltas y se quitan de la lista las que el back devuelve en `borrados`. Si la abierta era una de ellas, se pasa a una nueva.
 - Menú: icono `FolderPlus` junto al de recargar → `NameSheet` "Nueva carpeta" (la carpeta nueva sale plegada, al final). En cada carpeta, "⋯" (y mantener pulsada) → hoja con "Renombrar" (`NameSheet`) y "Eliminar".
@@ -1103,7 +1104,7 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 
 **Hecho en el bloque 4a**
 - `expo-audio` 57.0.5 (MIT, sin dependencias de npm) instalada, con su plugin en `app.json` (`microphonePermission`; en Android añade `RECORD_AUDIO`). Recompilada.
-- **Permiso:** `HAS_AUDIO_CHAT_CHELU = ['69', '92', '100', '101']`, como en la web.
+- **Permiso:** `HAS_AUDIO_CHAT_CHELU = ['69', '92', '100', '101', '104']`, como en la web.
 - `chatApi.transcribeAudio`: `POST /chat-cex/transcribir` con `FormData` (el audio y `session_id` si hay conversación); devuelve el texto o lanza el `detail`.
   - **Ojo:** en el SDK 57 Expo sustituye el `fetch` global por el suyo (`expo/fetch`), que no admite la forma de React Native de adjuntar archivos (`{ uri, name, type }`): da "Unsupported FormDataPart implementation". El audio se adjunta como `{ name: 'pregunta.m4a', type: 'audio/m4a', bytes }`, leyendo los bytes con el `File` de `expo-file-system` (MIT; ya venía como dependencia de `expo`, se declara en `package.json`). `enviarMensaje` manda `origen_audio` (`fromVoice`), que `useChat.enviar` recibe como tercer parámetro.
 - `chat/useVoiceNote.ts`: `useAudioRecorder` con `RecordingPresets.HIGH_QUALITY` (m4a/AAC). `start` pide el permiso, pone `allowsRecording` (solo afecta a iOS) y graba; `finish` para y transcribe; `cancel` para y descarta. Tope de 2 minutos (para y transcribe sola, con `durationMillis` de `useAudioRecorderState`). Si la app pasa a segundo plano mientras graba, se descarta. Errores como la web ("No hay permiso para usar el micrófono.", "No se ha entendido nada. Prueba otra vez." o el `detail`), 5 s.
@@ -1153,6 +1154,50 @@ Revisado el 2026-10-13. Rutas cortas como en la fase 4: **F** = `Front-Govoy/src
 **Visto de paso: archivos de todas las conversaciones**
 - En el mismo commit, el back añadió un índice de documentos por usuario (`chat_archivos_chelu`, B `:3703-3887`): `GET /archivos` (todos los del usuario, con el título de su chat), `DELETE /archivos/{id}` (los quita del listado, no de S3 ni del chat) y `POST /archivos/migrar` (rellena los anteriores; la web lo llama una vez por usuario y navegador). Sin la tabla, 409 y la web usa los que tiene en memoria.
 - Es justo lo que faltaba para el "Archivos generados" de la app (fase 2: "listar todas las conversaciones o borrar de verdad necesitaría endpoints nuevos"). No entra en la fase 5 salvo que se decida (pregunta 24).
+
+### Agentes autónomos desde el chat (fase 5, bloque 6)
+
+Revisado el 2026-10-20. Commits: back `29d7edc`; web `ced9f357`, `30b919fc` y `1a275ca9`. Rutas cortas: **F** y **B** como en la fase 4 (B = carpeta `agentes/chat_CEX/`), **A** = `Front-Govoy/src/routes/components/AgentesChelu/chelu/pages/CrearAgente/`.
+
+**Cómo funciona en la web y el back**
+- **Chelu no crea nada, solo prepara.** La tool `preparar_agente` (B `tools_chat/agente_borrador.py`) ordena lo que pide el usuario y emite `agente_borrador` con `{ id_borrador, agente, faltan, advertencias }`:
+  - Qué entrega (`accion`): `informe`, `correo` o `mensajes` (Teams).
+  - Cuándo (`condicion`): `programado` (frecuencia, día y hora), `alerta` o `indicador`. Un informe solo puede ser programado.
+  - Además: destinatarios, ámbito (`nivel` y `nombre_nivel`), canal de Teams, formato del informe e instrucciones.
+  - `agente` va en la forma del formulario de la web (`DEFAULT_AGENT`, A `payloadAgente.ts`) y solo con lo que se dedujo. La tarjeta lo completa con los valores por defecto (`conDefectos`).
+  - Con alerta o indicador no pone el umbral ni cuál: avisa "Elige en la tarjeta qué alerta/indicador lo activa y con qué umbral". El 69 no tiene alertas; usa sus disparadores propios (`trigger_tarea`).
+- **La tool solo existe** si `/stream` lleva `puede_crear_agentes: true` **y** el cliente tiene tareas de Chelu (`activo_para`, hoy 92 y 69). Si no, Chelu no puede preparar agentes.
+- **Crear: `POST /chat-cex/agente/crear`** con `{ agente, id_borrador, session_id }`. `agente` es el final, en la forma de `/crear-agente` (`construirPayloadAgente`). Por dentro llama a la misma función que `/crear-agente` (`crear_agente_para`).
+  - Devuelve `{ id_agente, nombre }`.
+  - Errores: 403 si el cliente no tiene agentes, 400 si es un informe puntual (`ondemand`), 409 si ese borrador ya se creó en la conversación, 422 si algún campo no vale.
+  - Anota en la conversación un turno sin pregunta ("Agente «…» creado"), para que Chelu sepa que ya existe.
+- **Al reabrir (`get_chat`):** cada mensaje trae `agentes`. El ya creado lleva `creado: { id_agente, nombre }` y ocupa el sitio del borrador. El turno de la anotación no se devuelve como mensaje.
+- **Tarjeta web (F `AgenteBorradorCard.tsx`):** el formulario completo de "Crear agente" dentro de la burbuja, con las piezas de A (unas 2.000 líneas):
+  - Nombre y ámbito (con buscador), tipo, cuándo (programado, alerta, indicador KPI o disparadores del 69), instrucciones y la configuración del tipo (destinatarios, asunto, control, canal…).
+  - "Probar ahora": lo ejecuta una vez sin crearlo ni enviar nada (`POST /tareas-chelu/{correo|informe}`), con vista previa y descarga del documento.
+  - Carga `GET /tareas-chelu/config` (si está activo, niveles, máximo de instrucciones y última fecha con datos) y `GET /tareas-chelu/triggers/catalogo`.
+  - Creado: "✓ Agente creado" y "Ver en Mis agentes". Sin permiso: "No tienes acceso para crear agentes desde aquí".
+- **Permiso en la web:** `puedeCrearAgentesChelu`, el mismo que el menú "Agentes CHELU": `AGENTES_CHELU = ["1", "69-qa"]` o `AGENTES_CHELU_MASTER = ["92"]` con sesión master.
+
+**Planteamiento en la app (decidido el 2026-10-20)**
+- **Permiso:** `HAS_AGENTS_CHAT_CHELU = ['92-master', '69-master']` en `ControlOpcionesUsuarios.ts`: solo el staff suplantando.
+  - El 69 va como `-master` porque en la web solo está en QA y la app no distingue entornos (D3). Pasará a `'69'` cuando la web lo suba a producción.
+  - La empresa 1 no: no tiene perfil de chat en el back.
+- Con permiso, `/stream` manda `puede_crear_agentes: true`.
+- **Sin "Ver en Mis agentes"** (regla general: en la app no se abre nada en otras herramientas). Gestionar los agentes se queda en la web.
+- **Como el formulario de sectores:** en el chat, una tarjeta con el resumen y "Crear agente"; "Editar" abre el formulario a pantalla completa. Un formulario entero dentro de la burbuja serían varias pantallas de scroll.
+- **Por bloques:**
+  - **6a, datos y tarjeta de solo lectura:**
+    - Evento `agente_borrador` en `chatApi` y `useChat`, y `agentes` de `get_chat`.
+    - `puede_crear_agentes` en `/stream`, el permiso y "Preparando el agente" en la lista de herramientas.
+    - Tarjeta: cabecera (icono `Bot`, nombre, tipo · cuándo), "Falta por completar", resumen de los campos y "✓ Agente creado" si ya lo está.
+  - **6b, editar lo básico y crear:**
+    - Pantalla de edición con nombre, tipo, programado (frecuencia, día y hora), destinatarios o canal, instrucciones y formato del informe.
+    - `GET /tareas-chelu/config` para el máximo de instrucciones.
+    - Validación y payload como la web (copiar `conDefectos`, `construirPayloadAgente` y las reglas de `validation.ts` que apliquen) y "Crear agente" con `POST /chat-cex/agente/crear`.
+    - Alerta o indicador: se crea con los valores por defecto, que se ven en el resumen, hasta el 6c.
+  - **6c, alerta, indicador y ámbito:** tipos de alerta e indicador KPI con sus umbrales, disparadores del 69 (`triggers/catalogo`, A `StepTriggerTarea.tsx`) y ámbito con buscador.
+  - **6d, "Probar ahora":** ejecutar sin crear y ver el correo o el informe en una pantalla (markdown); descargar el documento como los archivos generados.
 
 ### Pantalla de Ajustes (en parte)
 
@@ -1214,6 +1259,47 @@ Decidido el 2026-10-13 hacerla en lugar de cambiar el tema desde el menú latera
 - Más adelante: desbloqueo con huella (pregunta 16) y tamaño de letra del chat.
 
 **Descartado (2026-10-14): "Datos guardados"** (olvidar usuario y contraseña, borrar el registro de correos enviados). No es obligatorio: el RGPD no exige un botón para borrar datos locales (se borran desinstalando o borrando los datos de la app) y las tiendas solo piden eliminar la cuenta si la app permite crearla. Borrar el registro de correos haría que los borradores ya enviados volvieran a mostrar el botón de enviar.
+
+### Cuenta de prueba para Google Play (decidido 2026-10-19, en curso)
+
+Google pide en "Acceso a la app" un usuario y contraseña que funcionen para revisar la app. Sirve también para la App Store.
+
+- **No vale la empresa 1:** no tiene perfil de chat en el back (`/login-chat-movil` la rechaza) y `cliente_1` tiene nombres de clientes reales (Cofares, CTT, Aquaservice, Mercedes), tablas de menos y columnas de otra versión (sin `Forensic_rutas`; a `Rutas` le faltan 11 y a `Paradas` 14 respecto a la 101).
+- **Empresa demo nueva**, con datos inventados:
+  - **Hecho (2026-10-19): empresa 104 "TestChelu", usuario `testchelu` (rol `administrador`) y esquema `cliente_104`.** Con `register_user` (`routes/user.py`) lanzado con el debugger y `plantilla_empresa_id=101` (CTT): copia la estructura de **todas** las tablas de `cliente_101` (104 tablas, sin datos) y añade la fila por defecto de `Optimizador`. Mejor que copiar solo 5 tablas: entran las del chat (`chat_agno_chelu`, `chat_archivos_chelu`, carpetas, valoración, generaciones, push) y las tools que consulten otra tabla no fallan, solo no encuentran datos. Las de sectorización quedan vacías.
+    - El bloque `if __name__` de `user.py` ya no está (la contraseña no aparece ni en el código ni en el historial de git). **Pendiente:** cambiar la contraseña por una generada al azar (la del alta es fácil de adivinar y queda en claro en `configuracion.default_password`).
+  - **Hecho (2026-10-20): perfil de chat `agentes/chat_CEX/perfiles/cliente_104/`**, adaptado del de CTT y registrado en `perfiles/__init__.py` (subido a `main`; el smoke test pasa).
+    - `tablas.py`: solo las 5 tablas con datos (`Forensic_rutas`, `Rutas`, `Paradas`, `Depot`, `Fleet`). El resto existe vacío y daría consultas correctas con cero filas.
+    - `esquema.py`: las columnas que rellena el script, depósitos VALENCIA NORTE y VALENCIA SUR, reglas y ejemplos con fechas del periodo.
+    - `system_prompt.md`: sin la sección de sectores ni menciones a CTT, Espinardo o Murcia; dice el periodo con datos; si piden optimizar, explica que esta cuenta no lo tiene; responde en el idioma del usuario (español por defecto).
+    - `tools_excluidas`: las 5 de sectorización y `simular_sectorizacion_historico`, y `detectar_rutas_infrautilizadas` (sin RAIS).
+    - GRANT de `chelu_hist` en las 5 tablas del chat de `cliente_104`, como en el 101 (historial, valoración, generaciones y push). Carpetas y archivos van con el usuario general.
+  - Datos (reducido el 2026-10-19 y otra vez el 2026-10-20): **del 14 al 25 de septiembre de 2026 (dos semanas completas), en Valencia, 2 almacenes con 10 vehículos cada uno**, con coordenadas en sitios con sentido para que los mapas queden bien. Lo genera `Back-Govoy/scripts/demo_cliente_104/generar_datos_104.py`.
+    - `Forensic_rutas` y `Rutas`: 200 rutas (una por vehículo y día laborable).
+    - `Paradas`: todos los días, con el mismo periodo que el resto (limitar el detalle a unos días obligaba a avisarlo en el perfil), unas 26 por ruta, **~5.300 en total**. Más `Plans`, uno por día, porque `Rutas` y `Paradas` lo referencian. El análisis Forensic, con algunas incidencias y rutas poco aprovechadas.
+    - **Fechas fijas:** no se desplazan con el tiempo. Las instrucciones del revisor indican los meses exactos.
+    - **Forensic:** el script lo calcula en Python con las mismas fórmulas que el proceso de CTT (`calc_rutas_forensic.py`), que tiene el 101 fijo y deja los costes vacíos. Comprobado en la base de datos (2026-10-20): 0 rutas descuadradas entre `Forensic_rutas` y `Paradas`.
+    - Nombres claramente ficticios: "Proveedor Alfa…Delta", "Conductor Demo 01…23", matrículas `DEMO-01…20`.
+  - **Hecho (2026-10-20):** la empresa está en `CHAT_CHELU`, `HAS_FEEDBACK_CHAT_CHELU`, `HAS_AUDIO_CHAT_CHELU` y `HAS_FOLDERS_CHAT_CHELU` en la app, y en las tres primeras en la web (la web no tiene lista de carpetas). La valoración y el reporte de respuestas son necesarios por la política de contenido generado por IA.
+  - **Hecho (2026-10-20):** con `DEMO_REVISORES = ['104']`, el chat vacío de la app enseña ejemplos con fechas que tienen datos (incidencias de la semana del 21, evolución del 14 al 25 en gráfica, mapa de la VN01 el 15, calidad por proveedor) y un texto sin alertas ni PUDOS que dice que hay datos del 14 al 25 de septiembre de 2026. Los ejemplos generales (alertas, RAIS, Madrid, "ayer") devolvían "no hay datos" en la demo.
+- **Qué puede hacer la cuenta (2026-10-20):**
+  - Tools: consultas (`ejecutar_sql_cex`), gráficas, mapas, Excel, PDF/Word, borradores de correo, tiempo (AEMET, observado real de esas fechas), tráfico (DGT, registro desde el 25 de agosto) y cruce de una ruta con la DGT (coordenadas inventadas contra incidencias reales).
+  - App: chat con historial, carpetas, valoración y reporte, notas de voz, archivos generados y push.
+  - No: sectores, RAIS, las tools de la pantalla de simulación (solo web) ni crear agentes.
+- **Es suficiente sin sectorización:** Google pide poder entrar y usar la app, no ver todas las funciones de cada cliente. El revisor ve el chat, gráficas, mapas, Excel, borradores de correo, notas de voz, valoración, carpetas, notificaciones y Ajustes. La optimización de sectores solo sale si Chelu la propone, así que no echará nada en falta.
+- **A tener en cuenta:**
+  - La ficha de la tienda no debe prometer lo que la demo no enseña: hablar de "análisis y optimización de rutas" en general, no de sectores.
+  - Envío de correos: el revisor podría mandar un borrador a cualquier dirección y saldría un correo real de Govoy. **Propuesta:** para la empresa demo, el back no envía (o lo desvía a un buzón de Govoy) pero responde como si lo hubiera enviado. Bloquearlo daría un error que el revisor podría tomar por un fallo, y avisarlo en las instrucciones no garantiza nada. **Aplazado (2026-10-20): de momento la demo envía de verdad**, como cualquier empresa (SES desde `chelu@govoy.es`, 10 por hora y usuario).
+  - Cada pregunta del revisor gasta en el modelo de IA, pero es poco. Como las credenciales salen de Govoy, valorar un límite de mensajes al día para esa empresa. **Aplazado (2026-10-20):** sin límite propio por ahora.
+  - **La cuenta tiene que seguir funcionando después de la primera revisión** (Google y Apple revisan cada versión): contraseña sin caducar ni cambiar y empresa sin desactivar (el login daría 403). Dejarlo indicado en el back para que nadie la toque sin saberlo.
+  - **Acceso desde fuera de España:** los revisores de Apple suelen estar en EE. UU. y los de Google en cualquier país. Comprobar que `api.govoy.es` no filtra por país o IP.
+  - **Idioma:** la app está en español y las instrucciones van en inglés. Preguntas de ejemplo en los dos idiomas; comprobar que Chelu contesta en inglés si se le pregunta en inglés.
+  - Para Apple, el aviso de IA de terceros (ver "Distribución y revisión de Apple") tiene que estar hecho antes de enviar.
+- **Orden:**
+  1. ~~Empresa, usuario (rol administrador) y esquema~~ (hecho, empresa 104). El envío de correos de la demo queda aplazado.
+  2. ~~Perfil de chat, script de datos, datos cargados, permisos en app y web, y ejemplos del chat vacío~~ (hecho el 2026-10-20).
+  3. Instrucciones para el revisor, en inglés, con las fechas exactas de los datos y preguntas de ejemplo que ya las lleven (p. ej. "Which route had the most incidents in the week of September 21, 2026?").
+  4. Probar la cuenta con una build de release contra producción, siguiendo las instrucciones de principio a fin, antes de enviarlas.
 
 ### Fase 0 en detalle (Back-Govoy)
 
@@ -1425,6 +1511,9 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-19 | App: todas las llamadas de vuelta a `API_URL` |
 | 2026-10-19 | Ajustes: "Mostrar herramientas" para todos (como la web); métricas, SQL y chats de clientes, a futuro (solo master) |
 | 2026-10-19 | Licencias: JSON generados por scripts propios (JS con el source map, hecho; Android con Gradle) + uno a mano (código de terceros dentro de las `.so`, paquetes de JS sin fichero, pines y OSM). `react-native-legal` probado y descartado (920 paquetes de JS en vez de 92, Compose, falta de Metaspace en Gradle). Comprobado contra el bundle, Gradle y la APK: todo abierto y permisivo salvo Firebase/Play Services e Install Referrer |
+| 2026-10-19 | Cuenta de prueba para Google Play: empresa demo nueva con datos inventados en 5 tablas de CTT (sin sectorización), perfil de chat copiado del de CTT. La empresa 1 no sirve. Fechas fijas: el revisor pregunta por los meses que se le indican (también en el prompt del perfil). Correos de la demo sin enviar de verdad (propuesta). Creada la empresa 104 "TestChelu" con `register_user` y plantilla 101: todas las tablas de CTT, sin datos |
+| 2026-10-20 | Cuenta de prueba: perfil de chat del 104 (5 tablas, sin sectores ni RAIS, prompt con el periodo) y GRANT de `chelu_hist`. Datos del 14 al 25 de septiembre de 2026 en Valencia con `scripts/demo_cliente_104/generar_datos_104.py`: 2 depósitos, 20 vehículos, 10 planes, 200 rutas, 5.255 paradas y `Forensic_rutas` con las fórmulas de CTT (cuadra con `Paradas`). Nombres ficticios. 104 en las listas de permisos de app y web, y ejemplos propios en el chat vacío (`DEMO_REVISORES`). Correos reales y sin límite de mensajes, aplazados |
+| 2026-10-19 | Permisos de Android que no se usan, quitados en `app.json`: ubicación y `SYSTEM_ALERT_WINDOW` (`blockedPermissions`) y el servicio de reproducción en segundo plano de `expo-audio` (`enableBackgroundPlayback: false`), para no tener que declararlos en Google Play |
 | 2026-10-14 | Licencias de terceros: propuesta (bundle con source maps + dependencias nativas a mano, pantalla `Licenses`) pendiente de confirmar. "Datos guardados" descartado. Política de privacidad: partir de la de AppGovoy, cambios pendientes de lo legal |
 | 2026-10-14 | Release en Windows: con el proyecto en el escritorio, `armeabi-v7a` superaba los 260 caracteres de ruta (`react-native-enriched-html`). El proyecto pasa a `C:\Chelu-Govoy` |
 | 2026-10-14 | Pantalla de Ajustes con tema (claro/oscuro) y modelo (solo master); el modelo elegido se borra al cerrar sesión o salir de la suplantación |
@@ -1436,3 +1525,4 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-13 | Editor de sectores: indicador en "Editar" y en los chips "Por CP" / "Por proveedor" mientras se monta (cambio en el siguiente fotograma). Con el editor abierto, "Optimizar" y "¿Algo que afinar?" se desactivan, para que un toque en cola no lance nada. Memorizar a mano los chips y secciones se probó y se revirtió (no se notaba); el React Compiler se descartó |
 | 2026-10-09 | Fase 4, bloque 4c: demanda, aprovechamiento mínimo y tipo de optimización en una sola sección "Parámetros"; números limitados a lo que acepta el back (demanda 1–100, aprovechamiento 0–100) |
 | 2026-10-09 | Estilo: legibilidad primero; `async`/`await` con `try`/`catch` en lugar de `.then().catch()`, cambiando las cadenas existentes al tocar cada archivo |
+| 2026-10-20 | Agentes autónomos desde el chat (fase 5, bloque 6): solo `92-master` y `69-master` (el 69 está en QA en la web). Tarjeta con resumen y "Crear agente" + edición a pantalla completa, sin "Ver en Mis agentes". Por bloques: 6a datos y solo lectura, 6b editar lo básico y crear, 6c alerta/indicador/ámbito, 6d "Probar ahora" |
