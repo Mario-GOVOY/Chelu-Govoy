@@ -20,6 +20,7 @@ import { Boton } from '@/components/ui/Boton';
 import { CapaGiro } from '@/components/ui/CapaGiro';
 import { SHEET_EXIT_MS } from '@/components/ui/HojaInferior';
 import { Pantalla } from '@/components/ui/Pantalla';
+import { PortraitFrame } from '@/components/ui/PortraitFrame';
 import { AppDrawerParamList } from '@/navigation/AppNavigator';
 import { RootStackParamList } from '@/navigation/RootNavigator';
 import { useColores } from '@/theme/ThemeProvider';
@@ -387,7 +388,7 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                             </View>
                         </ScrollView>
                     ) : (
-                        <View className="flex-1">
+                        <PortraitFrame>
                             <FlatList
                                 ref={listRef}
                                 inverted
@@ -427,7 +428,7 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                                     <ChatSkeleton />
                                 </View>
                             )}
-                        </View>
+                        </PortraitFrame>
                     )}
                     <CajaMensaje
                         onEnviar={sendAndScroll}

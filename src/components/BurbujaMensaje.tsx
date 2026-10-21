@@ -102,7 +102,11 @@ export const BurbujaMensaje = memo(function BurbujaMensaje({ mensaje, animateEnt
                     {!!mensaje.texto && <TextoMarkdown texto={mensaje.texto} writing={mensaje.estado === 'escribiendo'} />}
                     {mensaje.graficas?.map((g, i) => (
                         <Animated.View key={i} entering={cardEntering}>
-                            <TarjetaGrafica grafica={g} onAmpliar={onAmpliarGrafica && (() => onAmpliarGrafica(g))} />
+                            <TarjetaGrafica
+                                grafica={g}
+                                animate={mensaje.estado === 'escribiendo'}
+                                onAmpliar={onAmpliarGrafica && (() => onAmpliarGrafica(g))}
+                            />
                         </Animated.View>
                     ))}
                     {mensaje.mapas?.map((mapa, i) => (

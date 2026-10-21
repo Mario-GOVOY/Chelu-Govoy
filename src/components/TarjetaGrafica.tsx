@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
-import { Dimensions, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Dimensions, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Maximize2 } from 'lucide-react-native';
 import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Text as TextoSvg } from 'react-native-svg';
 
 import { DatosGrafica, leerGrafica, PALETA_GRAFICAS } from '@/chat/graficas';
@@ -11,10 +13,29 @@ import type { Grafica } from '@/types/Chat';
 
 // En el chat la gráfica se ajusta al ancho; ampliada, si no cabe, hace scroll.
 // alto: el del área de la gráfica; sin él, uno fijo según el modo.
-type Modo = { completa: boolean; alto?: number };
+// animate: se dibuja con una animación de entrada (la que acaba de llegar por el stream).
+type Modo = { completa: boolean; alto?: number; animate?: boolean };
 
 // Hueco de cada etiqueta del eje X. Ampliada se ven todas; en el chat se salta alguna si no caben.
 const ANCHO_ETIQUETA = 64;
+
+// Lo que tardan las barras del chat en crecer hasta su valor.
+const BAR_GROW_MS = 600;
+// Lo que tarda en subir la cortina que descubre las columnas de la gráfica ampliada.
+const COLUMNS_REVEAL_MS = 800;
+// Lo que tardan las circulares en aparecer.
+const PIE_ENTER_MS = 600;
+// Lo que tardan las líneas en dibujarse, el ancho del borde difuminado de la cortina que las descubre
+// y lo que se espera como mucho al aviso de que están pintadas.
+const LINE_DRAW_MS = 900;
+const CURTAIN_EDGE_PX = 48;
+const LINE_SIGNAL_TIMEOUT_MS = 1000;
+// Sin animación de entrada, lo que tarda la gráfica de líneas en aparecer cuando ya tiene las líneas.
+const LINE_SHOW_MS = 150;
+// Hueco que deja la librería sobre la zona de la gráfica (extendedContainerHeight en gifted-charts-core).
+const PLOT_TOP_PADDING = 10;
+// Lo que baja la cortina por debajo del eje X: los puntos y el trazo de los valores en cero sobresalen del eje.
+const CURTAIN_BELOW_AXIS_PX = 6;
 
 // Lo que se come el ancho de pantalla hasta la gráfica: el margen de la lista del chat (px-6)
 // y el borde y el relleno de la tarjeta (border, p-3). Si cambian, hay que cambiarlo aquí.
@@ -78,7 +99,7 @@ function etiquetaEjeX(texto: string, ancho: number, colores: Paleta) {
 }
 
 /** Tarjeta del chat: la gráfica ajustada al ancho. Al tocarla se amplía. */
-export function TarjetaGrafica({ grafica, onAmpliar }: { grafica: Grafica; onAmpliar?: () => void }) {
+export function TarjetaGrafica({ grafica, animate = false, onAmpliar }: { grafica: Grafica; animate?: boolean; onAmpliar?: () => void }) {
     const colores = useColores();
     const datos = useMemo(() => leerGrafica(grafica), [grafica]);
     // Con el ancho ya calculado se pinta a la primera, sin crecer después de medir el hueco.
@@ -100,7 +121,7 @@ export function TarjetaGrafica({ grafica, onAmpliar }: { grafica: Grafica; onAmp
             {datos ? (
                 // Sin toques dentro: el toque es de la tarjeta, no de las barras.
                 <View pointerEvents="none">
-                    <DibujoGrafica datos={datos} completa={false} anchoConocido={anchoGrafica} />
+                    <DibujoGrafica datos={datos} completa={false} animate={animate} anchoConocido={anchoGrafica} />
                 </View>
             ) : (
                 <Text className="text-sm text-texto-tenue">No se puede mostrar esta gráfica.</Text>
@@ -140,7 +161,7 @@ function Contenido(props: { datos: DatosGrafica; ancho: number } & Modo) {
     switch (props.datos.tipo) {
         // En el chat, en filas: al encoger el eje X se perdían nombres de columnas. Ampliada, columnas.
         case 'barras':
-            return props.completa ? <Barras {...props} /> : <Filas datos={props.datos} />;
+            return props.completa ? <Barras {...props} /> : <Filas datos={props.datos} animate={props.animate} />;
         case 'lineas':
         case 'area':
             return <Lineas {...props} />;
@@ -148,7 +169,7 @@ function Contenido(props: { datos: DatosGrafica; ancho: number } & Modo) {
         case 'donut':
             return <Circular {...props} />;
         case 'radial':
-            return <Filas datos={props.datos} radial />;
+            return <Filas datos={props.datos} radial animate={props.animate} />;
     }
 }
 
@@ -192,22 +213,64 @@ function Barras({ datos, ancho, ...modo }: { datos: DatosGrafica; ancho: number 
         })),
     ).flat();
 
+    // Al entrar, una cortina del color de la tarjeta tapa la zona de las columnas y sube, descubriéndolas desde
+    // el eje como si crecieran. La animación de la librería (isAnimated) va en el hilo de JS y no sigue los
+    // cambios de alto. Las columnas salen en el primer pintado: la cortina empieza al montarse.
+    // Se decide al montarse, como en las líneas.
+    const [drawsIn] = useState(modo.animate);
+    const altoZona = propsEjes.height + PLOT_TOP_PADDING - propsEjes.xAxisThickness;
+    const cortina = useSharedValue(0);
+    useEffect(() => {
+        if (drawsIn) cortina.value = withTiming(1, { duration: COLUMNS_REVEAL_MS, easing: Easing.inOut(Easing.cubic) });
+    }, []);
+    // Al acabar, toda la cortina, con su borde difuminado, ha salido por arriba.
+    const estiloCortina = useAnimatedStyle(() => ({
+        transform: [{ translateY: -(altoZona + CURTAIN_EDGE_PX) * cortina.value }],
+    }));
+
     return (
-        <BarChart
-            {...propsEjes}
-            data={data}
-            width={anchoGrafica}
-            rulesLength={anchoGrafica}
-            xAxisLength={anchoGrafica}
-            barWidth={anchoBarra}
-            barInnerComponent={valorDentro}
-            spacing={separacion}
-            initialSpacing={separacion / 2}
-            // La librería suma dos veces el margen final: así queda en separacion / 2 y no sobra scroll.
-            endSpacing={separacion / 4}
-            barBorderTopLeftRadius={3}
-            barBorderTopRightRadius={3}
-        />
+        <View>
+            <BarChart
+                {...propsEjes}
+                data={data}
+                width={anchoGrafica}
+                rulesLength={anchoGrafica}
+                xAxisLength={anchoGrafica}
+                barWidth={anchoBarra}
+                barInnerComponent={valorDentro}
+                spacing={separacion}
+                initialSpacing={separacion / 2}
+                // La librería suma dos veces el margen final: así queda en separacion / 2 y no sobra scroll.
+                endSpacing={separacion / 4}
+                barBorderTopLeftRadius={3}
+                barBorderTopRightRadius={3}
+            />
+            {drawsIn && (
+                // Solo la zona de las columnas: deja a la vista el eje Y, el eje X y sus etiquetas.
+                <View
+                    pointerEvents="none"
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: propsEjes.yAxisLabelWidth,
+                        width: anchoGrafica,
+                        height: altoZona,
+                        overflow: 'hidden',
+                    }}
+                >
+                    <Animated.View style={[{ height: altoZona + CURTAIN_EDGE_PX }, estiloCortina]}>
+                        <View style={{ flex: 1, backgroundColor: colores.superficie }} />
+                        {/* Borde de abajo difuminado. La paleta va en hexadecimal de 6 cifras: con "00" detrás es transparente. */}
+                        <LinearGradient
+                            colors={[colores.superficie, `${colores.superficie}00`]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 0, y: 1 }}
+                            style={{ height: CURTAIN_EDGE_PX }}
+                        />
+                    </Animated.View>
+                </View>
+            )}
+        </View>
     );
 }
 
@@ -232,43 +295,131 @@ function Lineas({ datos, ancho, ...modo }: { datos: DatosGrafica; ancho: number 
         </View>
     );
 
+    // Al entrar, una cortina del color de la tarjeta tapa la zona de la gráfica y se retira hacia la derecha,
+    // descubriendo las líneas como si se dibujaran. La animación de la librería (isAnimated) daba tirones.
+    // Se decide al montarse: si la respuesta termina mientras se dibuja, la cortina no desaparece de golpe.
+    const [drawsIn] = useState(modo.animate);
+    const cortina = useSharedValue(0);
+    // Sin animación, la gráfica entera está oculta hasta que hay líneas, para no enseñar los ejes vacíos.
+    const visible = useSharedValue(drawsIn ? 1 : 0);
+    // La librería pinta las líneas en un segundo render, que con muchos puntos tarda: avisa el primer punto,
+    // que va en ese mismo render. Si el aviso no llega, se sigue igual.
+    const onLinesDrawn = () => {
+        if (drawsIn) {
+            if (cortina.value === 0) cortina.value = withTiming(1, { duration: LINE_DRAW_MS, easing: Easing.inOut(Easing.cubic) });
+        } else if (visible.value === 0) {
+            visible.value = withTiming(1, { duration: LINE_SHOW_MS });
+        }
+    };
+    useEffect(() => {
+        const timer = setTimeout(onLinesDrawn, LINE_SIGNAL_TIMEOUT_MS);
+        return () => clearTimeout(timer);
+    }, []);
+    const estiloVisible = useAnimatedStyle(() => ({ opacity: visible.value }));
+    const estiloCargando = useAnimatedStyle(() => ({ opacity: 1 - visible.value }));
+    // Al acabar, toda la cortina sale por la derecha.
+    const estiloCortina = useAnimatedStyle(() => ({
+        transform: [{ translateX: (anchoGrafica + CURTAIN_EDGE_PX) * cortina.value }],
+    }));
+
     const dataSet = datos.series.map((s, i) => ({
         color: color(i),
         thickness: 2,
         ...(area && { startFillColor: color(i), endFillColor: color(i), startOpacity: 0.3, endOpacity: 0.02 }),
-        data: s.valores.map((value, j) => ({
-            value,
-            ...(conValores && {
-                dataPointLabelComponent: valorEnVertice(value, color(i)),
-                dataPointLabelWidth: espacio,
-                // La librería lo pone con la parte de arriba en el punto: se sube por encima.
-                dataPointLabelShiftY: -20,
-            }),
-            // Solo en la primera serie: las demás comparten el eje X.
-            labelComponent: i === 0 && j % paso === 0 ? etiquetaEjeX(datos.categorias[j] ?? '', espacio, colores) : undefined,
-        })),
+        data: s.valores.map((value, j) => {
+            // Las etiquetas de los puntos salen aunque los puntos estén ocultos: la del primero lleva el aviso.
+            const signal = i === 0 && j === 0;
+            const valor = conValores ? valorEnVertice(value, color(i)) : undefined;
+            return {
+                value,
+                ...((valor || signal) && {
+                    dataPointLabelComponent: () => (
+                        <>
+                            {valor?.()}
+                            {signal && <View onLayout={onLinesDrawn} />}
+                        </>
+                    ),
+                    dataPointLabelWidth: espacio,
+                    // La librería lo pone con la parte de arriba en el punto: se sube por encima.
+                    dataPointLabelShiftY: -20,
+                }),
+                // Solo en la primera serie: las demás comparten el eje X.
+                labelComponent: i === 0 && j % paso === 0 ? etiquetaEjeX(datos.categorias[j] ?? '', espacio, colores) : undefined,
+            };
+        }),
     }));
 
     return (
-        <LineChart
-            {...propsEjes}
-            dataSet={dataSet}
-            areaChart={area}
-            width={anchoGrafica}
-            rulesLength={anchoGrafica}
-            xAxisLength={anchoGrafica}
-            spacing={espacio}
-            initialSpacing={ANCHO_ETIQUETA / 2}
-            // La librería suma dos veces el margen final: así queda en ANCHO_ETIQUETA / 2 y no sobra scroll.
-            endSpacing={ANCHO_ETIQUETA / 4}
-            hideDataPoints={n > 20}
-            dataPointsRadius={3}
-        />
+        <View>
+            <Animated.View style={estiloVisible}>
+                <LineChart
+                    {...propsEjes}
+                    dataSet={dataSet}
+                    areaChart={area}
+                    width={anchoGrafica}
+                    rulesLength={anchoGrafica}
+                    xAxisLength={anchoGrafica}
+                    spacing={espacio}
+                    initialSpacing={ANCHO_ETIQUETA / 2}
+                    // La librería suma dos veces el margen final: así queda en ANCHO_ETIQUETA / 2 y no sobra scroll.
+                    endSpacing={ANCHO_ETIQUETA / 4}
+                    hideDataPoints={n > 20}
+                    dataPointsRadius={3}
+                />
+                {drawsIn && (
+                    // Solo la zona de la gráfica: deja a la vista el eje Y, el eje X y sus etiquetas.
+                    <View
+                        pointerEvents="none"
+                        style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: propsEjes.yAxisLabelWidth,
+                            width: anchoGrafica,
+                            height: propsEjes.height + PLOT_TOP_PADDING + CURTAIN_BELOW_AXIS_PX,
+                            overflow: 'hidden',
+                        }}
+                    >
+                        {/* La posición de partida, con el borde difuminado fuera por la izquierda, va en el estilo fijo:
+                            así tapa desde el primer fotograma, aunque el estilo animado llegue un poco después. */}
+                        <Animated.View
+                            style={[
+                                { flexDirection: 'row', left: -CURTAIN_EDGE_PX, width: anchoGrafica + CURTAIN_EDGE_PX, height: '100%' },
+                                estiloCortina,
+                            ]}
+                        >
+                            {/* La paleta va en hexadecimal de 6 cifras: con "00" detrás es el mismo color, transparente. */}
+                            <LinearGradient
+                                colors={[`${colores.superficie}00`, colores.superficie]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={{ width: CURTAIN_EDGE_PX }}
+                            />
+                            <View style={{ flex: 1, backgroundColor: colores.superficie }} />
+                        </Animated.View>
+                    </View>
+                )}
+            </Animated.View>
+            {!drawsIn && (
+                // Mientras no hay líneas, un indicador en el hueco; se va a la vez que aparece la gráfica.
+                <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }, estiloCargando]}>
+                    <ActivityIndicator color={colores.primario} />
+                </Animated.View>
+            )}
+        </View>
     );
 }
 
-function Circular({ datos, ancho, completa, alto }: { datos: DatosGrafica; ancho: number } & Modo) {
+function Circular({ datos, ancho, completa, alto, animate = false }: { datos: DatosGrafica; ancho: number } & Modo) {
     const colores = useColores();
+    // Al entrar, crece un poco y gira hasta su sitio mientras aparece.
+    const entrada = useSharedValue(animate ? 0 : 1);
+    useEffect(() => {
+        if (animate) entrada.value = withTiming(1, { duration: PIE_ENTER_MS, easing: Easing.out(Easing.cubic) });
+    }, []);
+    const estiloEntrada = useAnimatedStyle(() => ({
+        opacity: entrada.value,
+        transform: [{ scale: 0.8 + 0.2 * entrada.value }, { rotate: `${-30 * (1 - entrada.value)}deg` }],
+    }));
     const radio = Math.min(ancho / 2 - 8, alto ? alto / 2 : completa ? 150 : 90);
     const valores = datos.series[0].valores;
     const total = valores.reduce((suma, valor) => suma + Math.abs(valor), 0) || 1;
@@ -312,17 +463,19 @@ function Circular({ datos, ancho, completa, alto }: { datos: DatosGrafica; ancho
     };
     return (
         <View className="items-center">
-            <PieChart
-                data={data}
-                radius={radio}
-                donut={donut}
-                innerRadius={radio * 0.6}
-                innerCircleColor={colores.superficie}
-                strokeWidth={1}
-                strokeColor={colores.superficie}
-                pieInnerComponent={porcentajeEnPorcion}
-                labelsPosition="mid"
-            />
+            <Animated.View style={estiloEntrada}>
+                <PieChart
+                    data={data}
+                    radius={radio}
+                    donut={donut}
+                    innerRadius={radio * 0.6}
+                    innerCircleColor={colores.superficie}
+                    strokeWidth={1}
+                    strokeColor={colores.superficie}
+                    pieInnerComponent={porcentajeEnPorcion}
+                    labelsPosition="mid"
+                />
+            </Animated.View>
         </View>
     );
 }
@@ -332,22 +485,38 @@ function Circular({ datos, ancho, completa, alto }: { datos: DatosGrafica; ancho
  * radial: radialBar de ApexCharts, cada valor es un porcentaje (barra sobre 100, con fondo y "%").
  * Si no, barras del chat: cada barra relativa al valor más alto y, con varias series, una por serie.
  */
-function Filas({ datos, radial = false }: { datos: DatosGrafica; radial?: boolean }) {
+function Filas({ datos, radial = false, animate = false }: { datos: DatosGrafica; radial?: boolean; animate?: boolean }) {
     const colores = useColores();
     const k = datos.series.length;
     const n = Math.max(datos.categorias.length, ...datos.series.map((s) => s.valores.length));
     const escala = radial ? 100 : Math.max(...datos.series.flatMap((s) => s.valores.map(Math.abs)), 0) || 1;
     const sufijo = radial ? ' %' : '';
 
+    // Al entrar, las barras crecen desde la izquierda hasta su valor.
+    const crecimiento = useSharedValue(animate ? 0 : 1);
+    useEffect(() => {
+        if (animate) crecimiento.value = withTiming(1, { duration: BAR_GROW_MS, easing: Easing.out(Easing.cubic) });
+    }, []);
+    const estiloCrecimiento = useAnimatedStyle(() => ({ transform: [{ scaleX: crecimiento.value }] }));
+
     // Sin flex-1: con una serie va en una columna, y ahí flex-1 le quita el alto y a veces no se ve.
+    // La barra rellena va con style y no con clases: en Animated.View las clases no se aplican.
     const barra = (valor: number, colorBarra: string) => (
         <View
             className="h-2 w-full shrink overflow-hidden rounded-full"
             style={{ backgroundColor: radial ? colores['superficie-alt'] : 'transparent' }}
         >
-            <View
-                className="h-full rounded-full"
-                style={{ width: `${Math.min(Math.abs(valor) / escala, 1) * 100}%`, backgroundColor: colorBarra }}
+            <Animated.View
+                style={[
+                    {
+                        height: '100%',
+                        borderRadius: 9999,
+                        transformOrigin: 'left',
+                        width: `${Math.min(Math.abs(valor) / escala, 1) * 100}%`,
+                        backgroundColor: colorBarra,
+                    },
+                    estiloCrecimiento,
+                ]}
             />
         </View>
     );

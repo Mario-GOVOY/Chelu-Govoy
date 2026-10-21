@@ -1,6 +1,7 @@
 import { Children, cloneElement, isValidElement, memo, useMemo, useState, type ReactNode } from 'react';
 import { Platform, ScrollView, View, type StyleProp, type TextStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { Renderer, useMarkdown, type useMarkdownHookOptions } from 'react-native-marked';
 
 import type { Paleta } from '@/theme/palette';
@@ -9,6 +10,7 @@ import { useColores, useEsquema } from '@/theme/ThemeProvider';
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const ANCHO_MIN_COLUMNA = 140;
 const TEXTO_CELDA: TextStyle = { fontSize: 14, lineHeight: 20 };
+const BLOCK_ENTERING = FadeIn.duration(300);
 
 // Las celdas llegan ya pintadas con el estilo del texto normal; aquí se les añade el suyo.
 function conEstilo(nodo: ReactNode, estilo: TextStyle): ReactNode {
@@ -193,9 +195,14 @@ export function TextoMarkdown({ texto, writing = false }: { texto: string; writi
         return split.map((block, i) => (writing && i === split.length - 1 ? closeOpenMarkers(block) : block));
     }, [texto, writing]);
 
+    // Mientras escribe, cada bloque nuevo (párrafo, lista, tabla…) entra con un fundido; el texto ya terminado sale sin él.
     return (
         <View>
-            {blocks.map((block, i) => <MarkdownBlock key={i} texto={block} opciones={opciones} />)}
+            {blocks.map((block, i) => (
+                <Animated.View key={i} entering={writing ? BLOCK_ENTERING : undefined}>
+                    <MarkdownBlock texto={block} opciones={opciones} />
+                </Animated.View>
+            ))}
         </View>
     );
 }

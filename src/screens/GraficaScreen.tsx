@@ -82,7 +82,7 @@ export default function GraficaScreen({ navigation, route }: Props) {
                         {/* El indicador sigue hasta que se mide el hueco y se dibuja la gráfica. */}
                         {!datos || hueco.ancho === 0 ? cargando : (
                             <ScrollView contentContainerStyle={{ padding: 12 }}>
-                                <DibujoGrafica datos={datos} completa alto={alto} anchoConocido={hueco.ancho - 24} />
+                                <DibujoGrafica datos={datos} completa animate alto={alto} anchoConocido={hueco.ancho - 24} />
                             </ScrollView>
                         )}
                     </View>
