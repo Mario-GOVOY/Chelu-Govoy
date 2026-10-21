@@ -50,3 +50,7 @@ credentials/
 
 # Windows
 Thumbs.db
+
+# firma de actualizaciones OTA (solo el certificado va al repo)
+keys/
+!certs/certificate.pem

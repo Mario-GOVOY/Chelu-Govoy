@@ -1,7 +1,7 @@
 # App móvil Chat Chelu — Definición del proyecto
 
 > Documento vivo: se actualiza a medida que se toman decisiones.
-> Última actualización: 2026-10-20
+> Última actualización: 2026-10-21
 
 ## Objetivo
 
@@ -126,15 +126,17 @@ Los permisos se comprueban en el backend, no en la app. Los cambios también pro
   - Exigir también `is_impersonation` deja fuera el primer caso, como se ha decidido.
   - **Consecuencia:** para que `-master` sirva en la app, **la app debe permitir suplantar usuarios** (punto pendiente de D1). Si no, esas entradas nunca se cumplirán en el móvil.
 - **Consecuencias de tener los permisos en la app:**
-  - **Cambiar permisos exige publicar.** En la web, cambiar una lista es desplegar; en el móvil haría falta subir una versión nueva a la tienda o enviar el APK otra vez. **Solución: EAS Update (`expo-updates`)**, que actualiza el código JavaScript de la app sin pasar por la tienda. Apple y Google lo permiten siempre que no cambie la funcionalidad principal de la app. Lo recomendable es incluirlo desde la fase 1.
-    - **Propuesta (2026-10-15, pendiente de hablar con el equipo del back): servidor de actualizaciones propio en lugar de EAS Update.** `expo-updates` en la app, pero con `updates.url` apuntando a Back-Govoy, que implementa el protocolo de Expo Updates; sin cuenta de Expo.
-      - **S3:** cada actualización (`npx expo export --platform android`: bundle `.hbc`, assets y `metadata.json`) en `chelu-updates/<runtimeVersion>/<updateId>/`, con su manifest ya montado (id, fecha, hash SHA-256, tipo y ruta de cada fichero). Un puntero por canal, plataforma y runtime a la última (`latest.json` en S3 o tabla en MySQL); hacer rollback es mover el puntero. Bucket privado y URLs prefirmadas generadas en cada manifest (o CloudFront).
-      - **Endpoint** (p. ej. `GET /chelu-updates/manifest`), sin login: lee `expo-platform`, `expo-runtime-version`, `expo-channel-name`, `expo-current-update-id` y `expo-protocol-version`, y responde en `multipart/mixed` con el manifest, `noUpdateAvailable` o `rollBackToEmbedded`. Sin estado propio (todo en S3 o MySQL), así que vale con varias instancias del ASG. Se puede partir del ejemplo de Expo `custom-expo-updates-server` (Next.js).
-      - **Firma (recomendada):** manifest firmado con una clave RSA guardada en el back; la app lleva el certificado (`codeSigningCertificate` y `codeSigningMetadata`) y rechaza lo que no venga firmado.
-      - **App:** `npx expo install expo-updates`; en `app.json`, `updates.url`, el canal en `updates.requestHeaders` (`expo-channel-name`, porque se compila con `gradlew` y no con EAS Build), el certificado y `runtimeVersion` con la política `fingerprint`. Recompilar una vez. No funciona en las builds de desarrollo.
-      - **Publicar:** script en el repo de la app (`npm run publish-update -- --channel production`) que exporta, calcula los hashes, monta y firma el manifest, sube a S3 y mueve el puntero. Más adelante, desde GitHub Actions como el despliegue del back.
+  - **Cambiar permisos exige publicar.** En la web, cambiar una lista es desplegar; en el móvil haría falta subir una versión nueva a la tienda o enviar el APK otra vez. **Solución: actualizaciones OTA con `expo-updates`**, que actualizan el código JavaScript y los assets sin pasar por la tienda. Apple (2.5.2 y 3.3.1) y Google lo permiten siempre que no cambie la funcionalidad principal de la app; lo nativo (librerías, permisos, SDK) sigue necesitando una versión nueva.
+    - **Decidido (2026-10-21): servidor de actualizaciones propio en lugar de EAS Update**, sin cuenta de Expo. Falta hablar el endpoint con el equipo del back.
+      - **Piezas:** la app pregunta a Back-Govoy (`updates.url`), que implementa el protocolo de Expo Updates leyendo de S3; los ficheros (bundle y assets) los sirve CloudFront delante del bucket privado (OAC), opcionalmente con `updates.govoy.es` (certificado de ACM en us-east-1). Coste prácticamente nulo (la capa gratuita de CloudFront es 1 TB y 10 M de peticiones al mes).
+      - **S3:** `chelu-updates/<plataforma>/<runtimeVersion>/<updateId>/` con el bundle, los assets, `manifest.json` y `signature`. Puntero a la última por plataforma, runtime y canal: `chelu-updates/<plataforma>/<runtimeVersion>/<canal>/latest.json`; hacer rollback es mover el puntero. Cada actualización tiene su ruta, así que no hace falta invalidar la caché de CloudFront.
+      - **Endpoint** `GET /chelu-updates/manifest`, sin login: lee `expo-platform`, `expo-runtime-version`, `expo-channel-name`, `expo-current-update-id` y `expo-protocol-version`; con el puntero, lee `manifest.json` y `signature` y responde en `multipart/mixed` con el manifest **tal cual está guardado** (sin volver a serializarlo, o la firma deja de valer) y la cabecera `expo-signature`, o con `noUpdateAvailable`/`rollBackToEmbedded`. Sin estado propio y sin la clave privada, así que vale con varias instancias del ASG. Referencia: el ejemplo de Expo `custom-expo-updates-server`.
+      - **Firma al publicar:** RSA SHA-256 (`rsa-v1_5-sha256`, keyid `main`) con `keys/private-key.pem`, que está en `.gitignore`, no se sube nunca y tiene copia en un sitio seguro. La app lleva `certs/certificate.pem` (sí va al repo) y rechaza lo que no venga firmado. Generadas con `npx expo-updates codesigning:generate`.
+      - **App (hecho):** `expo-updates` ~57.0.26; en `app.json`, `runtimeVersion` con la política `fingerprint` (distinto por plataforma), `updates.url`, el canal en `updates.requestHeaders` (`expo-channel-name: production`, porque se compila con `gradlew` y no con EAS Build; un canal de pruebas necesitaría `app.config.js`), `checkAutomatically: ON_LOAD`, `fallbackToCacheTimeout: 0` y el certificado. Recompilar cuando la URL sea la definitiva. No funciona en las builds de desarrollo.
+      - **Publicar:** `npm run publish-update` (`scripts/updates/publishUpdate.js`). Por cada plataforma de `PLATFORMS` (hoy solo `android`; para iOS se añade `ios`): resuelve el runtime, exporta a `dist/<plataforma>`, monta el manifest (id, fecha, runtime, hash SHA-256, clave, tipo y URL de CloudFront de cada fichero, y `expo config` en `extra.expoClient`) y lo firma. **Hecho, falta probarlo.** **Pendiente (parte 2):** argumento `--channel`, subida a S3 con el `Content-Type` de cada fichero y escritura de `latest.json` (necesita `@aws-sdk/client-s3`, el bucket, la región y la URL de CloudFront). Más adelante, desde GitHub Actions como el despliegue del back.
       - **Comparado con EAS Update:** todo en la AWS de Govoy y sin depender de Expo; a cambio, el endpoint, el script, la clave y el rollback se mantienen aquí. Si el endpoint falla, la app sigue con lo que tiene.
-      - **Orden:** primero el script de publicación y la configuración de la app (no dependen del back); el endpoint, con el equipo del back.
+      - **iOS:** mismo servidor y misma firma; solo cambia que las builds necesitan Mac o EAS Build.
+      - **Pendiente:** bucket, CloudFront con OAC y un usuario de IAM con `s3:PutObject` (equipo del back o quien lleve AWS); el endpoint; la parte 2 del script; recompilar; y en Ajustes, versión y "Buscar actualizaciones" (`checkForUpdateAsync`, `fetchUpdateAsync`, `reloadAsync`, `Updates.updateId`).
   - **No es una barrera de seguridad.** Las listas de la app solo ocultan pantallas o botones; lo que deba estar realmente prohibido lo tiene que impedir el back (por eso se mantienen D2 y el 403 sin perfil).
   - **Coherencia manual:** las listas de la app (y de la web) se mantienen a mano alineadas con los perfiles del back.
 
@@ -390,7 +392,7 @@ En la web, el mapa del chat usa OpenStreetMap estándar (`ChatMapCard.tsx:42`) y
 | Fase | Contenido |
 |---|---|
 | **0. Backend** | D1 (login y renovación para móvil) y D2 (seguridad) |
-| **1. Base** | Proyecto Expo, entornos con `EXPO_PUBLIC_API_URL`, login y tokens (copiados de AppGovoy), `ControlOpcionesUsuarios.ts` (D3), navegación, tema, perfiles EAS y EAS Update |
+| **1. Base** | Proyecto Expo, entornos con `EXPO_PUBLIC_API_URL`, login y tokens (copiados de AppGovoy), `ControlOpcionesUsuarios.ts` (D3), navegación, tema, perfiles EAS y actualizaciones OTA (servidor propio, ver D3) |
 | **2. Versión mínima** | Chat con streaming, markdown, sugerencias, botón de parar, lista de conversaciones (nueva, duplicar y borrar) y descarga de documentos |
 | **3. Contenido enriquecido** | Gráficas, mapas, valoración y notas de voz |
 | **4. Interactivos** | Lo que en el chat pide algo al usuario: borradores de correo, formulario de optimización de sectores, su resultado y la comparativa de escenarios (ver "Progreso de la fase 4"). Push, más adelante |
@@ -404,7 +406,7 @@ La fase 0 (back) está **parada** hasta hablarla con el equipo. La fase 1 avanza
 
 **Estado (2026-10-05): fase 1 cerrada en la app**, probada contra el back local. Queda fuera, a propósito:
 - **Depende del back:** subir los endpoints de login móvil. Hasta entonces la app solo funciona contra el back local: `API_URL` apunta de momento a `http://127.0.0.1:8000/` (al subirlos, volver a `https://api.govoy.es/`).
-- **Antes de la primera versión para clientes:** perfiles EAS y EAS Update, icono y pantalla de arranque, firma del APK, Sentry (pregunta 14).
+- **Antes de la primera versión para clientes:** perfiles EAS y actualizaciones OTA (ver D3), icono y pantalla de arranque, firma del APK, Sentry (pregunta 14).
 - **Solo si aparece:** el parche de LogBox (#1834).
 
 | # | Paso | Estado |
@@ -604,7 +606,7 @@ Decisión de librería y planteamiento en D8. Se trabaja en bloques, revisando c
 - **Capas:** `elementosPorTipo()` junta los elementos de todas las capas en tres fuentes, tipadas por geometría (zonas `Polygon | MultiPolygon`, líneas `LineString`, puntos `Point`), cada elemento con el color de su capa, para que se pinten siempre en ese orden. Quita las posiciones en (0, 0) o sin coordenadas en todas las geometrías, como la web; las `MultiLineString` se separan en líneas sueltas. El estilo está en `CAPAS_ELEMENTOS` (estilo estándar de MapLibre, reutilizable en la vista previa): zonas al 25 % con borde de 2, líneas de 2 y una sola capa `symbol` para todos los puntos.
 - **Marcadores (bloque 4):**
   - Todos los puntos son iconos en la capa `puntos`: `icon-image` = propiedad `icono` del punto, `icon-size` 0,8, todos visibles aunque se solapen y los posteriores encima (`symbol-z-order: 'source'`). Así una parada tapa entera a la de debajo.
-  - Qué icono lleva cada punto (`getPointIcon` / `getMarkerIcon`): `marker` → círculo con el número de orden (relleno: color de la ruta si está completada, rojo si tiene incidencia, blanco si no); `number` → solo el número; `depot` y pines (`entrega`, `recogida`, `entregaRecogida`, `incidencia`, `agrupado`) → PNG copiados de la web en `assets/mapa/` (pines `@1.5x`, se ven de 17×28; depósito reducido a 90 px `@3x`, se ve de 30); `alert`, `pudo` y el resto → iconos generados (alerta, paquete, círculo del color de la capa). `entregaRecogida` sale con su pin, no como en la web, que por un fallo lo pinta como círculo.
+  - Qué icono lleva cada punto (`getPointIcon` / `getMarkerIcon`): `marker` → círculo con el número de orden (relleno: color de la ruta si está completada, rojo si tiene incidencia, blanco si no); `number` → solo el número; `depot` y pines (`entrega`, `recogida`, `entregaRecogida`, `incidencia`, `agrupado`) → PNG copiados de la web en `assets/mapa/` (pines `@1.5x`, se ven de 17×28; depósito reducido a 90 px `@3x`, se ve de 30); `alert`, `pudo` y el resto → iconos generados (alerta, paquete, círculo del color de la capa). `entregaRecogida` sale con su pin, no como en la web, que por un fallo lo pinta como círculo. **Leyenda (2026-10-20):** cuando la capa no trae nombre, el back (`tools_chat/mapas.py`) ponía el tipo de marcador tal cual ("entregaRecogida"); ahora lo traduce con `_NOMBRE_POR_MARCADOR` ("Entrega y recogida", "Depósitos", "PUDOS"…) y deja el tipo si no está en la lista. Cambiado en local, sin subir.
   - Números como icono, no como texto: el texto en MapLibre necesita *glyphs* (fuentes) que el estilo de OSM no trae, y además se pintaría por encima de todos los iconos de la capa.
   - **Generación (`IconosMapa.tsx`, `GeneradorIconos`):** se dibujan con `react-native-svg` (`SvgIcono`, SVG de 1×1 px montados debajo del mapa) y se pasan a PNG con `toDataURL` a la densidad de la pantalla (`PixelRatio.get()`), en tandas de 100. Las imágenes de cada tanda se pasan al mapa al terminarla. Caché en RAM de los PNG (data URI) con un tope de 3000, borrando los menos usados. El id de cada icono son sus datos en JSON, así que los iguales se generan una vez. Los PNG fijos y los generados se registran con `<Images>`.
   - La captura ocupa el hilo de UI, por eso la animación de carga es el `ActivityIndicator` nativo (lo anima el sistema en otro hilo). Descartado de momento: módulo nativo para generar en segundo plano y caché en disco.
@@ -1186,18 +1188,31 @@ Revisado el 2026-10-20. Commits: back `29d7edc`; web `ced9f357`, `30b919fc` y `1
 - Con permiso, `/stream` manda `puede_crear_agentes: true`.
 - **Sin "Ver en Mis agentes"** (regla general: en la app no se abre nada en otras herramientas). Gestionar los agentes se queda en la web.
 - **Como el formulario de sectores:** en el chat, una tarjeta con el resumen y "Crear agente"; "Editar" abre el formulario a pantalla completa. Un formulario entero dentro de la burbuja serían varias pantallas de scroll.
+- **Cambios del 2026-10-21 (back `e629517`, web `3ed50f41`):**
+  - Condición nueva `personalizado` (solo el 69, solo correo y mensajes, y en la web solo en QA: `usePersonalizadoDisponible` exige `IS_QA`). El usuario escribe cuándo debe saltar y el texto es también las instrucciones. Antes de crear hay que «Interpretar» (`POST /tareas-chelu/personalizado/interpretar/progreso`, SSE con pasos, 25–50 s), que devuelve la lectura, los supuestos, las advertencias, las recomendaciones y una prueba con las últimas cargas. Si la interpretación es `programado`, se crea como un programado normal. Lógica en `chelu/data/personalizado.ts` y pantalla en A `steps/BloquePersonalizado.tsx`.
+  - `preparar_agente` acepta `condicion="personalizado"` y `cuando`: el borrador llega con `personalizado: { texto }` y una advertencia de que hay que interpretar.
+  - Programado mensual con día del mes (1–28); al cambiar de frecuencia, el día se ajusta con `diaAlCambiarFrecuencia` (`chelu/data/metrics.ts`).
+  - La tarjeta enseña las `advertencias` del borrador. Con un personalizado no disponible, avisa que hay que elegir otra condición.
 - **Por bloques:**
+  - **6.0, piezas comunes de formulario** en `src/components/ui/form/`, para que los formularios nativos que vengan sean más sencillos. Sin motor genérico: cada formulario mantiene su lógica y sus secciones. **Hecho (2026-10-21), falta probarlo en el móvil.**
+    - `FormEditorScreen`: capa a pantalla completa con animación, cabecera (cerrar, título, subtítulo y botón de guardar), confirmación de descartar cambios, botón atrás de Android, teclado y scroll. `overlays` va fuera del scroll (hojas encima del formulario).
+    - `FormCard` y `SummaryRow`: la tarjeta del chat con cabecera, avisos, filas de resumen y pie. El borrador de correo no la usa: se edita dentro de la tarjeta.
+    - Campos: `FormSection`, `Field` (etiqueta, ayuda y error), `NumberInput` (entero con límites), `DateTimeFields` (fechas u horas en fila con el selector del sistema) y `Warning`.
+    - `useFormDraft` (`src/hooks/`): borrador, `update`, si ha cambiado y errores que se ven después del primer intento de guardar (`submit`).
+    - Las funciones de fecha y hora pasan de `sectorsForm.ts` a `utils/fechas.ts`.
+    - Sectores las usa todas. Único cambio visible: en "Parámetros", 12 px entre campos en vez de 16. La hoja de vehículos solo usa `DateTimeFields`: sus números se validan al guardar.
   - **6a, datos y tarjeta de solo lectura:**
     - Evento `agente_borrador` en `chatApi` y `useChat`, y `agentes` de `get_chat`.
     - `puede_crear_agentes` en `/stream`, el permiso y "Preparando el agente" en la lista de herramientas.
-    - Tarjeta: cabecera (icono `Bot`, nombre, tipo · cuándo), "Falta por completar", resumen de los campos y "✓ Agente creado" si ya lo está.
+    - Tarjeta: cabecera (icono `Bot`, nombre, tipo · cuándo), "Falta por completar", advertencias, resumen de los campos y "✓ Agente creado" si ya lo está.
   - **6b, editar lo básico y crear:**
-    - Pantalla de edición con nombre, tipo, programado (frecuencia, día y hora), destinatarios o canal, instrucciones y formato del informe.
+    - Pantalla de edición con nombre, tipo, programado (frecuencia, día de la semana o del mes y hora), destinatarios o canal, instrucciones y formato del informe.
     - `GET /tareas-chelu/config` para el máximo de instrucciones.
     - Validación y payload como la web (copiar `conDefectos`, `construirPayloadAgente` y las reglas de `validation.ts` que apliquen) y "Crear agente" con `POST /chat-cex/agente/crear`.
     - Alerta o indicador: se crea con los valores por defecto, que se ven en el resumen, hasta el 6c.
   - **6c, alerta, indicador y ámbito:** tipos de alerta e indicador KPI con sus umbrales, disparadores del 69 (`triggers/catalogo`, A `StepTriggerTarea.tsx`) y ámbito con buscador.
   - **6d, "Probar ahora":** ejecutar sin crear y ver el correo o el informe en una pantalla (markdown); descargar el documento como los archivos generados.
+  - **6e, disparador personalizado:** «Interpretar» con su progreso y la vista de la interpretación. Lo último, porque en la web solo está en QA. Hasta entonces, la app hace lo mismo que la web en producción: avisa y pide elegir otra condición.
 
 ### Pantalla de Ajustes (en parte)
 
@@ -1256,6 +1271,14 @@ Decidido el 2026-10-13 hacerla en lugar de cambiar el tema desde el menú latera
   - **Quitar:** ubicación (también en segundo plano), cámara, Google Maps y el seguimiento de trabajadores.
   - **Añadir:** conversaciones guardadas en los servidores de Govoy; mensajes procesados por DeepSeek (por defecto) y OpenAI; micrófono y notas de voz (transcritas con `gpt-4o-mini-transcribe` de OpenAI), y el permiso de micrófono en "Control y gestión de permisos"; envío de borradores de correo con adjuntos; documentos descargados al móvil; teselas de OpenStreetMap (recibe la IP); datos en el móvil (usuario y contraseña cifrados en SecureStore, preferencias, registro de correos enviados).
   - **A revisar por quien lleve lo legal:** transferencia internacional a DeepSeek (China) y OpenAI (EE. UU.), ver D10; base legal (los usuarios son empleados de clientes: probablemente ejecución del contrato y Govoy como encargado del tratamiento, no consentimiento); plazos de conservación de conversaciones, audios y documentos; nombre de la app y URL donde se publicará.
+  - **Borrador (2026-10-20): `POLITICA_PRIVACIDAD_CHELU.txt`**, página aparte de la de AppGovoy (esa habla de ubicación y cámara, que Chelu no usa), con sus mismos apartados y textos donde encajan. Lo pendiente va entre corchetes.
+    - **Proveedores:** se nombran (DeepSeek, OpenAI, OpenStreetMap, Expo/FCM/APNs, AWS) con su país, no los modelos. El RGPD (art. 13.1.e) admite categorías, pero el usuario tiene derecho a saber los destinatarios concretos (TJUE C‑154/21) y el país hay que darlo igual.
+    - **Transferencias (art. 13.1.f), obligatorio:** país, si hay decisión de adecuación y, si no, la garantía y cómo pedir copia (falta esa frase). OpenAI: con la API se aplica su DPA, no su política de privacidad de la UE; los datos del EEE los trata OpenAI Ireland Limited, que transfiere fuera con cláusulas tipo. Confirmar que el DPA está aceptado en la cuenta. Reino Unido (OSM): adecuación. **DeepSeek: sin resolver**, China no tiene adecuación; ver si ofrece DPA con cláusulas tipo.
+      - **Texto propuesto (2026-10-21, sin aplicar al txt):** EE. UU. (Expo, Google, Apple): Marco de Privacidad de Datos UE-EE. UU. para los adheridos o cláusulas tipo; OpenAI: a través de OpenAI Ireland Limited, que transfiere a EE. UU. con cláusulas tipo (y en "Uso de APIs" poner OpenAI Ireland Limited (Irlanda) en vez de OpenAI, L.L.C.); China: pendiente; Reino Unido: adecuación. Cerrar con "El usuario puede solicitar una copia de estas garantías escribiendo a admin@govoy.es". Antes, buscar a Expo, Google y Apple en https://www.dataprivacyframework.gov/list.
+    - **Comprobado en el código:** las notas de voz no se guardan (se borran del móvil al transcribir y el back no las escribe; en Langfuse solo queda el texto), pero OpenAI puede retener lo que recibe por la API hasta 30 días. La contraseña está en la BD como hash bcrypt. Borrar una conversación solo pone `is_delete=true`: la política no puede decir que se elimina.
+    - **Suplantación:** se menciona como acceso temporal del personal de soporte. Con token master los chats van con `is_devs=true`, así que el staff no ve las conversaciones del usuario ni deja mensajes en su historial, **salvo con `iniciar_sin_maestro`** (token sin `is_master`). `/impersonate` no deja registro aparte del token: no prometer en la política que los accesos "quedan registrados".
+    - **Base legal:** de momento consentimiento (como AppGovoy); el de un empleado no suele considerarse libre, a confirmar con lo legal.
+    - **Faltan:** plazos de conservación (vale con criterios: mientras la cuenta y el contrato estén activos, y luego bloqueo legal), región de AWS, garantías de las transferencias y comparar responsable, cambios y contacto con el texto literal de la de AppGovoy. A la de AppGovoy también le faltan la reclamación ante la AEPD y los plazos.
 - Más adelante: desbloqueo con huella (pregunta 16) y tamaño de letra del chat.
 
 **Descartado (2026-10-14): "Datos guardados"** (olvidar usuario y contraseña, borrar el registro de correos enviados). No es obligatorio: el RGPD no exige un botón para borrar datos locales (se borran desinstalando o borrando los datos de la app) y las tiendas solo piden eliminar la cuenta si la app permite crearla. Borrar el registro de correos haría que los borradores ya enviados volvieran a mostrar el botón de enviar.
@@ -1293,13 +1316,41 @@ Google pide en "Acceso a la app" un usuario y contraseña que funcionen para rev
   - Cada pregunta del revisor gasta en el modelo de IA, pero es poco. Como las credenciales salen de Govoy, valorar un límite de mensajes al día para esa empresa. **Aplazado (2026-10-20):** sin límite propio por ahora.
   - **La cuenta tiene que seguir funcionando después de la primera revisión** (Google y Apple revisan cada versión): contraseña sin caducar ni cambiar y empresa sin desactivar (el login daría 403). Dejarlo indicado en el back para que nadie la toque sin saberlo.
   - **Acceso desde fuera de España:** los revisores de Apple suelen estar en EE. UU. y los de Google en cualquier país. Comprobar que `api.govoy.es` no filtra por país o IP.
-  - **Idioma:** la app está en español y las instrucciones van en inglés. Preguntas de ejemplo en los dos idiomas; comprobar que Chelu contesta en inglés si se le pregunta en inglés.
+  - **Idioma:** la app está en español y las instrucciones van en inglés. No se puede pedir un revisor que hable español. **Decidido (2026-10-20):** no se le pide escribir en inglés, sino pulsar los ejemplos del chat vacío y las sugerencias, porque en inglés las sugerencias no se pueden pulsar (fallo aparte, también para cualquier usuario que escriba en inglés).
   - Para Apple, el aviso de IA de terceros (ver "Distribución y revisión de Apple") tiene que estar hecho antes de enviar.
 - **Orden:**
   1. ~~Empresa, usuario (rol administrador) y esquema~~ (hecho, empresa 104). El envío de correos de la demo queda aplazado.
   2. ~~Perfil de chat, script de datos, datos cargados, permisos en app y web, y ejemplos del chat vacío~~ (hecho el 2026-10-20).
-  3. Instrucciones para el revisor, en inglés, con las fechas exactas de los datos y preguntas de ejemplo que ya las lleven (p. ej. "Which route had the most incidents in the week of September 21, 2026?").
+  3. ~~Instrucciones para el revisor~~ (hecho el 2026-10-20). Casilla de "acceso completo a todas las funciones" **marcada** (el formulario lo obliga): la cuenta llega a todas las pantallas; sectores y RAIS dependen de lo que tenga contratado cada empresa. Por eso las instrucciones no dicen que la sectorización no está:
+     ```
+     Demo company with fictional data. The app and the assistant are in Spanish. Data only exists from September 14 to 25, 2026: tap the example questions shown in the empty chat, which already use those dates, and the suggested follow-up questions under each answer. Voice notes: microphone button.
+     ```
   4. Probar la cuenta con una build de release contra producción, siguiendo las instrucciones de principio a fin, antes de enviarlas.
+
+### Ficha de Google Play (2026-10-20, en curso)
+
+- **App creada** en Play Console: nombre "Chelu Govoy" (se puede cambiar), paquete `com.govoy.chelu` (el de `app.json`; no se puede cambiar una vez creada), idioma español (España).
+- **Antes de la build que se sube:** `API_URL` (`src/auth/Constants.ts`) apunta ahora a `https://developer.govoy.es/`; volver a `https://api.govoy.es/`. Con eso todo va por HTTPS (el `http://127.0.0.1` solo con `__DEV__`).
+- **Seguridad de los datos**, respuestas:
+  - Cifrado en tránsito: sí (HTTPS en la API, las teselas y las push).
+  - Cuentas: no se crean en la app; se inicia sesión con cuentas creadas fuera, "en el trabajo o mediante cuentas de empresa". Por eso no hace falta ofrecer borrar la cuenta.
+  - Solicitar la eliminación de datos: **sí** (la política dice que se pide en admin@govoy.es; "No" la contradiría). Si pide enlace, la URL de la política.
+- **Categoría:** Aplicación, **Productividad** (no hay "Empresa" ni "Negocios"; "Herramientas" es para utilidades del sistema). Etiqueta "Asistente personal" (es de Herramientas, pero se puede elegir igual); el resto, de empresa, datos o documentos si las hay. Ninguna de optimización ni planificación de rutas.
+- **Descripción breve** (78/80): "Asistente con IA para consultar y analizar tus operaciones logísticas de Govoy".
+- **Descripción completa:** solo lo que enseña la demo (consultas por texto o voz, gráficas, mapas, Excel/PDF/Word, borradores de correo, tráfico y meteorología, carpetas, notificaciones y valoración), un apartado "Requisitos" (cuenta de Govoy o de la empresa, sin registro) y el aviso de que la IA puede equivocarse. Sin sectores, RAIS ni optimización.
+- **Icono de la ficha:** 512×512, PNG de 32 bits, máximo 1 MB, cuadrado sin esquinas ni sombra. `assets/icon.png` no vale tal cual (1024×1024 y 24 bits): se sube `assets/store/icono-play-512.png`, la misma imagen reducida a 512 y pasada a 32 bits (323 KB). No la usa la app: solo se sube a mano en la consola. Cumple la política de metadatos (sin textos de ranking ni insignias; "CHELU" es el nombre). El icono del móvil va aparte (adaptable de `app.json`) y se deja como está: en la máscara redonda solo la bolita de la antena y la punta del camión se salen de la zona segura.
+- **Capturas (2026-10-20):** `assets/store/captura-1..4.png`, 1080×1920 (9:16; Google pide lados de 320 a 3840 px y proporción máxima 2:1). Login, chat vacío con los ejemplos, gráfica de líneas y gráfica de tarta. Hechas con la cuenta demo en una build de release (sin el menú de Expo encima) y recortadas sin la barra de estado; los originales en `assets/store/originales/`. Falta una de mapa (opcional). Vídeo: no es obligatorio.
+- **Gráfico de funciones:** `assets/store/grafico-funciones.png`, 1024×500 (286 KB): "Chelu Govoy", la descripción breve y el robot del splash sobre un degradado claro.
+- **Recursos hechos con IA:** marcados el icono, el gráfico de funciones y las capturas (salen respuestas generadas por la IA).
+- **Editar la ficha después:** Crecer usuarios → Presencia en Play Store → Fichas de Play Store → "Editar ficha predeterminada" (flecha de la fila).
+- **Build de release para las capturas:** `npx expo run:android --variant release --device` (no hace falta prebuild nuevo si `android/` ya está). Si Gradle falla con `OutOfMemoryError: Metaspace` o "Timeout waiting to lock journal cache", es un daemon viejo: cerrar los `java` de Gradle (`GradleDaemon`, `KotlinCompileDaemon`) y repetir. `~/.gradle/gradle.properties` manda sobre el del proyecto.
+- **Falta:**
+  - Contenido de la app: URL de la política, tipos de datos de la seguridad de los datos, cuestionario de clasificación (IARC), público objetivo (18+), anuncios (no) e ID de publicidad (comprobar que no entra el permiso `AD_ID`).
+  - Si la cuenta de desarrollador es personal y posterior a noviembre de 2023: prueba cerrada con 12 testers durante 14 días antes de producción.
+  - Política: terminar (conservación, región de AWS, transferencias, DeepSeek), revisión legal y publicarla en govoy.es.
+  - Back a producción: login móvil, perfil 104 y el cambio de `mapas.py`. Comprobar `testchelu` contra `api.govoy.es` y que no se filtra por país; contraseña al azar.
+  - `API_URL` a producción, AAB firmado según el README y prueba de principio a fin con las instrucciones del revisor.
+  - Opcional: captura de mapa, aviso de IA en el primer uso y que se puedan pulsar las sugerencias en inglés.
 
 ### Fase 0 en detalle (Back-Govoy)
 
@@ -1526,3 +1577,10 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-09 | Fase 4, bloque 4c: demanda, aprovechamiento mínimo y tipo de optimización en una sola sección "Parámetros"; números limitados a lo que acepta el back (demanda 1–100, aprovechamiento 0–100) |
 | 2026-10-09 | Estilo: legibilidad primero; `async`/`await` con `try`/`catch` en lugar de `.then().catch()`, cambiando las cadenas existentes al tocar cada archivo |
 | 2026-10-20 | Agentes autónomos desde el chat (fase 5, bloque 6): solo `92-master` y `69-master` (el 69 está en QA en la web). Tarjeta con resumen y "Crear agente" + edición a pantalla completa, sin "Ver en Mis agentes". Por bloques: 6a datos y solo lectura, 6b editar lo básico y crear, 6c alerta/indicador/ámbito, 6d "Probar ahora" |
+| 2026-10-20 | Política de privacidad de Chelu: borrador en `POLITICA_PRIVACIDAD_CHELU.txt`, página propia con la estructura de la de AppGovoy. Se nombran los proveedores y su país, no los modelos. OpenAI vía su DPA (OpenAI Ireland, cláusulas tipo); DeepSeek sin garantía resuelta. Notas de voz no guardadas (comprobado); borrar un chat no lo elimina (`is_delete`) |
+| 2026-10-20 | Cuenta de prueba: instrucciones del revisor hechas (en inglés, pulsar los ejemplos en español; sin pedir escribir en inglés) y casilla de acceso completo marcada |
+| 2026-10-20 | Ficha de Google Play: app creada con `com.govoy.chelu`; Productividad + "Asistente personal"; descripciones; seguridad de los datos (cifrado en tránsito, cuentas de empresa, eliminación de datos sí); icono de la ficha a 512 y 32 bits. `API_URL` a producción antes de la build de la tienda |
+| 2026-10-20 | Ficha de Google Play: 4 capturas a 1080×1920 y gráfico de funciones en `assets/store/`, marcados como hechos con IA. Leyenda de mapas con nombres legibles por tipo de marcador (`_NOMBRE_POR_MARCADOR` en `mapas.py`, sin subir) |
+| 2026-10-21 | Transferencias de la política: EE. UU. por el Marco de Privacidad o cláusulas tipo, OpenAI a través de OpenAI Ireland, y frase para pedir copia de las garantías. Propuesto, falta comprobar las adhesiones y aplicarlo al txt |
+| 2026-10-21 | Actualizaciones OTA con servidor propio: Back-Govoy responde al protocolo leyendo de S3, CloudFront (OAC) sirve los ficheros y el manifest se firma al publicar (la clave no está en el back). Rutas con plataforma. `app.json` y certificado hechos; script de publicación sin la subida a S3 |
+| 2026-10-21 | Agentes: formulario nativo (no WebView). Antes, bloque 6.0 con piezas comunes de formulario (editor a pantalla completa, tarjeta, campos y `useFormDraft`), probado con sectores; sin motor genérico. Disparador personalizado de la web como bloque 6e, al final |
