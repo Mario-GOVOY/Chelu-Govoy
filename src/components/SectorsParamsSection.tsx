@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Switch, Text, TextInput, View } from 'react-native';
+import { Switch, Text, View } from 'react-native';
 
 import { capitalize, getModeLabel } from '@/chat/sectorsForm';
 import { Chip } from '@/components/ui/Chip';
+import { Field } from '@/components/ui/form/Field';
+import { FormSection } from '@/components/ui/form/FormSection';
+import { NumberInput } from '@/components/ui/form/NumberInput';
 import { useColores } from '@/theme/ThemeProvider';
 import type { FormDemand, FormMode, SectorsForm } from '@/types/SectorsForm';
 
@@ -33,11 +35,8 @@ export function SectorsParamsSection({ demand, minimumLoad, mode, onChange }: {
     };
 
     return (
-        <View className="gap-4 rounded-xl border border-borde bg-superficie p-3">
-            <Text className="text-[11px] font-semibold uppercase text-texto-tenue">Parámetros</Text>
-
-            <View className="gap-2">
-                <Text className="text-sm font-semibold text-texto">Demanda</Text>
+        <FormSection title="Parámetros">
+            <Field label="Demanda" help="Cuánto se espera en cada zona: más alto, sectores más pequeños y más vehículos.">
                 <View className="flex-row flex-wrap items-center gap-2">
                     {demand.opciones.map((option) => (
                         <Chip
@@ -47,33 +46,29 @@ export function SectorsParamsSection({ demand, minimumLoad, mode, onChange }: {
                             onPress={() => onChange({ demanda: { ...demand, nivel: option.nivel, percentil: option.percentil } })}
                         />
                     ))}
-                    <PercentInput
+                    <NumberInput
                         value={demand.percentil}
                         min={1}
                         max={100}
+                        suffix="%"
                         accessibilityLabel="Porcentaje de demanda"
                         onChange={changeDemandPercentile}
                     />
                 </View>
-                <Text className="text-xs text-texto-tenue">
-                    Cuánto se espera en cada zona: más alto, sectores más pequeños y más vehículos.
-                </Text>
-            </View>
+            </Field>
 
-            <View className="gap-2">
-                <Text className="text-sm font-semibold text-texto">Aprovechamiento mínimo por vehículo</Text>
-                <PercentInput
+            <Field label="Aprovechamiento mínimo por vehículo" help="Con 0 no se exige ningún mínimo.">
+                <NumberInput
                     value={minimumLoad}
                     min={0}
                     max={100}
+                    suffix="%"
                     accessibilityLabel="Aprovechamiento mínimo por vehículo"
                     onChange={(percentage) => onChange({ carga_minima: { porcentaje: percentage } })}
                 />
-                <Text className="text-xs text-texto-tenue">Con 0 no se exige ningún mínimo.</Text>
-            </View>
+            </Field>
 
-            <View className="gap-2">
-                <Text className="text-sm font-semibold text-texto">Tipo de optimización</Text>
+            <Field label="Tipo de optimización">
                 <View className="flex-row flex-wrap gap-2">
                     {mode.opciones.map((option) => (
                         <Chip
@@ -96,46 +91,7 @@ export function SectorsParamsSection({ demand, minimumLoad, mode, onChange }: {
                         />
                     </View>
                 )}
-            </View>
-        </View>
-    );
-}
-
-/**
- * Porcentaje entero. Solo pasa al formulario lo que está dentro del rango;
- * al salir del campo con algo vacío o fuera de rango, vuelve el último valor válido.
- */
-function PercentInput({ value, min, max, accessibilityLabel, onChange }: {
-    value: number;
-    min: number;
-    max: number;
-    accessibilityLabel: string;
-    onChange: (value: number) => void;
-}) {
-    const [text, setText] = useState(String(value));
-
-    // Si cambia desde fuera (p. ej. al tocar un nivel de demanda), se enseña el nuevo.
-    useEffect(() => setText(String(value)), [value]);
-
-    const changeText = (newText: string) => {
-        const digits = newText.replace(/\D/g, '');
-        setText(digits);
-        const number = Number(digits);
-        if (digits && number >= min && number <= max) onChange(number);
-    };
-
-    return (
-        <View className="flex-row items-center gap-1.5">
-            <TextInput
-                value={text}
-                onChangeText={changeText}
-                onBlur={() => setText(String(value))}
-                keyboardType="number-pad"
-                maxLength={3}
-                accessibilityLabel={accessibilityLabel}
-                className="w-16 rounded-xl border border-borde-medio bg-superficie px-3 py-1.5 text-center text-sm text-texto"
-            />
-            <Text className="text-sm text-texto-secundario">%</Text>
-        </View>
+            </Field>
+        </FormSection>
     );
 }

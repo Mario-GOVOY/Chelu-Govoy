@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
-import { Check, Pencil, Plus, TriangleAlert } from 'lucide-react-native';
+import { Check, Pencil, Plus } from 'lucide-react-native';
 
 import {
     changeScenarioVehicles,
@@ -14,19 +14,22 @@ import {
 } from '@/chat/sectorsForm';
 import type { VehicleEditing } from '@/components/SectorsVehicleSheet';
 import { Chip } from '@/components/ui/Chip';
+import { FormSection } from '@/components/ui/form/FormSection';
+import { Warning } from '@/components/ui/form/Warning';
 import { useColores } from '@/theme/ThemeProvider';
-import type { FormFleet } from '@/types/SectorsForm';
+import type { FormFleet, FormVehicle } from '@/types/SectorsForm';
 import { formatInteger } from '@/utils/numbers';
 
 /**
  * Tipo de flota y vehículos de la zona: al tocar uno se incluye o se quita, y con el lápiz se edita.
  * Con escenarios, se elige cuál se ve y se edita.
  */
-export function SectorsFleetSection({ fleet, recalculating, onChange, onEditVehicle, onAddVehicle }: {
+export const SectorsFleetSection = memo(function SectorsFleetSection({ fleet, recalculating, onChange, onEditVehicle, onAddVehicle }: {
     fleet: FormFleet;
     // Mientras se recalcula, la lista es la de la zona anterior y no se deja tocar.
     recalculating: boolean;
-    onChange: (fleet: FormFleet) => void;
+    // Recibe la flota actual y devuelve la nueva.
+    onChange: (change: (fleet: FormFleet) => FormFleet) => void;
     onEditVehicle: (editing: VehicleEditing) => void;
     onAddVehicle: (scenario: ScenarioKey) => void;
 }) {
@@ -43,30 +46,35 @@ export function SectorsFleetSection({ fleet, recalculating, onChange, onEditVehi
     const included = getIncludedVehicles(vehicles);
     const includedUnits = countUnits(included);
 
+    // Estables para que al marcar un vehículo solo se repinte su fila.
     // Los quitados no se borran: van con incluido: false.
-    const toggleVehicle = (index: number) => {
-        onChange(changeScenarioVehicles(fleet, scenarioKey, (list) =>
+    const toggleVehicle = useCallback((index: number) => {
+        onChange((current) => changeScenarioVehicles(current, scenarioKey, (list) =>
             list.map((vehicle, i) => (i === index ? { ...vehicle, incluido: vehicle.incluido === false } : vehicle))));
-    };
+    }, [onChange, scenarioKey]);
+
+    const editVehicle = useCallback((index: number, vehicle: FormVehicle) => {
+        onEditVehicle({ scenario: scenarioKey, index, vehicle });
+    }, [onEditVehicle, scenarioKey]);
 
     // Sin su flota propia, el escenario se vuelve a calcular sobre la recomendada.
     const recalculateScenario = () => {
-        const edited = { ...fleet.escenarios_editados };
-        delete edited[scenarioKey as 'ajustado' | 'holgado'];
-        onChange({ ...fleet, escenarios_editados: edited });
+        onChange((current) => {
+            const edited = { ...current.escenarios_editados };
+            delete edited[scenarioKey as 'ajustado' | 'holgado'];
+            return { ...current, escenarios_editados: edited };
+        });
     };
 
     return (
-        <View className="gap-3 rounded-xl border border-borde bg-superficie p-3">
-            <Text className="text-[11px] font-semibold uppercase text-texto-tenue">Flota</Text>
-
+        <FormSection title="Flota">
             <View className="flex-row flex-wrap gap-2">
                 {typeOptions.map((option) => (
                     <Chip
                         key={option}
                         label={getFleetLabel(option)}
                         selected={fleet.tipo === option}
-                        onPress={() => onChange({ ...fleet, tipo: option })}
+                        onPress={() => onChange((current) => ({ ...current, tipo: option }))}
                     />
                 ))}
             </View>
@@ -108,50 +116,16 @@ export function SectorsFleetSection({ fleet, recalculating, onChange, onEditVehi
                     nestedScrollEnabled
                     className="rounded-lg border border-borde"
                 >
-                    {vehicles.map((vehicle, index) => {
-                        const isIncluded = vehicle.incluido !== false;
-                        return (
-                            <View key={index} className="flex-row items-center border-b border-borde">
-                                <Pressable
-                                    onPress={() => toggleVehicle(index)}
-                                    disabled={recalculating}
-                                    accessibilityRole="checkbox"
-                                    accessibilityState={{ checked: isIncluded, disabled: recalculating }}
-                                    accessibilityLabel={vehicle.nombre}
-                                    className="flex-1 active:bg-fondo"
-                                >
-                                    <View className="flex-row items-center gap-3 py-2 pl-3" style={{ opacity: isIncluded ? 1 : 0.45 }}>
-                                        <View
-                                            className="h-5 w-5 items-center justify-center rounded border"
-                                            style={{
-                                                borderColor: isIncluded ? colores.primario : colores['borde-fuerte'],
-                                                backgroundColor: isIncluded ? colores.primario : 'transparent',
-                                            }}
-                                        >
-                                            {isIncluded && <Check size={14} color={colores['sobre-primario']} />}
-                                        </View>
-                                        <View className="flex-1">
-                                            <Text className="text-sm font-medium text-texto" numberOfLines={1}>{vehicle.nombre}</Text>
-                                            <Text className="text-xs text-texto-tenue">
-                                                {vehicle.cantidad > 1 ? `${vehicle.cantidad} uds · ` : ''}
-                                                {vehicle.hora_inicio}–{vehicle.hora_fin} · {formatInteger(vehicle.capacidad)} paradas
-                                            </Text>
-                                        </View>
-                                    </View>
-                                </Pressable>
-                                <Pressable
-                                    onPress={() => onEditVehicle({ scenario: scenarioKey, index, vehicle })}
-                                    disabled={recalculating}
-                                    hitSlop={4}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={`Editar ${vehicle.nombre}`}
-                                    className="h-10 w-10 items-center justify-center rounded-full active:bg-fondo"
-                                >
-                                    <Pencil size={16} color={colores['texto-secundario']} />
-                                </Pressable>
-                            </View>
-                        );
-                    })}
+                    {vehicles.map((vehicle, index) => (
+                        <VehicleRow
+                            key={index}
+                            vehicle={vehicle}
+                            index={index}
+                            disabled={recalculating}
+                            onToggle={toggleVehicle}
+                            onEdit={editVehicle}
+                        />
+                    ))}
                 </ScrollView>
             )}
 
@@ -167,12 +141,7 @@ export function SectorsFleetSection({ fleet, recalculating, onChange, onEditVehi
             </Pressable>
 
             {fleet.descartados.length > 0 && (
-                <View className="flex-row items-start gap-2 rounded-lg bg-aviso-suave px-3 py-2">
-                    <TriangleAlert size={14} color={colores.aviso} style={{ marginTop: 1 }} />
-                    <Text className="flex-1 text-xs text-aviso">
-                        Sin capacidad en Fleet, no se usan: {fleet.descartados.map((vehicle) => vehicle.nombre).join(', ')}
-                    </Text>
-                </View>
+                <Warning text={`Sin capacidad en Fleet, no se usan: ${fleet.descartados.map((vehicle) => vehicle.nombre).join(', ')}`} />
             )}
 
             <Text className="text-xs text-texto-secundario">
@@ -180,6 +149,60 @@ export function SectorsFleetSection({ fleet, recalculating, onChange, onEditVehi
                 {' · '}{formatInteger(getListCapacity(included))} de capacidad
                 {hasScenarios ? ` en el escenario ${activeScenario?.label.toLowerCase()}` : ''}
             </Text>
+        </FormSection>
+    );
+});
+
+// Con memo: al marcar un vehículo, las demás filas reciben lo mismo y no se repintan.
+const VehicleRow = memo(function VehicleRow({ vehicle, index, disabled, onToggle, onEdit }: {
+    vehicle: FormVehicle;
+    index: number;
+    disabled: boolean;
+    onToggle: (index: number) => void;
+    onEdit: (index: number, vehicle: FormVehicle) => void;
+}) {
+    const colores = useColores();
+    const isIncluded = vehicle.incluido !== false;
+
+    return (
+        <View className="flex-row items-center border-b border-borde">
+            <Pressable
+                onPress={() => onToggle(index)}
+                disabled={disabled}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: isIncluded, disabled }}
+                accessibilityLabel={vehicle.nombre}
+                className="flex-1 active:bg-fondo"
+            >
+                <View className="flex-row items-center gap-3 py-2 pl-3" style={{ opacity: isIncluded ? 1 : 0.45 }}>
+                    <View
+                        className="h-5 w-5 items-center justify-center rounded border"
+                        style={{
+                            borderColor: isIncluded ? colores.primario : colores['borde-fuerte'],
+                            backgroundColor: isIncluded ? colores.primario : 'transparent',
+                        }}
+                    >
+                        {isIncluded && <Check size={14} color={colores['sobre-primario']} />}
+                    </View>
+                    <View className="flex-1">
+                        <Text className="text-sm font-medium text-texto" numberOfLines={1}>{vehicle.nombre}</Text>
+                        <Text className="text-xs text-texto-tenue">
+                            {vehicle.cantidad > 1 ? `${vehicle.cantidad} uds · ` : ''}
+                            {vehicle.hora_inicio}–{vehicle.hora_fin} · {formatInteger(vehicle.capacidad)} paradas
+                        </Text>
+                    </View>
+                </View>
+            </Pressable>
+            <Pressable
+                onPress={() => onEdit(index, vehicle)}
+                disabled={disabled}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel={`Editar ${vehicle.nombre}`}
+                className="h-10 w-10 items-center justify-center rounded-full active:bg-fondo"
+            >
+                <Pencil size={16} color={colores['texto-secundario']} />
+            </Pressable>
         </View>
     );
-}
+});

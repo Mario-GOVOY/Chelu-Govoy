@@ -1,18 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import { Alert, BackHandler, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { X } from 'lucide-react-native';
-import Animated, { Easing, SlideInDown, SlideOutDown } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { fetchSectorsFleet, fetchSectorsProviders, fetchSectorsZone } from '@/chat/chatApi';
-import { changeScenarioVehicles, isProviderSelected } from '@/chat/sectorsForm';
+import { changeScenarioVehicles, countFleetVehicles, isProviderSelected, type ScenarioKey } from '@/chat/sectorsForm';
 import { SectorsFleetSection } from '@/components/SectorsFleetSection';
 import { SectorsParamsSection } from '@/components/SectorsParamsSection';
 import { SectorsRangeSection } from '@/components/SectorsRangeSection';
 import { SectorsVehicleSheet, type VehicleEditing } from '@/components/SectorsVehicleSheet';
 import { SectorsZoneSection } from '@/components/SectorsZoneSection';
-import { useColores } from '@/theme/ThemeProvider';
-import type { FormMap, FormProvider, FormVehicle, SectorsForm, ZoneMode } from '@/types/SectorsForm';
+import { FormEditorScreen } from '@/components/ui/form/FormEditorScreen';
+import { useFormDraft } from '@/hooks/useFormDraft';
+import type { FormFleet, FormMap, FormProvider, FormStudyRange, FormVehicle, SectorsForm, ZoneMode } from '@/types/SectorsForm';
 
 // Espera tras tocar un CP antes de recalcular, para no pedir la zona en cada toque.
 const RECALCULATE_DELAY_MS = 400;
@@ -33,20 +30,13 @@ export function SectorsFormEditor({ editing, onSave, onClose }: {
 }) {
     if (!editing) return null;
 
-    // Animated.View no pasa por NativeWind: sus estilos van en style y las clases en el contenido.
     return (
-        <Animated.View
-            entering={SlideInDown.duration(380).easing(Easing.out(Easing.cubic))}
-            exiting={SlideOutDown.duration(300).easing(Easing.in(Easing.cubic))}
-            style={StyleSheet.absoluteFill}
-        >
-            <EditorContent
-                form={editing.form}
-                map={editing.map}
-                onSave={(editedForm) => onSave(editing.form, editedForm)}
-                onClose={onClose}
-            />
-        </Animated.View>
+        <EditorContent
+            form={editing.form}
+            map={editing.map}
+            onSave={(editedForm) => onSave(editing.form, editedForm)}
+            onClose={onClose}
+        />
     );
 }
 
@@ -56,9 +46,7 @@ function EditorContent({ form, map, onSave, onClose }: {
     onSave: (editedForm: SectorsForm) => void;
     onClose: () => void;
 }) {
-    const colores = useColores();
-    const insets = useSafeAreaInsets();
-    const [borrador, setBorrador] = useState(form);
+    const { draft: borrador, setDraft: setBorrador, update, changed } = useFormDraft(form);
     const [loading, setLoading] = useState<'zone' | 'fleet' | null>(null);
     const [error, setError] = useState<string | null>(null);
     // Proveedores del mapa; null hasta que se piden.
@@ -67,37 +55,19 @@ function EditorContent({ form, map, onSave, onClose }: {
     const [vehicleEditing, setVehicleEditing] = useState<VehicleEditing | null>(null);
     const abortRef = useRef<AbortController | null>(null);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const changed = borrador !== form;
 
-    const cancelRecalculation = () => {
+    // Las funciones que reciben las secciones son estables (useCallback): las secciones van con memo
+    // y así no se repintan al cambiar otra parte del formulario.
+    const cancelRecalculation = useCallback(() => {
         if (timerRef.current) clearTimeout(timerRef.current);
         abortRef.current?.abort();
-    };
+    }, []);
 
     // Al cerrar se cancela lo pendiente.
-    useEffect(() => cancelRecalculation, []);
-
-    const close = () => {
-        if (!changed) {
-            onClose();
-            return;
-        }
-        Alert.alert('Descartar cambios', 'Los cambios del formulario se perderán.', [
-            { text: 'Seguir editando', style: 'cancel' },
-            { text: 'Descartar', style: 'destructive', onPress: onClose },
-        ]);
-    };
-
-    useEffect(() => {
-        const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-            close();
-            return true;
-        });
-        return () => subscription.remove();
-    }, [changed, onClose]);
+    useEffect(() => cancelRecalculation, [cancelRecalculation]);
 
     // La flota depende de la zona: al cambiar los CP se piden las dos.
-    const recalculateZone = async (postcodes: string[]) => {
+    const recalculateZone = useCallback(async (postcodes: string[]) => {
         const controller = new AbortController();
         abortRef.current = controller;
         setError(null);
@@ -118,26 +88,27 @@ function EditorContent({ form, map, onSave, onClose }: {
             setError(e instanceof Error ? e.message : 'No se pudo recalcular la zona.');
             setLoading(null);
         }
-    };
+    }, [map.id, setBorrador]);
 
     // Cambia los CP elegidos y recalcula tras una espera, para no pedir la zona en cada toque.
-    const changePostcodes = (postcodes: string[]) => {
+    const changePostcodes = useCallback((postcodes: string[]) => {
         setBorrador((prev) => ({ ...prev, zona: { ...prev.zona, cps_seleccionados: postcodes } }));
         // Se cancela ya la petición en curso: su respuesta quitaría los CP tocados después.
         cancelRecalculation();
         setLoading('zone');
         timerRef.current = setTimeout(() => recalculateZone(postcodes), RECALCULATE_DELAY_MS);
-    };
+    }, [setBorrador, cancelRecalculation, recalculateZone]);
 
-    const togglePostcode = (postcode: string) => {
-        const selected = borrador.zona.cps_seleccionados;
-        changePostcodes(selected.includes(postcode)
-            ? selected.filter((item) => item !== postcode)
-            : [...selected, postcode]);
-    };
+    const selectedPostcodes = borrador.zona.cps_seleccionados;
+
+    const togglePostcode = useCallback((postcode: string) => {
+        changePostcodes(selectedPostcodes.includes(postcode)
+            ? selectedPostcodes.filter((item) => item !== postcode)
+            : [...selectedPostcodes, postcode]);
+    }, [selectedPostcodes, changePostcodes]);
 
     // Se piden la primera vez que se acota por proveedor.
-    const loadProviders = async () => {
+    const loadProviders = useCallback(async () => {
         setError(null);
         setLoadingProviders(true);
         try {
@@ -147,21 +118,33 @@ function EditorContent({ form, map, onSave, onClose }: {
         } finally {
             setLoadingProviders(false);
         }
-    };
+    }, [map.id]);
 
-    const changeZoneMode = (mode: ZoneMode) => {
-        if (mode === borrador.zona.modo) return;
-        const hadPostcodes = borrador.zona.cps_seleccionados.length > 0;
+    const zoneMode = borrador.zona.modo;
+
+    const changeZoneMode = useCallback((mode: ZoneMode) => {
+        if (mode === zoneMode) return;
         setBorrador((prev) => ({
             ...prev,
             zona: { ...prev.zona, modo: mode, cps_seleccionados: mode === 'mapa_entero' ? [] : prev.zona.cps_seleccionados },
         }));
-        if (mode === 'mapa_entero' && hadPostcodes) {
+        if (mode === 'mapa_entero' && selectedPostcodes.length > 0) {
             cancelRecalculation();
             recalculateZone([]);
         }
         if (mode === 'proveedor' && !providers) loadProviders();
-    };
+    }, [zoneMode, selectedPostcodes, providers, setBorrador, cancelRecalculation, recalculateZone, loadProviders]);
+
+    // La sección de flota manda una función que recibe la flota actual.
+    const changeFleet = useCallback((change: (fleet: FormFleet) => FormFleet) => {
+        setBorrador((prev) => ({ ...prev, flota: change(prev.flota) }));
+    }, [setBorrador]);
+
+    const addVehicle = useCallback((scenario: ScenarioKey) => {
+        setVehicleEditing({ scenario, index: null, vehicle: NEW_VEHICLE });
+    }, []);
+
+    const changeRange = useCallback((range: FormStudyRange) => update({ rango_estudio: range }), [update]);
 
     // Cambia los vehículos del escenario que se está editando en la hoja.
     const changeEditingVehicles = (change: (vehicles: FormVehicle[]) => FormVehicle[]) => {
@@ -183,89 +166,55 @@ function EditorContent({ form, map, onSave, onClose }: {
     };
 
     // Marcar un proveedor añade sus CP a los elegidos; desmarcarlo quita todos los suyos.
-    const toggleProvider = (provider: FormProvider) => {
-        const selected = borrador.zona.cps_seleccionados;
-        changePostcodes(isProviderSelected(provider, selected)
-            ? selected.filter((cp) => !provider.cps.includes(cp))
-            : [...new Set([...selected, ...provider.cps])]);
-    };
+    const toggleProvider = useCallback((provider: FormProvider) => {
+        changePostcodes(isProviderSelected(provider, selectedPostcodes)
+            ? selectedPostcodes.filter((cp) => !provider.cps.includes(cp))
+            : [...new Set([...selectedPostcodes, ...provider.cps])]);
+    }, [selectedPostcodes, changePostcodes]);
 
+    // Mientras se recalcula no se guarda: lo que se ve aún no cuadra con los CP elegidos.
     return (
-        <View className="flex-1 bg-fondo">
-            <View
-                className="flex-row items-center gap-2 border-b border-borde bg-superficie px-2"
-                style={{ paddingTop: insets.top, height: insets.top + 56 }}
-            >
-                <Pressable
-                    onPress={close}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Cerrar"
-                    className="h-10 w-10 items-center justify-center rounded-full active:bg-fondo"
-                >
-                    <X size={22} color={colores.texto} />
-                </Pressable>
-                <View className="flex-1">
-                    <Text className="text-lg font-semibold text-texto" numberOfLines={1}>Editar optimización</Text>
-                    <Text className="text-xs text-texto-tenue" numberOfLines={1}>{map.nombre} · {map.deposito}</Text>
-                </View>
-                {/* Mientras se recalcula, lo que se ve aún no cuadra con los CP elegidos. */}
-                <Pressable
-                    onPress={() => onSave(borrador)}
-                    disabled={!!loading}
-                    accessibilityRole="button"
-                    accessibilityLabel="Guardar"
-                    accessibilityState={{ disabled: !!loading }}
-                    className="mr-2 rounded-full bg-primario px-4 py-2 active:bg-primario-presionado"
-                    style={{ opacity: loading ? 0.6 : 1 }}
-                >
-                    <Text className="text-sm font-semibold text-sobre-primario">Guardar</Text>
-                </Pressable>
-            </View>
-
-            <KeyboardAvoidingView behavior="padding" className="flex-1">
-                <ScrollView
-                    contentContainerClassName="gap-4 px-4 pt-4"
-                    contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
-                    keyboardShouldPersistTaps="handled"
-                >
-                    <SectorsZoneSection
-                        zone={borrador.zona}
-                        fleet={borrador.flota}
-                        loading={loading}
-                        error={error}
-                        providers={providers}
-                        loadingProviders={loadingProviders}
-                        onChangeMode={changeZoneMode}
-                        onTogglePostcode={togglePostcode}
-                        onToggleProvider={toggleProvider}
-                    />
-                    <SectorsFleetSection
-                        fleet={borrador.flota}
-                        recalculating={!!loading}
-                        onChange={(fleet) => setBorrador((prev) => ({ ...prev, flota: fleet }))}
-                        onEditVehicle={setVehicleEditing}
-                        onAddVehicle={(scenario) => setVehicleEditing({ scenario, index: null, vehicle: NEW_VEHICLE })}
-                    />
-                    <SectorsRangeSection
-                        range={borrador.rango_estudio}
-                        onChange={(range) => setBorrador((prev) => ({ ...prev, rango_estudio: range }))}
-                    />
-                    <SectorsParamsSection
-                        demand={borrador.demanda}
-                        minimumLoad={borrador.carga_minima.porcentaje}
-                        mode={borrador.modo}
-                        onChange={(changes) => setBorrador((prev) => ({ ...prev, ...changes }))}
-                    />
-                </ScrollView>
-            </KeyboardAvoidingView>
-
-            <SectorsVehicleSheet
-                editing={vehicleEditing}
-                onSave={saveVehicle}
-                onDelete={deleteVehicle}
-                onClose={() => setVehicleEditing(null)}
+        <FormEditorScreen
+            title="Editar optimización"
+            subtitle={`${map.nombre} · ${map.deposito}`}
+            changed={changed}
+            saveDisabled={!!loading}
+            onSave={() => onSave(borrador)}
+            onClose={onClose}
+            overlays={(
+                <SectorsVehicleSheet
+                    editing={vehicleEditing}
+                    onSave={saveVehicle}
+                    onDelete={deleteVehicle}
+                    onClose={() => setVehicleEditing(null)}
+                />
+            )}
+        >
+            <SectorsZoneSection
+                zone={borrador.zona}
+                vehicleCount={countFleetVehicles(borrador.flota)}
+                loading={loading}
+                error={error}
+                providers={providers}
+                loadingProviders={loadingProviders}
+                onChangeMode={changeZoneMode}
+                onTogglePostcode={togglePostcode}
+                onToggleProvider={toggleProvider}
             />
-        </View>
+            <SectorsFleetSection
+                fleet={borrador.flota}
+                recalculating={!!loading}
+                onChange={changeFleet}
+                onEditVehicle={setVehicleEditing}
+                onAddVehicle={addVehicle}
+            />
+            <SectorsRangeSection range={borrador.rango_estudio} onChange={changeRange} />
+            <SectorsParamsSection
+                demand={borrador.demanda}
+                minimumLoad={borrador.carga_minima.porcentaje}
+                mode={borrador.modo}
+                onChange={update}
+            />
+        </FormEditorScreen>
     );
 }

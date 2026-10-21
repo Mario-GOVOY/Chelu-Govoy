@@ -1,12 +1,10 @@
 import { useState } from 'react';
-import { Platform, Pressable, Text, TextInput, View } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { Clock } from 'lucide-react-native';
+import { Text, TextInput, View } from 'react-native';
 
-import { parseTime, toTime, type ScenarioKey } from '@/chat/sectorsForm';
+import type { ScenarioKey } from '@/chat/sectorsForm';
 import { Boton } from '@/components/ui/Boton';
+import { DateTimeFields } from '@/components/ui/form/DateTimeFields';
 import { HojaInferior } from '@/components/ui/HojaInferior';
-import { useColores } from '@/theme/ThemeProvider';
 import type { FormVehicle } from '@/types/SectorsForm';
 
 export type VehicleEditing = {
@@ -31,20 +29,16 @@ export function SectorsVehicleSheet({ editing, onSave, onDelete, onClose }: {
     );
 }
 
-type TimeField = 'hora_inicio' | 'hora_fin';
-
 function VehicleFields({ vehicle, isNew, onSave, onDelete }: {
     vehicle: FormVehicle;
     isNew: boolean;
     onSave: (vehicle: FormVehicle) => void;
     onDelete: () => void;
 }) {
-    const colores = useColores();
     const [name, setName] = useState(vehicle.nombre);
     const [units, setUnits] = useState(String(vehicle.cantidad || 1));
     const [stops, setStops] = useState(vehicle.capacidad ? String(vehicle.capacidad) : '');
     const [times, setTimes] = useState({ hora_inicio: vehicle.hora_inicio, hora_fin: vehicle.hora_fin });
-    const [pickingField, setPickingField] = useState<TimeField | null>(null);
     const unitCount = Number(units);
     const stopCount = Number(stops);
     const canSave = !!name.trim() && unitCount >= 1 && stopCount >= 1;
@@ -73,22 +67,6 @@ function VehicleFields({ vehicle, isNew, onSave, onDelete }: {
         </View>
     );
 
-    const timeButton = (field: TimeField, label: string) => (
-        <Pressable
-            onPress={() => setPickingField(pickingField === field ? null : field)}
-            accessibilityRole="button"
-            accessibilityLabel={`${label}: ${times[field]}`}
-            className="flex-1 flex-row items-center gap-2 rounded-xl border px-3 py-2"
-            style={{ borderColor: pickingField === field ? colores.primario : colores['borde-medio'] }}
-        >
-            <Clock size={16} color={colores['texto-secundario']} />
-            <View>
-                <Text className="text-[11px] text-texto-tenue">{label}</Text>
-                <Text className="text-sm text-texto">{times[field]}</Text>
-            </View>
-        </Pressable>
-    );
-
     return (
         <View className="gap-3">
             <View className="gap-1">
@@ -105,23 +83,14 @@ function VehicleFields({ vehicle, isNew, onSave, onDelete }: {
                 {numberField('Unidades', units, setUnits, 3)}
                 {numberField('Paradas', stops, setStops, 5)}
             </View>
-            <View className="flex-row gap-2">
-                {timeButton('hora_inicio', 'Desde')}
-                {timeButton('hora_fin', 'Hasta')}
-            </View>
-            {/* En Android abre un diálogo que se cierra al elegir; en iOS, una rueda que se cierra con su botón. */}
-            {pickingField && (
-                <DateTimePicker
-                    mode="time"
-                    is24Hour
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    value={parseTime(times[pickingField])}
-                    onChange={(event, date) => {
-                        if (Platform.OS !== 'ios') setPickingField(null);
-                        if (event.type === 'set' && date) setTimes((prev) => ({ ...prev, [pickingField]: toTime(date) }));
-                    }}
-                />
-            )}
+            <DateTimeFields
+                mode="time"
+                fields={[
+                    { key: 'hora_inicio', label: 'Desde', value: times.hora_inicio },
+                    { key: 'hora_fin', label: 'Hasta', value: times.hora_fin },
+                ]}
+                onChange={(field, time) => setTimes((prev) => ({ ...prev, [field]: time }))}
+            />
             <Boton texto={isNew ? 'Añadir' : 'Guardar'} onPress={save} deshabilitado={!canSave} />
             {!isNew && <Boton texto="Eliminar vehículo" variante="peligro" onPress={onDelete} />}
         </View>

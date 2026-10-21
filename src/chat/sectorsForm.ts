@@ -1,4 +1,5 @@
 import type { FormFleet, FormProvider, FormStudyRange, FormVehicle, SectorsFormPayload } from '@/types/SectorsForm';
+import { formatIsoDate } from '@/utils/fechas';
 
 export const getIncludedVehicles = (vehicles: FormVehicle[]) => vehicles.filter((vehicle) => vehicle.incluido !== false);
 
@@ -118,34 +119,6 @@ export function getRangeLabel(range: FormStudyRange): string {
         : 'Histórico del mapa';
     return `${dates} · ${getWeekdaysLabel(range.dias_semana)}`;
 }
-
-/** aaaa-mm-dd → dd/mm/aaaa. */
-export function formatIsoDate(iso: string): string {
-    const [year, month, day] = iso.split('-');
-    return day ? `${day}/${month}/${year}` : iso;
-}
-
-/** aaaa-mm-dd → Date a las 00:00 de la hora local. */
-export function parseIsoDate(iso: string): Date {
-    const [year, month, day] = iso.split('-').map(Number);
-    return new Date(year, month - 1, day);
-}
-
-/** Date → aaaa-mm-dd con la fecha local. */
-export const toIsoDate = (date: Date) =>
-    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-
-/** HH:MM → Date de hoy a esa hora. */
-export function parseTime(time: string): Date {
-    const [hours, minutes] = time.split(':').map(Number);
-    const date = new Date();
-    date.setHours(hours || 0, minutes || 0, 0, 0);
-    return date;
-}
-
-/** Date → HH:MM. */
-export const toTime = (date: Date) =>
-    `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 
 /** El proveedor cuenta como elegido si todos sus CP están entre los elegidos. */
 export const isProviderSelected = (provider: FormProvider, selectedPostcodes: string[]) =>

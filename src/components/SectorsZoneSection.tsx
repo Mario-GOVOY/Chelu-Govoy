@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
-import { TriangleAlert } from 'lucide-react-native';
 
-import { countFleetVehicles, isProviderSelected } from '@/chat/sectorsForm';
+import { isProviderSelected } from '@/chat/sectorsForm';
 import { Chip } from '@/components/ui/Chip';
+import { FormSection } from '@/components/ui/form/FormSection';
+import { Warning } from '@/components/ui/form/Warning';
 import { useColores } from '@/theme/ThemeProvider';
-import type { FormFleet, FormProvider, FormZone, ZoneMode } from '@/types/SectorsForm';
+import type { FormProvider, FormZone, ZoneMode } from '@/types/SectorsForm';
 import { formatInteger } from '@/utils/numbers';
 import { normalizeForSearch } from '@/utils/text';
 
@@ -16,9 +17,9 @@ const ZONE_MODES: { value: ZoneMode; label: string }[] = [
 ];
 
 /** Zona del formulario: el mapa entero, los CP elegidos o los de un proveedor, con las celdas y vehículos que salen. */
-export function SectorsZoneSection({
+export const SectorsZoneSection = memo(function SectorsZoneSection({
     zone,
-    fleet,
+    vehicleCount,
     loading,
     error,
     providers,
@@ -28,7 +29,8 @@ export function SectorsZoneSection({
     onToggleProvider,
 }: {
     zone: FormZone;
-    fleet: FormFleet;
+    // Vehículos incluidos de la flota.
+    vehicleCount: number;
     // Lo que se está recalculando; null si nada.
     loading: 'zone' | 'fleet' | null;
     error: string | null;
@@ -64,10 +66,27 @@ export function SectorsZoneSection({
         return (providers ?? []).filter((provider) => normalizeForSearch(provider.nombre).includes(search));
     }, [providers, providerFilter]);
 
-    return (
-        <View className="gap-3 rounded-xl border border-borde bg-superficie p-3">
-            <Text className="text-[11px] font-semibold uppercase text-texto-tenue">Zona</Text>
+    // Los chips solo cambian con los CP elegidos o el filtro: al marcar un vehículo (cambia el recuento) no se repintan.
+    const postcodeChips = useMemo(() => zone.modo === 'cps' && matchingPostcodes.map((item) => (
+        <Chip
+            key={item.cp}
+            label={item.cp}
+            selected={zone.cps_seleccionados.includes(item.cp)}
+            onPress={() => onTogglePostcode(item.cp)}
+        />
+    )), [zone.modo, matchingPostcodes, zone.cps_seleccionados, onTogglePostcode]);
 
+    const providerChips = useMemo(() => zone.modo === 'proveedor' && matchingProviders.map((provider) => (
+        <Chip
+            key={provider.nombre}
+            label={`${provider.nombre} (${provider.num_cps})`}
+            selected={isProviderSelected(provider, zone.cps_seleccionados)}
+            onPress={() => onToggleProvider(provider)}
+        />
+    )), [zone.modo, matchingProviders, zone.cps_seleccionados, onToggleProvider]);
+
+    return (
+        <FormSection title="Zona">
             <View className="flex-row flex-wrap gap-2">
                 {ZONE_MODES.map((mode) => (
                     <Chip
@@ -98,14 +117,7 @@ export function SectorsZoneSection({
                         keyboardShouldPersistTaps="handled"
                         contentContainerClassName="flex-row flex-wrap gap-2"
                     >
-                        {matchingPostcodes.map((item) => (
-                            <Chip
-                                key={item.cp}
-                                label={item.cp}
-                                selected={zone.cps_seleccionados.includes(item.cp)}
-                                onPress={() => onTogglePostcode(item.cp)}
-                            />
-                        ))}
+                        {postcodeChips}
                     </ScrollView>
                     {matchingPostcodes.length === 0 && (
                         <Text className="text-xs text-texto-tenue">Ningún código postal del mapa coincide.</Text>
@@ -137,14 +149,7 @@ export function SectorsZoneSection({
                             keyboardShouldPersistTaps="handled"
                             contentContainerClassName="flex-row flex-wrap gap-2"
                         >
-                            {matchingProviders.map((provider) => (
-                                <Chip
-                                    key={provider.nombre}
-                                    label={`${provider.nombre} (${provider.num_cps})`}
-                                    selected={isProviderSelected(provider, zone.cps_seleccionados)}
-                                    onPress={() => onToggleProvider(provider)}
-                                />
-                            ))}
+                            {providerChips}
                         </ScrollView>
                         {matchingProviders.length === 0 && (
                             <Text className="text-xs text-texto-tenue">Ningún proveedor coincide.</Text>
@@ -154,12 +159,7 @@ export function SectorsZoneSection({
             )}
 
             {zone.cps_no_encontrados.length > 0 && (
-                <View className="flex-row items-start gap-2 rounded-lg bg-aviso-suave px-3 py-2">
-                    <TriangleAlert size={14} color={colores.aviso} style={{ marginTop: 1 }} />
-                    <Text className="flex-1 text-xs text-aviso">
-                        Ignorados por no estar en el mapa: {zone.cps_no_encontrados.join(', ')}
-                    </Text>
-                </View>
+                <Warning text={`Ignorados por no estar en el mapa: ${zone.cps_no_encontrados.join(', ')}`} />
             )}
 
             {loading ? (
@@ -172,10 +172,10 @@ export function SectorsZoneSection({
             ) : (
                 <Text className="text-xs text-texto-secundario">
                     {formatInteger(zone.num_celdas)} de {formatInteger(zone.num_celdas_mapa)} celdas
-                    {' · '}{formatInteger(countFleetVehicles(fleet))} vehículos
+                    {' · '}{formatInteger(vehicleCount)} vehículos
                 </Text>
             )}
             {error && <Text className="text-xs text-peligro">{error}</Text>}
-        </View>
+        </FormSection>
     );
-}
+});
