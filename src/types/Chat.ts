@@ -49,6 +49,8 @@ export type Mensaje = {
     // Aviso mientras corre una optimización de sectores.
     progress?: string;
     voto?: Voto | null;
+    // Creado al enviar desde esta pantalla: entra con animación.
+    isNew?: boolean;
 };
 
 // Correo que redacta Chelu; se envía aparte, tras editarlo.

@@ -1284,6 +1284,74 @@ Decidido el 2026-10-13 hacerla en lugar de cambiar el tema desde el menú latera
 
 **Descartado (2026-10-14): "Datos guardados"** (olvidar usuario y contraseña, borrar el registro de correos enviados). No es obligatorio: el RGPD no exige un botón para borrar datos locales (se borran desinstalando o borrando los datos de la app) y las tiendas solo piden eliminar la cuenta si la app permite crearla. Borrar el registro de correos haría que los borradores ya enviados volvieran a mostrar el botón de enviar.
 
+### Vibración en momentos clave (decidido 2026-10-21, pendiente)
+
+Que la app se sienta nativa con una vibración corta en las acciones importantes. Nuevo, no está en la web.
+
+- **Librería:** `expo-haptics` (va con el SDK, MIT). Es nativa: **necesita recompilar**. En Android añade el permiso `VIBRATE`, que no se pide al usuario.
+- **Dónde:**
+  - Enviar un mensaje (también al tocar una pregunta sugerida o un ejemplo): `impactAsync(Light)`.
+  - Empezar y parar la grabación de una nota de voz: `impactAsync(Medium)`.
+  - Respuesta terminada, solo si es la conversación que se está viendo: `selectionAsync()`.
+  - Error en la respuesta o en una acción (enviar correo, crear agente, optimizar): `notificationAsync(Error)`.
+  - Antes de las confirmaciones de eliminar (conversación, carpeta): `notificationAsync(Warning)`.
+- **Sin abusar:** nada en scroll, al abrir menús ni en cada trozo del streaming.
+- **Una utilidad común** (`utils/haptics.ts`) con una función por momento, para no repartir los tipos de vibración por los componentes y poder ajustarlos en un sitio.
+- **Para más adelante:** interruptor "Vibración" en Ajustes (sección "Chat", activado por defecto, en AsyncStorage como "Mostrar herramientas") si alguien la echa de menos apagada.
+
+### Retoques visuales del chat (decidido 2026-10-21, pendiente)
+
+Tres detalles que no están en la web. Con Reanimated, sin librerías nuevas ni recompilar.
+
+1. **Entrada suave de los mensajes nuevos:**
+   - El mensaje del usuario entra deslizándose desde abajo y la respuesta de Chelu aparece con un fundido. Las tarjetas que llegan por el stream (documento, gráfica, mapa, correo, sectores, agente) entran también con un fundido.
+   - Con `entering` de Reanimated, como `HojaInferior`.
+   - **Solo lo que llega en esta sesión** (envío y stream), nunca al abrir una conversación con `get_chat`, ni al volver a una que seguía respondiendo, ni al hacer scroll: si no, un chat largo entraría en cascada.
+   - Ojo: la lista va invertida (`inverted` le da la vuelta a cada fila), así que un desplazamiento vertical puede salir al revés. Comprobarlo en el móvil.
+   - **Hecho, primera parte (burbujas), falta probar en el móvil:** `isNew` en `Mensaje`, que solo pone `useChat.enviar` (pregunta y respuesta). `BurbujaMensaje` recibe `animateEntry` y envuelve la burbuja en un `Animated.View`: el usuario con `FadeInDown` (250 ms; en la lista invertida debería verse subir) y Chelu con `FadeIn` (300 ms). `ChatScreen` guarda en `enteredIdsRef` los que ya han entrado, para que al volver a montarlos al hacer scroll no se animen otra vez.
+   - **Hecho, segunda parte (tarjetas), falta probar en el móvil:** gráficas, mapas, documentos, borradores de correo, formularios y resultados de sectores y comparativas van cada una en un `Animated.View` con `FadeIn` (300 ms) solo mientras la respuesta está `escribiendo`: las que llegan por el stream (también al retomar una respuesta) entran con el fundido; las de `get_chat` o de una respuesta ya terminada, no. La tarjeta del agente (bloque 6a) llevará lo mismo.
+2. **Botón flotante "Bajar al final":**
+   - Círculo con `ArrowDown` encima de la caja de texto, a la derecha. Aparece con un fundido cuando el scroll se aleja del final más de una pantalla, aproximadamente (`onScroll`; en la lista invertida el final es el offset 0), y se va al volver.
+   - Al tocarlo, `scrollToOffset({ offset: 0, animated: true })`, como al enviar.
+   - Con un punto azul si llega texto o una respuesta nueva mientras se está arriba leyendo.
+   - Sin animación al bajar desde muy arriba si da tirones (como en "Ir a una pregunta").
+3. **Botones de la caja de texto que se transforman:**
+   - Enviar ↔ parar con una transición: el icono gira y cambia con un fundido y el fondo pasa de un color a otro (`interpolateColor` con `useColores()`), en lugar del cambio seco de ahora.
+   - Lo mismo con el micro al empezar a grabar y al pasar a "Transcribiendo…".
+   - Corto (~200 ms), para que no retrase el toque. Va con la vibración del apartado anterior.
+
+### Aprobaciones de agentes, push y widget (futuro, decidido 2026-10-21)
+
+Idea: ver y aprobar desde el móvil lo que los agentes autónomos dejan pendiente, con un widget de Android con el número de pendientes. **No se empieza hasta que algún cliente use los agentes en producción**: hoy en la app solo los ve el staff suplantando (`92-master`, `69-master`) y la suplantación caduca a las 6 h, así que el widget se quedaría sin sesión enseguida.
+
+**Cómo funciona hoy (revisado el 2026-10-21).** Rutas cortas: **B** = `Back-Govoy/routes/control_agentes.py`, **L** = `AWS-Govoy/govoy-execute-agents/`, **W** = `Front-Govoy/src/routes/components/AgentesChelu/chelu/`.
+- **Qué se aprueba:** los agentes de correo y de Teams tienen `control: "automatico" | "aprobacion"` (`models/control_agentes.py:21`, `:29`), que se elige al crearlo y por defecto es aprobación. Los informes no tienen control.
+  - Con aprobación, la Lambda no envía (L `actions/correo/execute.py:105-115`) y el back guarda la ejecución en `Output_agente` con `enviado = 0` (B `:120-122`).
+  - **Pendiente** = `enviado = 0 AND descartado = 0` (B `:1014`). Enviar pone `enviado = 1`; descartar, `enviado = 1` y `descartado = 1`.
+  - En la práctica **solo correos**: Teams no está implementado en la Lambda (`actions/__init__.py:20`, TODO) y la web solo enseña los correos.
+- **Endpoints:**
+  - No hay uno de pendientes ni uno que dé solo el número. La portada de la web usa `GET /get-actividad-agentes-front` (B `:733`), que trae la actividad **de hoy**. `GET /get-agentes-front` (B `:1099`) da `ejecucionesPendientes` por agente.
+  - Aprobar o descartar: `POST /activar-accion-agente` (B `:1868`) con `{ output_id, accion: "enviar" | "descartar", output_editado? }`. Solo envía correos (desde `chelu@govoy.es`, con el PDF de S3); para informes y mensajes solo los marca.
+- **Web:** portada de Agentes CHELU (W `pages/Inicio/Inicio.tsx:103-139`), "Necesitan tu OK" con el número. Vista previa, Editar ("Sí, enviar editado") y Descartar (W `correos/PendingCorreo.tsx`). Sin recarga periódica.
+- **Avisos:** ninguno (ni correo, ni Teams, ni push) cuando algo queda pendiente. Sin caducidad, pero como la portada solo pide lo de hoy, lo no aprobado desaparece de la lista a medianoche (sigue contando en `ejecucionesPendientes`).
+
+**Visto de paso (avisar al back y a la web):**
+- `POST /activar-accion-agente` no comprueba que la ejecución siga pendiente (se puede reenviar un correo ya enviado o descartado), ni que el agente esté en aprobación, ni el rol de quien aprueba.
+- Un mensaje de Teams con aprobación no llega a enviarse nunca.
+- Informes y mensajes pendientes cuentan en las métricas pero no salen en "Necesitan tu OK".
+- Los descartados quedan con `enviado = 1` (B `:1891`), así que el contador de enviadas incluye los rechazados.
+- Los pendientes de días anteriores desaparecen de la portada.
+
+**Planteamiento en la app, por orden:**
+1. **Back:** arreglar `activar-accion-agente` (que siga pendiente, que el agente esté en aprobación y quién puede aprobar) y un endpoint de pendientes sin el límite de "hoy", con la lista y el número.
+2. **Pantalla de aprobaciones:** lista de correos pendientes con vista previa, Enviar, Editar y Descartar. **Excepción a la regla general** de no gestionar en la app lo de otras herramientas de GOVOY: aprobar un correo es una acción rápida típica del móvil. Gestionar los agentes (crear fuera del chat, editar, pausar) sigue en la web.
+3. **Push al quedar algo pendiente:** desde `POST /agentes/log` (lo llama la Lambda), con la infraestructura de push de las respuestas reanudables. Al tocarlo, abre la pantalla de aprobaciones. Es lo que evita que se pierdan pendientes.
+4. **Widget de Android:** número de pendientes y, como mucho, el asunto de los dos últimos. Al tocarlo, la pantalla de aprobaciones. **Sin botón de aprobar en el widget**: no se envía un correo sin verlo.
+   - `react-native-android-widget` (MIT, plugin de Expo; comprobar compatibilidad con SDK 57 / RN 0.86 y la nueva arquitectura). Manejador en segundo plano que llama al endpoint de pendientes; se actualiza cada 30 min como mínimo (límite de Android) y al abrir la app. Necesita recompilar.
+   - Enlace al tocar: `scheme` en `app.json` y `linking` en React Navigation (sirve también para el push).
+   - **Sesión, a decidir:** el widget renueva el token desde SecureStore sin abrir la app, así que la sesión no caducaría nunca (D1 dice ~10 h sin abrir la app). Alternativa: que no renueve y muestre "Abre Chelu para actualizar". Si renueva, compartir el bloqueo de renovación de `authManager` para no pisar los tokens de la app. En suplantación, no mostrar nada.
+   - **iOS:** WidgetKit (Swift, target aparte y App Group), con Mac o EAS Build. Cuando se decida iOS (pregunta 11).
+
 ### Cuenta de prueba para Google Play (decidido 2026-10-19, en curso)
 
 Google pide en "Acceso a la app" un usuario y contraseña que funcionen para revisar la app. Sirve también para la App Store.
@@ -1458,6 +1526,7 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 22. **Título renombrado en `get_chat`:** que `_chat_summary` devuelva la columna `titulo` (hoy da la primera pregunta y la cabecera no refleja el nombre puesto a mano). Afecta también a la web si usa ese título.
 23. **Qué clientes tienen las tablas de carpetas, archivos y la columna `titulo`:** se crean a mano por cliente. Carpetas: 92, 100 y 101 (comprobado el 2026-10-13; en la app van en `HAS_FOLDERS_CHAT_CHELU`, que hay que mantener a mano). Comprobado el 2026-10-15: solo 69, 92, 100 y 101 tienen el chat (`chat_agno_chelu`); los cuatro tienen la columna `titulo` (y `num_runs`) y `chat_archivos_chelu`; el 69 es el único sin carpetas. Sin ellas, crear carpeta o renombrar dan 409 después de que el usuario lo intente. Valorar que `get_chats` diga si están activas para ocultar los botones.
 24. **"Archivos generados" de todas las conversaciones en la app** con `GET /archivos` (y quitar del listado con `DELETE`), como la web.
+25. **Aprobaciones de agentes en el móvil** (ver "Aprobaciones de agentes, push y widget"): cuándo empezar (cuando algún cliente use los agentes en producción) y si el widget puede mantener viva la sesión renovando el token.
 
 ---
 
@@ -1585,3 +1654,6 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-21 | Transferencias de la política: EE. UU. por el Marco de Privacidad o cláusulas tipo, OpenAI a través de OpenAI Ireland, y frase para pedir copia de las garantías. Propuesto, falta comprobar las adhesiones y aplicarlo al txt |
 | 2026-10-21 | Actualizaciones OTA con servidor propio: Back-Govoy responde al protocolo leyendo de S3, CloudFront (OAC) sirve los ficheros y el manifest se firma al publicar (la clave no está en el back). Rutas con plataforma. `app.json` y certificado hechos; script de publicación sin la subida a S3 |
 | 2026-10-21 | Agentes: formulario nativo (no WebView). Antes, bloque 6.0 con piezas comunes de formulario (editor a pantalla completa, tarjeta, campos y `useFormDraft`), probado con sectores; sin motor genérico. Disparador personalizado de la web como bloque 6e, al final |
+| 2026-10-21 | Vibración en momentos clave con `expo-haptics` (enviar, nota de voz, respuesta terminada, errores y confirmaciones de eliminar), en una utilidad común. Pendiente de hacer |
+| 2026-10-21 | Retoques visuales del chat: entrada suave de los mensajes nuevos (solo los de la sesión, no al abrir un chat), botón flotante "Bajar al final" con aviso de texto nuevo y transición en los botones de enviar/parar y del micro. Pendiente de hacer |
+| 2026-10-21 | Aprobaciones de agentes en el móvil (futuro, cuando algún cliente use los agentes en producción): por orden, arreglar `activar-accion-agente` y endpoint de pendientes en el back, pantalla de aprobaciones (excepción a no gestionar otras herramientas), push al quedar algo pendiente y widget de Android con el número, sin aprobar desde el widget |

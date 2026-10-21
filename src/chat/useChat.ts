@@ -357,11 +357,11 @@ export function useChat(chatId: string | undefined, onCreada: (id: string, pregu
     const enviar = useCallback(
         async (pregunta: string, sectorsForm?: SectorsFormPayload, fromVoice = false) => {
             const idChelu = `chelu-${Date.now()}`;
-            const mensajeUsuario: Mensaje[] = pregunta ? [{ id: `usuario-${Date.now()}`, rol: 'usuario', texto: pregunta }] : [];
+            const mensajeUsuario: Mensaje[] = pregunta ? [{ id: `usuario-${Date.now()}`, rol: 'usuario', texto: pregunta, isNew: true }] : [];
             setMensajes((prev) => [
                 ...prev,
                 ...mensajeUsuario,
-                { id: idChelu, rol: 'chelu', texto: '', estado: 'escribiendo' },
+                { id: idChelu, rol: 'chelu', texto: '', estado: 'escribiendo', isNew: true },
             ]);
             await followAnswer({
                 idChelu,

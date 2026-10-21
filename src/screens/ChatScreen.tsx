@@ -191,6 +191,8 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
     const cerrarValoracion = useCallback(() => setValorando(null), []);
     // La lista va invertida para que empiece abajo, en el último mensaje.
     const invertidos = useMemo(() => [...mensajes].reverse(), [mensajes]);
+    // Mensajes nuevos que ya han entrado: si la lista los vuelve a montar al hacer scroll, no se animan otra vez.
+    const enteredIdsRef = useRef(new Set<string>());
 
     // Documentos de la conversación, los más recientes primero y sin repetir.
     const documentos = useMemo(() => {
@@ -397,23 +399,28 @@ function ChatConversation({ conversationKey, navigation, chatId, visible, onCrea
                                 onTouchStart={Keyboard.dismiss}
                                 onScrollToIndexFailed={({ index, averageItemLength }) => retryJump(index, averageItemLength)}
                                 onContentSizeChange={keepJumpPosition}
-                                renderItem={({ item, index }) => (
-                                    <BurbujaMensaje
-                                        mensaje={item}
-                                        // Sugerencias solo en la última respuesta (la lista va invertida: es la 0).
-                                        onPreguntar={index === 0 && !respondiendo ? sendAndScroll : undefined}
-                                        onDuplicarDesde={respondiendo ? undefined : duplicarDesde}
-                                        duplicando={!!item.runId && item.runId === duplicando}
-                                        onValorar={puedeValorar ? openRating : undefined}
-                                        onAmpliarGrafica={openChart}
-                                        onAbrirMapa={openMap}
-                                        onSendEmail={sendEmail}
-                                        onLaunchSectorsForm={sectorsFormBusy ? undefined : launchSectorsFormAsIs}
-                                        onRefineSectorsForm={sectorsFormBusy ? undefined : setRefiningSectorsForm}
-                                        onChangeSectorsFormMap={changeSectorsFormMap}
-                                        onEditSectorsForm={openSectorsFormEditor}
-                                    />
-                                )}
+                                renderItem={({ item, index }) => {
+                                    const animateEntry = !!item.isNew && !enteredIdsRef.current.has(item.id);
+                                    if (animateEntry) enteredIdsRef.current.add(item.id);
+                                    return (
+                                        <BurbujaMensaje
+                                            mensaje={item}
+                                            animateEntry={animateEntry}
+                                            // Sugerencias solo en la última respuesta (la lista va invertida: es la 0).
+                                            onPreguntar={index === 0 && !respondiendo ? sendAndScroll : undefined}
+                                            onDuplicarDesde={respondiendo ? undefined : duplicarDesde}
+                                            duplicando={!!item.runId && item.runId === duplicando}
+                                            onValorar={puedeValorar ? openRating : undefined}
+                                            onAmpliarGrafica={openChart}
+                                            onAbrirMapa={openMap}
+                                            onSendEmail={sendEmail}
+                                            onLaunchSectorsForm={sectorsFormBusy ? undefined : launchSectorsFormAsIs}
+                                            onRefineSectorsForm={sectorsFormBusy ? undefined : setRefiningSectorsForm}
+                                            onChangeSectorsFormMap={changeSectorsFormMap}
+                                            onEditSectorsForm={openSectorsFormEditor}
+                                        />
+                                    );
+                                }}
                             />
                             {jumping && (
                                 <View className="absolute inset-0 bg-fondo">
