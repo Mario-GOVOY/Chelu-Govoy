@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useVoiceNote } from '@/chat/useVoiceNote';
 import { useTecladoVisible } from '@/hooks/useTecladoVisible';
 import { useColores } from '@/theme/ThemeProvider';
+import { hapticSend, hapticStopResponse, hapticVoiceNote } from '@/utils/haptics';
 
 // Medidas de la onda en px. Van en style y no en clases: NativeWind usa rem de 14 px y no darían px exactos.
 const WAVE_BAR_WIDTH = 2;
@@ -63,9 +64,30 @@ export function CajaMensaje({ onEnviar, onParar, stopping = false, respondiendo 
 
     const enviar = () => {
         if (sinEnvio) return;
+        hapticSend();
         onEnviar(texto.trim(), fromVoice);
         setTexto('');
         setFromVoice(false);
+    };
+
+    const parar = () => {
+        hapticStopResponse();
+        onParar();
+    };
+
+    const startRecording = () => {
+        hapticVoiceNote();
+        voiceNote.start();
+    };
+
+    const cancelRecording = () => {
+        hapticVoiceNote();
+        voiceNote.cancel();
+    };
+
+    const finishRecording = () => {
+        hapticVoiceNote();
+        voiceNote.finish();
     };
 
     // El margen de la barra de navegación lo pone el sistema al maquetar. Con el teclado abierto la barra queda debajo y sobra.
@@ -119,7 +141,7 @@ export function CajaMensaje({ onEnviar, onParar, stopping = false, respondiendo 
                                 </Animated.View>
                                 <Animated.View entering={BUTTON_ENTERING}>
                                     <Pressable
-                                        onPress={voiceNote.cancel}
+                                        onPress={cancelRecording}
                                         accessibilityRole="button"
                                         accessibilityLabel="Descartar nota de voz"
                                         className="h-10 w-10 items-center justify-center rounded-full bg-borde active:bg-borde-medio"
@@ -129,7 +151,7 @@ export function CajaMensaje({ onEnviar, onParar, stopping = false, respondiendo 
                                 </Animated.View>
                                 <Animated.View entering={BUTTON_ENTERING}>
                                     <Pressable
-                                        onPress={voiceNote.finish}
+                                        onPress={finishRecording}
                                         accessibilityRole="button"
                                         accessibilityLabel="Transcribir nota de voz"
                                         className="h-10 w-10 items-center justify-center rounded-full bg-primario active:bg-primario-presionado"
@@ -163,7 +185,7 @@ export function CajaMensaje({ onEnviar, onParar, stopping = false, respondiendo 
                                     ) : (
                                         <Animated.View key="micro" entering={BUTTON_ENTERING}>
                                             <Pressable
-                                                onPress={voiceNote.start}
+                                                onPress={startRecording}
                                                 disabled={respondiendo || desactivada}
                                                 accessibilityRole="button"
                                                 accessibilityLabel="Dictar la pregunta"
@@ -179,7 +201,7 @@ export function CajaMensaje({ onEnviar, onParar, stopping = false, respondiendo 
                                 {respondiendo ? (
                                     <Animated.View key="parar" entering={BUTTON_ENTERING}>
                                         <Pressable
-                                            onPress={onParar}
+                                            onPress={parar}
                                             disabled={stopping}
                                             accessibilityRole="button"
                                             accessibilityLabel="Detener respuesta"

@@ -1285,19 +1285,22 @@ Decidido el 2026-10-13 hacerla en lugar de cambiar el tema desde el menú latera
 
 **Descartado (2026-10-14): "Datos guardados"** (olvidar usuario y contraseña, borrar el registro de correos enviados). No es obligatorio: el RGPD no exige un botón para borrar datos locales (se borran desinstalando o borrando los datos de la app) y las tiendas solo piden eliminar la cuenta si la app permite crearla. Borrar el registro de correos haría que los borradores ya enviados volvieran a mostrar el botón de enviar.
 
-### Vibración en momentos clave (decidido 2026-10-21, pendiente)
+### Vibración en momentos clave (decidido 2026-10-21, en curso)
 
 Que la app se sienta nativa con una vibración corta en las acciones importantes. Nuevo, no está en la web.
 
-- **Librería:** `expo-haptics` (va con el SDK, MIT). Es nativa: **necesita recompilar**. En Android añade el permiso `VIBRATE`, que no se pide al usuario.
-- **Dónde:**
-  - Enviar un mensaje (también al tocar una pregunta sugerida o un ejemplo): `impactAsync(Light)`.
-  - Empezar y parar la grabación de una nota de voz: `impactAsync(Medium)`.
-  - Respuesta terminada, solo si es la conversación que se está viendo: `selectionAsync()`.
-  - Error en la respuesta o en una acción (enviar correo, crear agente, optimizar): `notificationAsync(Error)`.
-  - Antes de las confirmaciones de eliminar (conversación, carpeta): `notificationAsync(Warning)`.
+- **Librería:** `expo-haptics` (va con el SDK, MIT, instalada). Es nativa: instalarla necesitó recompilar. Los cambios en `utils/haptics.ts` son solo JS (basta recargar Metro).
+- **Android: `performAndroidHapticsAsync`**, no `impactAsync`. En Android `impactAsync` usa el vibrador y se nota basto y distinto al teclado aunque se suba a Heavy (probado). `performAndroidHapticsAsync` usa los hápticos del sistema (los del teclado), respeta el ajuste de "respuesta táctil" y no necesita el permiso `VIBRATE`. `Confirm` y `Reject` piden Android 11+. En iOS se sigue con `impactAsync` / `notificationAsync` / `selectionAsync`.
+- **Dónde** (Android / iOS):
+  - Enviar un mensaje (también al tocar una pregunta sugerida o un ejemplo): `Confirm` / `impactAsync(Medium)`.
+  - Parar la respuesta: `Context_Click` / `impactAsync(Medium)`.
+  - Empezar, terminar o descartar la grabación de una nota de voz: `Context_Click` / `impactAsync(Medium)`.
+  - Respuesta terminada, solo si es la conversación que se está viendo: por decidir (`Clock_Tick`?) / `selectionAsync()`.
+  - Error en la respuesta o en una acción (enviar correo, crear agente, optimizar): `Reject` / `notificationAsync(Error)`.
+  - Antes de las confirmaciones de eliminar (conversación, carpeta): por decidir / `notificationAsync(Warning)`.
 - **Sin abusar:** nada en scroll, al abrir menús ni en cada trozo del streaming.
 - **Una utilidad común** (`utils/haptics.ts`) con una función por momento, para no repartir los tipos de vibración por los componentes y poder ajustarlos en un sitio.
+- **Hecho (caja de texto):** `utils/haptics.ts` con `hapticSend`, `hapticStopResponse` y `hapticVoiceNote`, usados en `CajaMensaje`. La función interna `haptic(androidType, iosStyle)` solo cubre `impactAsync` en iOS; los momentos que usen `notificationAsync` o `selectionAsync` necesitarán ampliarla. Falta: preguntas sugeridas y ejemplos, respuesta terminada, errores y confirmaciones de eliminar.
 - **Para más adelante:** interruptor "Vibración" en Ajustes (sección "Chat", activado por defecto, en AsyncStorage como "Mostrar herramientas") si alguien la echa de menos apagada.
 
 ### Retoques visuales del chat (decidido 2026-10-21, pendiente)
@@ -1679,6 +1682,8 @@ Cambios en dos ficheros: `routes/login.py` (autenticación) y `agentes/chat_CEX/
 | 2026-10-21 | Actualizaciones OTA con servidor propio: Back-Govoy responde al protocolo leyendo de S3, CloudFront (OAC) sirve los ficheros y el manifest se firma al publicar (la clave no está en el back). Rutas con plataforma. `app.json` y certificado hechos; script de publicación sin la subida a S3 |
 | 2026-10-21 | Agentes: formulario nativo (no WebView). Antes, bloque 6.0 con piezas comunes de formulario (editor a pantalla completa, tarjeta, campos y `useFormDraft`), probado con sectores; sin motor genérico. Disparador personalizado de la web como bloque 6e, al final |
 | 2026-10-21 | Vibración en momentos clave con `expo-haptics` (enviar, nota de voz, respuesta terminada, errores y confirmaciones de eliminar), en una utilidad común. Pendiente de hacer |
+| 2026-10-22 | Vibración: hecha en la caja de texto (enviar, parar, nota de voz). En Android con `performAndroidHapticsAsync` (hápticos del sistema), porque `impactAsync` usa el vibrador y se notaba basto. Falta el resto de momentos |
+| 2026-10-22 | Botones de la caja de texto: versión rápida (ZoomIn al cambiar de botón, fundido en la fila de grabación, nada al abrir la pantalla). La versión completa (un solo botón que cambia color e icono) se descarta por ahora |
 | 2026-10-21 | Retoques visuales del chat: entrada suave de los mensajes nuevos (solo los de la sesión, no al abrir un chat), botón flotante "Bajar al final" con aviso de texto nuevo y transición en los botones de enviar/parar y del micro. Pendiente de hacer |
 | 2026-10-21 | Rendimiento (pendiente): `memo` en `TarjetaGrafica` y `TarjetaMapa`, con `onAmpliar(grafica)` / `onAbrir(mapa)`, para que no se repinten con cada trozo de texto mientras Chelu responde (la de líneas recalcula sus trazos y se pinta dos veces más cada vez). Antes, mirar el aviso de `VirtualizedList` en release |
 | 2026-10-21 | Aprobaciones de agentes en el móvil (futuro, cuando algún cliente use los agentes en producción): por orden, arreglar `activar-accion-agente` y endpoint de pendientes en el back, pantalla de aprobaciones (excepción a no gestionar otras herramientas), push al quedar algo pendiente y widget de Android con el número, sin aprobar desde el widget |
